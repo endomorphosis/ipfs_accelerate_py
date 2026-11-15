@@ -1,0 +1,21 @@
+{
+  "schema": "native-candidate-router-harness@1",
+  "files": {
+    "run-leased-qualification.py": {
+      "sha256": "9924086ff9f66d56db22d798dd913d42b7af720653c0a0d8bd4395f94da82fd9",
+      "copied_from": "/home/barberb/lift_coding/artifacts/native-candidate-admission-20261015-01/run-leased-qualification.py"
+    },
+    "run-with-pinned-owner.py": {
+      "sha256": "05bf539bc7663c47a40e7d7b7aefb5a6b3ce5d46afa7510495c6aa17b2240970",
+      "copied_from": "/home/barberb/lift_coding/artifacts/native-candidate-admission-20261015-01/run-with-pinned-owner.py"
+    },
+    "probe-environment.py": {
+      "sha256": "633c7ce3ebb0a722797e008c9dd6d9fa9666db5fbe1fa7412a596811b515826e",
+      "copied_from": "/home/barberb/lift_coding/artifacts/native-candidate-admission-20261015-01/probe-environment.py"
+    }
+  },
+  "accelerate_base": "269f14c53852a9e039820b8543b32f2761d4c8e4",
+  "policy_sha256": "f07cb14289fcb6275e4497dcc36be0dcf8bfc3dc87531ff7a9537eb85fdcc661",
+  "datasets": "74f5d98c8ffff3c284cffddf430091b5fc4c6f8c",
+  "kit": "40c98c71b95be750509ffdb21e7e5494d91b4e79"
+}

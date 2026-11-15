@@ -1,0 +1,62 @@
+{
+  "all_source_roots_clean": true,
+  "blocking_findings": [],
+  "completion_authority": false,
+  "controls_equal_prior_declared_trial": true,
+  "current_host_pins_verified": 629,
+  "current_qualified_pins_verified": 11,
+  "execution_authority": false,
+  "files": [
+    {
+      "bytes": 146453,
+      "path": "/home/barberb/lift_coding/artifacts/grok-cap-end-20261015/recipe.json",
+      "sha256": "f03e735a8efe568ffd89ad4eae10a8a829c6535ddd4f44466e3cf0cb089d27f2"
+    },
+    {
+      "bytes": 1813,
+      "path": "/home/barberb/lift_coding/artifacts/grok-cap-end-20261015/source-freeze.json",
+      "sha256": "5519a4347703d9972f2aa1f8b38213e34d94f99a3272014f608268b183a2e49b"
+    },
+    {
+      "bytes": 12934,
+      "path": "/home/barberb/lift_coding/artifacts/grok-cap-end-20261015/run.py",
+      "sha256": "e1904a9213f1810fd3d721422fee1106a5b82bc51a783d1588838ccb50905951"
+    },
+    {
+      "bytes": 16407,
+      "path": "/home/barberb/lift_coding/artifacts/grok-cap-end-20261015/reporting-freeze-v2.json",
+      "sha256": "ce745ebfd0109fa952527f3eafd224425608cdddbbce535c274839fad84b505d"
+    },
+    {
+      "bytes": 2704,
+      "path": "/home/barberb/lift_coding/artifacts/grok-cap-end-20261015/qualification.json",
+      "sha256": "18f461eb8fe2b2960fcc8d5adebdcd41a7b1b445f8e7105641266a54c63b59f6"
+    },
+    {
+      "bytes": 16625,
+      "path": "/home/barberb/lift_coding/artifacts/grok-cap-end-20261015/reader-v2/qualification.json",
+      "sha256": "94868ba337f764e425b05ec8eee7540d1005e2df91fd175becb7a5c6376274a1"
+    },
+    {
+      "bytes": 4119,
+      "path": "/home/barberb/lift_coding/artifacts/declared-public-planning-20261015/live-comparison.json",
+      "sha256": "0188cab951c9b009ec7c85d4bb143cae81719e69037b30639e503b9894e996e9"
+    }
+  ],
+  "independent_review_scope": [
+    "root recipe/freeze adaptation and final bindings",
+    "root structured candidate route and native adapter regression",
+    "root T comparative projection"
+  ],
+  "previous_cleanup_bound": true,
+  "provider_calls": 0,
+  "reporting_bindings_verified": 66,
+  "reviewer": "doctor_budget_design",
+  "reviewer_authored": [
+    "stream trailer repair and router observation helper",
+    "disabled launcher draft",
+    "pure reader import-closure repair"
+  ],
+  "schema": "grok-fixed-pilot-launch-review@1",
+  "source_commit": "9d6ef76c8e2bb6916b68cad3563c6ec530b32736"
+}

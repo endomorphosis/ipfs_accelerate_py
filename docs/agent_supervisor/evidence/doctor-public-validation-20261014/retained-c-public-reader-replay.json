@@ -1,0 +1,637 @@
+{
+  "new_public_validation_invented": false,
+  "pilot": {
+    "artifact_bindings": [
+      {
+        "bytes": 3388,
+        "path": "/home/barberb/lift_coding/artifacts/doctor-repaired-live-20261014/live-trials/grok-two-attempts-repaired-01/config.json",
+        "sha256": "11ea41ff518e05a52a34fab5fd1c010e3a5dd23541fc6ec2e643c809ec678a29"
+      },
+      {
+        "bytes": 11771,
+        "path": "/home/barberb/lift_coding/artifacts/doctor-repaired-live-20261014/live-trials/grok-two-attempts-repaired-01/jobs/supervisor-full-largest-eigenval/largest-eigenval__od9RZvp/result.json",
+        "sha256": "29fb86c1aaec0cd9ebfabbfd5ad76d453bcc9fd25ccfc9cc2c789be5debe4133"
+      },
+      {
+        "bytes": 142451,
+        "path": "/home/barberb/lift_coding/artifacts/doctor-repaired-live-20261014/live-trials/grok-two-attempts-repaired-01/jobs/supervisor-full-largest-eigenval/largest-eigenval__od9RZvp/agent/supervisor-result.json",
+        "sha256": "702c9a3308a79a3ae4a052e3b1410e98d2f02e75c2cc4f933f5bd9f77f8c082d"
+      }
+    ],
+    "controls": {
+      "candidate_rounds": 2,
+      "capsule_budget": "legacy",
+      "coding_reply_mode": "legacy",
+      "doctor_coding_policy": "doctor-coding-two-attempts@1",
+      "grok_coding_max_turns": 8,
+      "numerical_formalization_profile": null,
+      "provider_profile": "grok-4.7-cli-1.0.46@1",
+      "resource_profile": "source384-5cpu-20gib-formalization@1",
+      "semantic_metadata_view": "legacy",
+      "semantic_transport_schema": "supervisor-semantic-router-input@1",
+      "semantic_working_set": "legacy",
+      "source_edit_mode": "disabled",
+      "source_view_profile": "identity@1"
+    },
+    "directory": "/home/barberb/lift_coding/artifacts/doctor-repaired-live-20261014/live-trials/grok-two-attempts-repaired-01",
+    "status": "observed",
+    "trials": [
+      {
+        "all_phase_usage": {
+          "all_native_contracts_complete": false,
+          "billing_total_verified": false,
+          "complete_native_totals": {
+            "cache_write_input_tokens": null,
+            "cached_input_tokens": null,
+            "input_tokens": null,
+            "output_tokens": null,
+            "reasoning_output_tokens": null,
+            "total_tokens": null
+          },
+          "missing_categories": {
+            "cache_write_input_tokens": 1,
+            "cached_input_tokens": 1,
+            "input_tokens": 1,
+            "output_tokens": 1,
+            "reasoning_output_tokens": 1,
+            "total_tokens": 1
+          },
+          "observed_subtotals": {
+            "cache_write_input_tokens": 0,
+            "cached_input_tokens": 1536,
+            "input_tokens": 13356,
+            "output_tokens": 7322,
+            "reasoning_output_tokens": 5476,
+            "total_tokens": 22214
+          },
+          "outer_router_calls": 2,
+          "reasoning_is_separate_not_added_to_total": true,
+          "receipts": 2,
+          "retained_aggregate_completeness_agrees": false,
+          "unreceipted_attempt_reported": true
+        },
+        "baseline_source_audit": {
+          "candidate_context_counts": {
+            "delivered_bytes": 0,
+            "delivered_pages": 0,
+            "prepared_bytes": 0,
+            "prepared_pages": 0
+          },
+          "counts": {
+            "accepted_requests": 1,
+            "delivered_pages": 1,
+            "delivered_response_bytes": 2397,
+            "delivered_responses": 1,
+            "delivered_source_bytes": 0,
+            "prepared_pages": 1,
+            "prepared_source_bytes": 0,
+            "request_hash_count": 1,
+            "response_bytes": 2397,
+            "response_hash_count": 1,
+            "sessions": 1,
+            "unique_request_hash_count": 1,
+            "unique_response_hash_count": 1
+          },
+          "prior_receipt_matches_reported": [
+            false
+          ],
+          "provider_tokens": null,
+          "reason": "matched_owner_session_accounting",
+          "schema": "terminal-source-view-observation@1",
+          "status": "observed",
+          "total_token_savings_measured": false
+        },
+        "candidate_source_audit": {
+          "prior_receipt_matches_reported": [],
+          "provider_tokens": null,
+          "reason": "selected_session_receipt_unavailable",
+          "schema": "terminal-candidate-round-observation@1",
+          "session_scope": "candidate_round_sessions_only",
+          "status": "unavailable",
+          "total_token_savings_measured": false
+        },
+        "continuation": {
+          "candidate_receipts": 0,
+          "continuation_supported_by_retained_report": false,
+          "in_container_accounting_agrees": false,
+          "independent_owner_replay_performed": false,
+          "native_accounting": {
+            "complete_usage_established": false,
+            "doctor_attempts_reserved": [
+              1,
+              2
+            ],
+            "doctor_coding_policy": "doctor-coding-two-attempts@1",
+            "doctor_coding_policy_sha256": "aa73ee47c688413f663c7e2695ac34d87f6905d8537106f1968d648106fb4bfd",
+            "owner_lifecycle_sha256": "50cb6d7565578962d12d5843f2ee7da871dca915cd075f4aef0a2896c8a8b3cc",
+            "potential_unreceipted_attempt": true,
+            "provider_internal_calls_bounded": false,
+            "reason": "potential_worker_attempt_without_router_receipt",
+            "rounds": [
+              {
+                "possible_unreceipted_attempt": false,
+                "process_started": true,
+                "receipt_observed": true,
+                "round_number": 1
+              },
+              {
+                "possible_unreceipted_attempt": true,
+                "process_started": true,
+                "receipt_observed": false,
+                "round_number": 2
+              }
+            ],
+            "schema": "terminal-candidate-attempt-accounting@1",
+            "status": "incomplete",
+            "total_cost_bounded": false,
+            "total_tokens_bounded": false
+          },
+          "two_coding_router_calls_joined": false
+        },
+        "duplicate_receipts_ignored": 0,
+        "input_audit": {
+          "all_observed_coding_inputs_verified": true,
+          "coding_receipts_seen": 1,
+          "prior_receipt_matches_reported": [],
+          "reason": "per_invocation_context_and_input_comparison",
+          "schema": "terminal-final-context-audit@1",
+          "status": "verified_all_observed_model_inputs",
+          "usable_coding_receipts": 1
+        },
+        "invocations": [
+          {
+            "candidate_preflight": {},
+            "input_representation": {},
+            "invocation_id": "fa95f5ee57044feabe2a1d721f98f8b6",
+            "model": "grok-4.7",
+            "model_prompt_bytes": 26168,
+            "native_cli": {
+              "exit_code": 0,
+              "num_turns": 1,
+              "stop_reason": "end_turn"
+            },
+            "native_grok_progress": {
+              "status": "unavailable"
+            },
+            "native_prompt_bytes": 26168,
+            "native_usage": {
+              "arithmetic_valid": true,
+              "counters": {
+                "cache_write_input_tokens": 0,
+                "cached_input_tokens": 1536,
+                "input_tokens": 13356,
+                "output_tokens": 7322,
+                "reasoning_output_tokens": 5476,
+                "total_tokens": 22214
+              },
+              "retained_native_fields": {
+                "billing_total_verified": false,
+                "cache_included_in_input": false,
+                "observed_final_usage_records": 1,
+                "schema": "native-grok-final-usage@1",
+                "task_complete_observed": true,
+                "totals_scope": "native_final_envelope",
+                "usage_available": true,
+                "usage_complete_observed": null,
+                "usage_observation_sha256": "7714602c0eaefdc71480567cf1158e1674198a7dbf663f946369f7a82fb0d0ac"
+              },
+              "usage_complete_under_native_contract": null
+            },
+            "phase": "planning",
+            "prompt_bytes": 26168,
+            "provider": "grok_cli",
+            "requested_output_tokens": 4096,
+            "router_calls": 1,
+            "router_prompt_bytes": 26168,
+            "status": "provider_returned",
+            "timeout_seconds": 600
+          },
+          {
+            "candidate_preflight": {},
+            "failure_phase": "provider_invocation",
+            "input_representation": {},
+            "invocation_id": "7736370b50b74ad29c3f6b629a736dbe",
+            "model": "grok-4.7",
+            "model_prompt_bytes": 66958,
+            "native_cli": {
+              "exit_code": 1
+            },
+            "native_grok_progress": {
+              "progress": {
+                "callback_errors": 0,
+                "completion_authority": false,
+                "discarded_text_bytes": 126,
+                "duration_seconds": 117.86959039396606,
+                "event_counts": {
+                  "auto_compact": 0,
+                  "available_commands": 10,
+                  "end": 1,
+                  "error": 0,
+                  "max_turns_reached": 1,
+                  "plan": 0,
+                  "text": 52,
+                  "thought": 326,
+                  "tool_call": 8,
+                  "tool_call_update": 39,
+                  "unknown": 0,
+                  "usage": 8
+                },
+                "event_origin_authenticated": false,
+                "events_after_final": 1,
+                "execution_authority": false,
+                "final_envelope_observed": true,
+                "final_event_seconds": 116.4110169520136,
+                "final_event_type": "max_turns_reached",
+                "final_reason_code": "max_turns",
+                "first_event_seconds": 0.14013377798255533,
+                "first_stderr_seconds": 117.86635409202427,
+                "first_stdout_seconds": 0.14013377798255533,
+                "frames": 445,
+                "last_event_seconds": 116.4110169520136,
+                "last_stderr_seconds": 117.86635409202427,
+                "last_stdout_seconds": 116.4110169520136,
+                "malformed_frames": 0,
+                "non_object_frames": 0,
+                "observation_only": true,
+                "oversized_frames": 0,
+                "process_exit_observed": true,
+                "process_exit_seconds": 117.86922982893884,
+                "proof_authority": false,
+                "raw_provider_data_exported": false,
+                "response_usable": false,
+                "retained_text_bytes": 136,
+                "returncode": 1,
+                "schema": "native-grok-stream-progress@1",
+                "stderr_bytes": 25,
+                "stderr_eof": true,
+                "stdout_bytes": 435079,
+                "stdout_eof": true,
+                "stream_complete": false,
+                "stream_tainted": true,
+                "text_bytes": 262,
+                "text_scope": "last_usage_delimited_text_segment",
+                "text_truncated": false,
+                "timed_out": false,
+                "timeout_phase": "none",
+                "tool_name_counts": {
+                  "grep": 0,
+                  "list_dir": 0,
+                  "read_file": 0,
+                  "run_terminal_cmd": 0,
+                  "search_replace": 0,
+                  "todo_write": 0,
+                  "unknown": 8
+                },
+                "tool_status_counts": {
+                  "completed": 8,
+                  "failed": 0,
+                  "in_progress": 23,
+                  "pending": 8,
+                  "unknown": 8
+                },
+                "transport": "streaming-json",
+                "unknown_events": 0,
+                "usage_event_observation": {
+                  "billing_total_verified": false,
+                  "counter_semantics": "unverified",
+                  "observed_events": 8,
+                  "omitted_events": 0,
+                  "ordinals_are_turn_ids": false,
+                  "raw_provider_data_exported": false,
+                  "retained_events": 8,
+                  "schema": "native-grok-usage-events@1",
+                  "summation_permitted": false
+                }
+              },
+              "status": "validated_retained_observation",
+              "usage_event_values_exported": false
+            },
+            "native_prompt_bytes": 68120,
+            "native_usage": {
+              "arithmetic_valid": null,
+              "counters": {
+                "cache_write_input_tokens": null,
+                "cached_input_tokens": null,
+                "input_tokens": null,
+                "output_tokens": null,
+                "reasoning_output_tokens": null,
+                "total_tokens": null
+              },
+              "retained_native_fields": {},
+              "usage_complete_under_native_contract": null
+            },
+            "phase": "coding",
+            "prompt_bytes": 68120,
+            "provider": "grok_cli",
+            "requested_output_tokens": 4096,
+            "router_calls": 1,
+            "router_prompt_bytes": 66068,
+            "status": "failed",
+            "timeout_seconds": 1800
+          }
+        ],
+        "native_failure_observations": {
+          "bridge": {
+            "completion_authority": false,
+            "diagnostic": {
+              "callback": {
+                "native_exit": {
+                  "lifecycle_finalized": true,
+                  "present": true,
+                  "process_group_absent": true,
+                  "reaped": true,
+                  "returncode": 1,
+                  "subreaper_children_absent": true
+                },
+                "provider_effect_state": "failed_provider_exited",
+                "schema": "database-native-provider-failure@1",
+                "state": "failed_outcome_settled"
+              },
+              "chain_truncated": false,
+              "child_reported_router_failure": {
+                "attempt_attribution_verified": false,
+                "completion_authority": false,
+                "diagnostics": [
+                  {
+                    "diagnostic": {
+                      "automatic_retry_admitted": false,
+                      "chain_truncated": false,
+                      "completion_authority": false,
+                      "exceptions": [
+                        {
+                          "exception_type": "ValueError",
+                          "frames": [
+                            {
+                              "file": "router_implementation_runner.py",
+                              "line": 1398
+                            },
+                            {
+                              "file": "router_implementation_runner.py",
+                              "line": 743
+                            },
+                            {
+                              "file": "router_implementation_runner.py",
+                              "line": 495
+                            },
+                            {
+                              "file": "candidate_dispatch_context.py",
+                              "line": 268
+                            },
+                            {
+                              "file": "candidate_dispatch_context.py",
+                              "line": 40
+                            }
+                          ]
+                        }
+                      ],
+                      "phase": "candidate_dispatch_context",
+                      "provider_dispatch_observed": null,
+                      "schema": "router-implementation-failure-diagnostic@1",
+                      "settlement_authority": false
+                    },
+                    "error_type": "ValueError",
+                    "schema": "router-implementation-error@2"
+                  },
+                  {
+                    "diagnostic": {
+                      "automatic_retry_admitted": false,
+                      "chain_truncated": false,
+                      "completion_authority": false,
+                      "exceptions": [
+                        {
+                          "exception_type": "other",
+                          "frames": [
+                            {
+                              "file": "router_implementation_runner.py",
+                              "line": 1398
+                            },
+                            {
+                              "file": "router_implementation_runner.py",
+                              "line": 1234
+                            }
+                          ]
+                        }
+                      ],
+                      "phase": "provider_invocation",
+                      "provider_dispatch_observed": null,
+                      "schema": "router-implementation-failure-diagnostic@1",
+                      "settlement_authority": false
+                    },
+                    "error_type": "other",
+                    "schema": "router-implementation-error@2"
+                  }
+                ],
+                "observation_only": true,
+                "observed_record_count": 2,
+                "provider_dispatch_observed": null,
+                "retry_authority": false,
+                "schema": "router-child-failure-observations@1",
+                "scope": "bounded_native_log_tail",
+                "settlement_authority": false,
+                "status": "observed_multiple_unattributed"
+              },
+              "completion_authority": false,
+              "exceptions": [
+                {
+                  "exception_type": "DatabasePortalBridgeError",
+                  "frames": [
+                    {
+                      "file": "implementation_daemon.py",
+                      "line": 76848
+                    },
+                    {
+                      "file": "implementation_daemon.py",
+                      "line": 75534
+                    },
+                    {
+                      "file": "implementation_daemon.py",
+                      "line": 74258
+                    },
+                    {
+                      "file": "implementation_daemon.py",
+                      "line": 74543
+                    },
+                    {
+                      "file": "implementation_daemon.py",
+                      "line": 72191
+                    },
+                    {
+                      "file": "implementation_daemon.py",
+                      "line": 72180
+                    },
+                    {
+                      "file": "implementation_daemon.py",
+                      "line": 74543
+                    },
+                    {
+                      "file": "database_portal_bridge.py",
+                      "line": 11516
+                    }
+                  ]
+                }
+              ],
+              "native_provider_custody_observation": {
+                "checks": [
+                  {
+                    "reason_code": "eligible",
+                    "stage": "issuance",
+                    "status": "passed"
+                  },
+                  {
+                    "reason_code": "verified",
+                    "stage": "native_exit",
+                    "status": "passed"
+                  },
+                  {
+                    "reason_code": "verified",
+                    "stage": "bridge_join",
+                    "status": "passed"
+                  },
+                  {
+                    "reason_code": "verified",
+                    "stage": "capability_take",
+                    "status": "passed"
+                  }
+                ],
+                "completion_authority": false,
+                "observation_only": true,
+                "retry_authority": false,
+                "schema": "database-native-provider-custody-observation@1",
+                "settlement_authority": false
+              },
+              "phase": "terminal_failure",
+              "reason_code": "portal_provider_failed",
+              "retry_authority": false,
+              "schema": "database-bridge-failure-diagnostic@2",
+              "settlement_authority": false
+            },
+            "matched_record_count": 1,
+            "observation_only": true,
+            "provider_dispatch_observed": null,
+            "retry_authority": false,
+            "scope": "exact_admitted_task_and_attempt",
+            "settlement_authority": false,
+            "status": "observed"
+          },
+          "completion_authority": false,
+          "observation_only": true,
+          "planner_child": {
+            "completion_authority": false,
+            "diagnostic": null,
+            "matched_record_count": 0,
+            "observation_only": true,
+            "provider_dispatch_observed": null,
+            "retry_authority": false,
+            "scope": "planner_child_stderr",
+            "settlement_authority": false,
+            "status": "missing"
+          },
+          "retry_authority": false,
+          "schema": "terminal-native-failure-observations@1",
+          "settlement_authority": false,
+          "status": "validated_retained_observation"
+        },
+        "official_reward": 0.0,
+        "phase_seconds": {
+          "context_seconds": 3.349366204929538,
+          "doctor_seconds": 1.4930284150177613,
+          "initial_context_seconds": 13.847471434972249,
+          "planning_seconds": 91.45014069695026,
+          "prepare_seconds": 0.7137465470004827
+        },
+        "retained_aggregate_usage": {
+          "all_invocations_receipted": false,
+          "billing_total_verified": false,
+          "cache_included_in_input": null,
+          "cache_write_input_tokens": null,
+          "cached_input_tokens": null,
+          "harbor_usage_exportable": false,
+          "input_tokens": null,
+          "native_scoped_usage_complete_observed": null,
+          "observed_complete_sessions": false,
+          "output_tokens": null,
+          "token_count_scope": null,
+          "total_tokens": null,
+          "usage_complete_observed": null
+        },
+        "seconds": 429.83576950710267,
+        "status": "retained_report_read",
+        "task_completed_reported": false,
+        "trial": "largest-eigenval__od9RZvp",
+        "usage_by_phase": {
+          "coding": {
+            "all_native_contracts_complete": false,
+            "billing_total_verified": false,
+            "complete_native_totals": {
+              "cache_write_input_tokens": null,
+              "cached_input_tokens": null,
+              "input_tokens": null,
+              "output_tokens": null,
+              "reasoning_output_tokens": null,
+              "total_tokens": null
+            },
+            "missing_categories": {
+              "cache_write_input_tokens": 1,
+              "cached_input_tokens": 1,
+              "input_tokens": 1,
+              "output_tokens": 1,
+              "reasoning_output_tokens": 1,
+              "total_tokens": 1
+            },
+            "observed_subtotals": {
+              "cache_write_input_tokens": null,
+              "cached_input_tokens": null,
+              "input_tokens": null,
+              "output_tokens": null,
+              "reasoning_output_tokens": null,
+              "total_tokens": null
+            },
+            "outer_router_calls": 1,
+            "reasoning_is_separate_not_added_to_total": true,
+            "receipts": 1,
+            "retained_aggregate_completeness_agrees": false,
+            "unreceipted_attempt_reported": true
+          },
+          "planning": {
+            "all_native_contracts_complete": false,
+            "billing_total_verified": false,
+            "complete_native_totals": {
+              "cache_write_input_tokens": null,
+              "cached_input_tokens": null,
+              "input_tokens": null,
+              "output_tokens": null,
+              "reasoning_output_tokens": null,
+              "total_tokens": null
+            },
+            "missing_categories": {
+              "cache_write_input_tokens": 0,
+              "cached_input_tokens": 0,
+              "input_tokens": 0,
+              "output_tokens": 0,
+              "reasoning_output_tokens": 0,
+              "total_tokens": 0
+            },
+            "observed_subtotals": {
+              "cache_write_input_tokens": 0,
+              "cached_input_tokens": 1536,
+              "input_tokens": 13356,
+              "output_tokens": 7322,
+              "reasoning_output_tokens": 5476,
+              "total_tokens": 22214
+            },
+            "outer_router_calls": 1,
+            "reasoning_is_separate_not_added_to_total": true,
+            "receipts": 1,
+            "retained_aggregate_completeness_agrees": false,
+            "unreceipted_attempt_reported": true
+          }
+        },
+        "verifier_result_retained": true
+      }
+    ]
+  },
+  "prior_readout_sha256": "d23bebb4d00d6557b88ce9c418622e8e18f54aa633e6e26af7ca3156863c9504",
+  "projection_identical": true,
+  "provider_calls": 0,
+  "schema": "retained-pilot-reader-replay@1"
+}

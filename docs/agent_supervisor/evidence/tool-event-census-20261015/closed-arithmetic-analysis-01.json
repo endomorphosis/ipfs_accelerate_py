@@ -1,0 +1,275 @@
+{
+  "arithmetic_checked_against_retained_rows": true,
+  "causal_token_savings_claimed": false,
+  "closed_export_sha256": "45bac6a736500c756d46d950494ec63f8b7cb0c93feaf10905ba30cae98da6b9",
+  "coding_provider_calls": 1,
+  "container_stop_returned": true,
+  "diagnostic_qualified": true,
+  "exact_container_absence_observations": [
+    true,
+    true
+  ],
+  "frozen_inputs_unchanged": true,
+  "invocations": [
+    {
+      "billing_total_verified": false,
+      "cache_included_in_input": false,
+      "call_identities": 8,
+      "call_join_origin_authenticated": false,
+      "call_relation_counts": {
+        "lifecycle_update": 40,
+        "new_call": 8,
+        "orphan_update": 0,
+        "repeated_call": 0,
+        "unattributed": 0
+      },
+      "conflicting_explicit_event_tool_kept_unknown": true,
+      "duration_seconds": 241.92973393085413,
+      "event_repetition_does_not_establish_history_resends": true,
+      "final_event_type": "max_turns_reached",
+      "final_reason_code": "max_turns",
+      "frames": 925,
+      "history_resend_bytes": null,
+      "incompleteness": {
+        "call_id_bound_exceeded": false,
+        "counter_overflow": false,
+        "invalid_payload": false,
+        "malformed_frames": false,
+        "non_object_frames": false,
+        "oversized_frames": false,
+        "payload_bound_exceeded": true,
+        "post_final_events": true,
+        "row_limit_exceeded": false,
+        "stream_incomplete": false,
+        "stream_tainted": false,
+        "text_truncated": false,
+        "timed_out": false,
+        "unattributed_call": false,
+        "unknown_event_shape": true,
+        "unknown_events": false
+      },
+      "known_reported_cost_subtotal_usd": null,
+      "known_token_subtotals": {
+        "cached_input_tokens": 232704,
+        "input_tokens": 92702,
+        "output_tokens": 15700,
+        "total_tokens": 341106
+      },
+      "native_usage_complete_observed": false,
+      "observation_complete": false,
+      "observed_tool_events": 48,
+      "omitted_tool_events": 0,
+      "payload_bytes_by_resolved_call_tool": {
+        "grep": {
+          "content": 0,
+          "input": 0,
+          "output": 0
+        },
+        "list_dir": {
+          "content": 0,
+          "input": 0,
+          "output": 0
+        },
+        "read_file": {
+          "content": 0,
+          "input": 0,
+          "output": 0
+        },
+        "run_terminal_cmd": {
+          "content": 0,
+          "input": 0,
+          "output": 0
+        },
+        "search_replace": {
+          "content": 0,
+          "input": 0,
+          "output": 0
+        },
+        "todo_write": {
+          "content": 0,
+          "input": 0,
+          "output": 0
+        },
+        "unknown": {
+          "content": 78685,
+          "input": 16780,
+          "output": 169546
+        }
+      },
+      "payload_bytes_by_tool_name_on_event": {
+        "grep": {
+          "content": 0,
+          "input": 0,
+          "output": 0
+        },
+        "list_dir": {
+          "content": 0,
+          "input": 0,
+          "output": 0
+        },
+        "read_file": {
+          "content": 0,
+          "input": 0,
+          "output": 0
+        },
+        "run_terminal_cmd": {
+          "content": 0,
+          "input": 0,
+          "output": 0
+        },
+        "search_replace": {
+          "content": 0,
+          "input": 0,
+          "output": 0
+        },
+        "todo_write": {
+          "content": 0,
+          "input": 0,
+          "output": 0
+        },
+        "unknown": {
+          "content": 78685,
+          "input": 16780,
+          "output": 169546
+        }
+      },
+      "payload_lanes": {
+        "content": {
+          "canonical_json_bytes": 78685,
+          "cross_call_repeated_bytes": 406,
+          "cross_call_repeated_events": 14,
+          "measured_fields": 48,
+          "repeated_bytes": 28565,
+          "repeated_bytes_percent": 36.30298023765648,
+          "repeated_events": 22,
+          "same_call_repeated_bytes": 28159,
+          "same_call_repeated_events": 8,
+          "states": {
+            "empty": 8,
+            "invalid": 0,
+            "missing": 0,
+            "null": 0,
+            "oversized": 0,
+            "valid": 40
+          }
+        },
+        "input": {
+          "canonical_json_bytes": 16780,
+          "cross_call_repeated_bytes": 0,
+          "cross_call_repeated_events": 0,
+          "measured_fields": 8,
+          "repeated_bytes": 0,
+          "repeated_bytes_percent": 0.0,
+          "repeated_events": 0,
+          "same_call_repeated_bytes": 0,
+          "same_call_repeated_events": 0,
+          "states": {
+            "empty": 0,
+            "invalid": 0,
+            "missing": 40,
+            "null": 0,
+            "oversized": 0,
+            "valid": 8
+          }
+        },
+        "output": {
+          "canonical_json_bytes": 169546,
+          "cross_call_repeated_bytes": 28,
+          "cross_call_repeated_events": 7,
+          "measured_fields": 33,
+          "repeated_bytes": 28,
+          "repeated_bytes_percent": 0.016514692177934012,
+          "repeated_events": 7,
+          "same_call_repeated_bytes": 0,
+          "same_call_repeated_events": 0,
+          "states": {
+            "empty": 0,
+            "invalid": 0,
+            "missing": 8,
+            "null": 8,
+            "oversized": 7,
+            "valid": 25
+          }
+        }
+      },
+      "payload_lanes_may_overlap": true,
+      "provider_request_bytes": null,
+      "repetition_categories_overlap": true,
+      "repetition_scope": "retained-tool-events-only",
+      "replacement_or_delta_semantics": "unverified",
+      "reported_cost_usd": null,
+      "request_history_complete": false,
+      "resolved_call_tool_assignment_basis": "unique-retained-tool-call-label-for-call-hash",
+      "resolved_call_tool_event_counts": {
+        "grep": 0,
+        "list_dir": 0,
+        "read_file": 0,
+        "run_terminal_cmd": 0,
+        "search_replace": 0,
+        "todo_write": 0,
+        "unknown": 48
+      },
+      "response_usable": false,
+      "retained_tool_events": 48,
+      "retained_tool_frame_bytes": 494617,
+      "returncode": 1,
+      "stderr_bytes": 25,
+      "stdout_bytes": 597997,
+      "stream_complete": true,
+      "timed_out": false,
+      "tokens": {
+        "cached_input_tokens": null,
+        "input_tokens": null,
+        "output_tokens": null,
+        "total_tokens": null
+      },
+      "tool_call_counts": {
+        "grep": 0,
+        "list_dir": 0,
+        "read_file": 0,
+        "run_terminal_cmd": 0,
+        "search_replace": 0,
+        "todo_write": 0,
+        "unknown": 8
+      },
+      "tool_name_on_event_presence_counts": {
+        "false": 40,
+        "true": 8
+      },
+      "tool_result_coverage_complete": false,
+      "tool_status_event_counts": {
+        "completed": 8,
+        "failed": 0,
+        "in_progress": 24,
+        "pending": 8,
+        "unknown": 8
+      },
+      "unique_output_bytes_measured": false
+    }
+  ],
+  "observation_only": true,
+  "official_reward": null,
+  "official_verifier_executed": false,
+  "payload_lane_totals_not_added": true,
+  "phases": {
+    "context_seconds": 3.7829670179635286,
+    "initial_context_seconds": 15.997516833012924,
+    "planning_seconds": 4.391125445021316,
+    "prepare_seconds": 0.48250441206619143
+  },
+  "planning_provider_calls": 0,
+  "provider_internal_model_calls": null,
+  "raw_content_exported": false,
+  "schema": "terminal-tool-event-closed-arithmetic-analysis@1",
+  "seconds": 474.2950817530509,
+  "source384": {
+    "checkpoint_sha256": "2ca38dfcc05536315fc3e2c0647b710b930ef4066b474061a7b4e5bfb9a258c5",
+    "config_sha256": "c0ef8114ecf81303295c0fc8b7b55a4bf74e83eaad3e677dfa57d686a36eb6d7",
+    "inference_sha256": "e82b9633ef5fb627364f32f1a0c0b0be4601a5d32109dff1e69ab37550b094de",
+    "preparation_inference_record_retained": true,
+    "seconds": 10.995189735898748,
+    "worker_consumption_independently_verified": false
+  },
+  "task_success_claimed": false,
+  "worker_cleanup_returncode": 0
+}

@@ -1,0 +1,17 @@
+{
+  "schema": "closed-planning-failure-diagnosis@1",
+  "report_sha256": "416603f5ec51e5e97aa006dc8aebfa9f59f9a6abeade41560884258ba1807dec",
+  "error_phase": "planning",
+  "failure_type": "PromptGoalPlannerError",
+  "message_sha256": "bcc675babb3a261c3b87a890a2737c833b51f1aac7c1de29429abd8118bc28e1",
+  "message_bytes": 106,
+  "exact_reviewed_static_formatter_match": true,
+  "matched_field": "goals[TB-GOAL].acceptance",
+  "reason_code": "output_too_large",
+  "provider_status": "over_budget",
+  "response_bytes": 7968,
+  "cause": "Goal acceptance count was bounded by max_tasks=1 despite three independently signed public criteria.",
+  "raw_provider_text_read": false,
+  "hidden_verifier_read": false,
+  "provider_calls_for_diagnosis": 0
+}

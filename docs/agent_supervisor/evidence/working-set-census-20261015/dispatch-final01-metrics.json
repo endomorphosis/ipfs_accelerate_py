@@ -1,0 +1,56 @@
+{
+  "benchmark_performance_measured": false,
+  "complete_run_token_savings_claimed": false,
+  "input_artifacts": [
+    {
+      "artifact": "dispatch-final01-result.json",
+      "bytes": 1960,
+      "sha256": "c3ba974b14b1b64b10c79270e4d49f112ce436bc16cd082783fa623758f2aa69"
+    },
+    {
+      "artifact": "dispatch-final01.xml",
+      "bytes": 5441,
+      "sha256": "22e68df19343eb77ab924d02727a9a7bde1fddaf17c484bf043f6e99d5b82103"
+    },
+    {
+      "artifact": "dispatch-final01-source-pins.json",
+      "bytes": 1383,
+      "sha256": "3edb850d5847a2b72141f47ce523617b72ad1bb94e1fd510de5d4cb13c1358e0"
+    }
+  ],
+  "measurement_scope": "authored_native_fixture_complete_router_model_input_utf8_bytes",
+  "measurements": [
+    {
+      "case": "selected_legacy_reply",
+      "native_complete_bytes": 34580,
+      "selected_complete_byte_reduction": 1603,
+      "selected_complete_bytes": 32977,
+      "selected_mode": "capsule-references@1"
+    },
+    {
+      "case": "selected_ordinary_reply",
+      "native_complete_bytes": 35086,
+      "selected_complete_byte_reduction": 1603,
+      "selected_complete_bytes": 33483,
+      "selected_mode": "capsule-references@1"
+    },
+    {
+      "candidate_complete_bytes": 13719,
+      "case": "fallback_minimal_module",
+      "native_complete_bytes": 12527,
+      "selected_complete_byte_reduction": 0,
+      "selected_complete_bytes": 12527,
+      "selected_mode": "legacy"
+    }
+  ],
+  "provider_token_usage": null,
+  "qualification": {
+    "dependencies_unchanged": true,
+    "distribution_pins_unchanged": true,
+    "live_provider_calls": 0,
+    "passed": 28,
+    "source_pins_unchanged": true
+  },
+  "raw_content_exported": false,
+  "schema": "supervisor-working-set-fixture-input-metrics@1"
+}

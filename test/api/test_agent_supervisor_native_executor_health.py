@@ -1001,3 +1001,632 @@ def test_cli3_cache_metadata_does_not_relax_original_cycle_health(cycle_case,tmp
     _write_evidence(case);result=_verify(case,profile_ref=case['profile_ref'])
     assert result['verified'] is (mutation=='none')
     assert result['dispatch_authority']is False and result['completion_authority']is False
+
+
+# Historical witness fixtures authenticate source bytes, not live execution.
+@pytest.fixture
+def historical_source_case(cycle_case):
+    case = cycle_case
+    path = case['root']/'source/archived_dependency.py'
+    raw = b'# old explicit project source fixture\n'
+    selected = _put(path, raw)
+    info = path.stat()
+    identity = {key: getattr(info, key) for key in ('st_dev', 'st_ino', 'st_mode', 'st_uid', 'st_gid', 'st_nlink', 'st_size', 'st_mtime_ns', 'st_ctime_ns')}
+    case['profile']['source_descriptors'].append(selected)
+    unused = _put(case['root']/'source/unexecuted_dependency.py', b'# unexecuted declared source fixture\n')
+    case['profile']['source_descriptors'].append(unused)
+    case['unused_declared_ref'] = unused
+    case['request']['source_sha256'][str(path)] = selected['sha256']
+    case['origins']['project_imports'].append(dict(module='fixture.archived_dependency',
+        **selected, execution_profile='compiled_exact_authenticated_source_bytes'))
+    _write_evidence(case)
+    snapshot = _put(case['root']/'profile-frozen.json', Path(case['profile_ref']['path']).read_bytes())
+    capture = _put(case['root']/'captured-old-source.py', raw)
+    provenance = _put(case['root']/'captured-source-provenance.json', dict(
+        schema='resource-census-canonical-source-snapshot/v1', files=[dict(
+            source_ref=selected, identity=identity, raw_base64=__import__('base64').b64encode(raw).decode())]))
+    value = dict(schema='agent-supervisor/historical-project-source-witness@1',
+        purpose='closed_cycle_and_receipt_evidence_only', profile_ref=case['profile_ref'],
+        profile_snapshot_ref=snapshot, sources=[dict(source_ref=selected,
+            captured_source_ref=capture, source_capture_ref=provenance)])
+    manifest_path=case['root']/'historical-source-witness.json'
+    reference = _put(manifest_path, value)
+    _replace(path, b'# changed current project source fixture\n')
+    handles=[]
+    case.update(archived_path=path, witness_value=value, witness_ref=reference,
+        witness_manifest_path=manifest_path, historical_handles=handles)
+    yield case
+    for handle in handles:
+        if handle in health._HISTORICAL_SOURCE_WITNESSES:
+            health.close_historical_source_witness(handle)
+
+
+def _historical_handle(case):
+    handle=health.authenticate_historical_source_witness(case['witness_ref'])
+    case['historical_handles'].append(handle)
+    return handle
+
+
+def test_historical_witness_verifies_old_closed_cycle_and_receipt_only(historical_source_case, monkeypatch):
+    case=historical_source_case
+    def forbidden(*args,**kwargs):
+        pytest.fail('historical source DATA cannot observe current manager or processes')
+    monkeypatch.setattr(health,'_manager',forbidden)
+    monkeypatch.setattr(health,'_process',forbidden)
+    before={str(path):path.read_bytes() for path in case['root'].rglob('*') if path.is_file()}
+    handle=_historical_handle(case)
+    receipt_ref=_ref(case['profile']['receipt_path'])
+    proof_ref=case['receipt']['cycle_proof_ref'] if 'cycle_proof_ref' in case['receipt'] else \
+        __import__('json').loads(Path(receipt_ref['path']).read_text())['cycle_proof_ref']
+    reports=[health.verify_historical_cycle(case['profile_ref'],proof_ref,case['written_identity'],source_witness=handle),
+        health.verify_historical_receipt(case['profile_ref'],receipt_ref,case['written_identity'],source_witness=handle)]
+    for report in reports:
+        assert report['historical_evidence_verified'] is True
+        assert report['all_declared_historical_source_bytes_authenticated'] is True
+        assert report['source_witness_ref']==case['witness_ref']
+        assert all(report[key] is False for key in ('verified','current_executor_verified',
+            'dispatch_authority','completion_authority','runtime_activation_authority',
+            'all_declared_historical_source_bodies_reconstructed','new_kernel_or_native_execution_performed'))
+    result=health.verify_bound_executor(case['profile_ref'],case['native'],now=NOW,
+        manager_reader=forbidden,process_reader=forbidden)
+    assert result['verified'] is False and result['reason']=='descriptor_changed'
+    assert {str(path):path.read_bytes() for path in case['root'].rglob('*') if path.is_file()}==before
+
+
+def test_historical_witness_propagates_through_embedded_idle_validation(historical_source_case):
+    case=historical_source_case
+    # Rebuild the explicitly modeled embedded shape while old declared bytes
+    # remain recorded in the profile; then refresh only the immutable bindings.
+    _embedded_idle_shape(case)
+    _write_evidence(case)
+    case['witness_value']['profile_ref']=case['profile_ref']
+    case['witness_value']['profile_snapshot_ref']=_replace(
+        Path(case['witness_value']['profile_snapshot_ref']['path']),Path(case['profile_ref']['path']).read_bytes())
+    case['witness_ref']=_replace(case['witness_manifest_path'],case['witness_value'])
+    handle=_historical_handle(case)
+    receipt_ref=_ref(case['profile']['receipt_path'])
+    report=health.verify_historical_receipt(case['profile_ref'],receipt_ref,case['written_identity'],source_witness=handle)
+    assert report['historical_evidence_verified'] is True and report['verified'] is False
+
+
+@pytest.mark.parametrize('mutation',['scope','extra','profile_snapshot','source_unselected','source_duplicate',
+    'role','interpreter','capture_is_canonical','capture_bytes','capture_provenance_bytes','provenance_identity',
+    'missing_provenance_row','duplicate_provenance_row'])
+def test_historical_witness_refuses_unbound_or_broadened_source_data(historical_source_case,mutation):
+    case=historical_source_case; value=case['witness_value']; row=value['sources'][0]
+    if mutation=='scope': value['purpose']='current_runtime_health'
+    elif mutation=='extra': value['activation_authority']=True
+    elif mutation=='profile_snapshot':
+        value['profile_snapshot_ref']=_replace(Path(value['profile_snapshot_ref']['path']),dict(case['profile'],max_age_seconds=119))
+    elif mutation=='source_unselected':row['source_ref']=dict(row['source_ref'],path=str(case['root']/'foreign.py'))
+    elif mutation=='source_duplicate':value['sources'].append(copy.deepcopy(row))
+    elif mutation=='role':row['source_ref']=case['profile']['driver_source']
+    elif mutation=='interpreter':row['source_ref']=next(pin for pin in case['profile']['source_descriptors']if pin['path']==case['profile']['unit']['interpreter'])
+    elif mutation=='capture_is_canonical':row['captured_source_ref']=row['source_ref']
+    elif mutation=='capture_bytes':row['captured_source_ref']=_replace(Path(row['captured_source_ref']['path']),b'# other bytes\n')
+    else:
+        provenance=json.loads(Path(row['source_capture_ref']['path']).read_text()); item=provenance['files'][0]
+        if mutation=='capture_provenance_bytes':item['raw_base64']='eA=='
+        elif mutation=='provenance_identity':item['identity']['st_size']+=1
+        elif mutation=='missing_provenance_row':provenance['files']=[]
+        else:provenance['files'].append(copy.deepcopy(item))
+        row['source_capture_ref']=_replace(Path(row['source_capture_ref']['path']),provenance)
+    reference=_replace(case['witness_manifest_path'],value)
+    with pytest.raises(health.ExecutorHealthError):health.authenticate_historical_source_witness(reference)
+
+
+@pytest.mark.parametrize('which',['manifest','original_profile','snapshot','capture','provenance'])
+def test_historical_witness_requires_frozen_inputs(historical_source_case,which):
+    case=historical_source_case;value=case['witness_value'];row=value['sources'][0]
+    refs=dict(manifest=case['witness_ref'],original_profile=value['profile_ref'],snapshot=value['profile_snapshot_ref'],
+        capture=row['captured_source_ref'],provenance=row['source_capture_ref'])
+    Path(refs[which]['path']).chmod(0o600)
+    with pytest.raises(health.ExecutorHealthError,match='not_frozen'):
+        health.authenticate_historical_source_witness(case['witness_ref'])
+
+
+@pytest.mark.parametrize('which',['manifest','original_profile','snapshot','capture','provenance'])
+def test_historical_witness_rechecks_inputs_after_authentication(historical_source_case,which):
+    case=historical_source_case;handle=_historical_handle(case);value=case['witness_value'];row=value['sources'][0]
+    refs=dict(manifest=case['witness_ref'],original_profile=value['profile_ref'],snapshot=value['profile_snapshot_ref'],
+        capture=row['captured_source_ref'],provenance=row['source_capture_ref'])
+    path=Path(refs[which]['path']);raw=path.read_bytes();_replace(path,raw+b' ')
+    with pytest.raises(health.ExecutorHealthError):
+        health.verify_historical_receipt(case['profile_ref'],_ref(case['profile']['receipt_path']),
+            case['written_identity'],source_witness=handle)
+
+
+@pytest.mark.parametrize('invalid',[None,{},'copied-reference','unregistered'])
+def test_historical_witness_cannot_be_recreated_as_json_or_unregistered_object(historical_source_case,invalid):
+    case=historical_source_case
+    if invalid=='unregistered':invalid=health._HistoricalProjectSourceWitness()
+    with pytest.raises(health.ExecutorHealthError,match='not_authenticated'):
+        health.verify_historical_receipt(case['profile_ref'],_ref(case['profile']['receipt_path']),
+            case['written_identity'],source_witness=invalid)
+
+
+@pytest.mark.parametrize('role', ['main_entrypoint', 'owner_source', 'driver_source'])
+def test_historical_witness_rejects_wrong_profile_and_other_unwitnessed_source(historical_source_case, role):
+    case=historical_source_case;handle=_historical_handle(case)
+    other=_put(case['root']/'other-profile.json',Path(case['profile_ref']['path']).read_bytes())
+    with pytest.raises(health.ExecutorHealthError,match='profile_changed'):
+        health.verify_historical_receipt(other,_ref(case['profile']['receipt_path']),case['written_identity'],source_witness=handle)
+    _replace(Path(case['profile'][role]['path']),b'# unarchived role source mutation\n')
+    with pytest.raises(health.ExecutorHealthError,match='descriptor_changed'):
+        health.verify_historical_receipt(case['profile_ref'],_ref(case['profile']['receipt_path']),
+            case['written_identity'],source_witness=handle)
+
+
+def test_current_health_and_cycle_capabilities_cannot_consume_historical_witness(historical_source_case):
+    case=historical_source_case;handle=_historical_handle(case)
+    with pytest.raises(TypeError):
+        health.verify_bound_executor(case['profile_ref'],case['native'],source_witness=handle)
+    with pytest.raises(TypeError):
+        health.publish_after_native_cycle(case['profile_ref'],{},case['native'],sequence=1,
+            cycle_handle=handle,source_witness=handle)
+    with pytest.raises(health.ExecutorHealthError):health.cycle_start_fields(handle)
+    health.close_historical_source_witness(handle)
+    with pytest.raises(health.ExecutorHealthError,match='not_authenticated'):
+        health.verify_historical_receipt(case['profile_ref'],_ref(case['profile']['receipt_path']),
+            case['written_identity'],source_witness=handle)
+
+
+@pytest.mark.parametrize('mutation', ['terminal_closed', 'origin_digest', 'owner_birth',
+    'driver_source', 'result_authority', 'receipt_sequence'])
+def test_historical_source_witness_does_not_waive_original_cycle_evidence(historical_source_case, mutation):
+    case=historical_source_case
+    if mutation=='terminal_closed':case['terminal']['completed']=False
+    elif mutation=='origin_digest':case['origins']['project_imports'][0]['sha256']='f'*64
+    elif mutation=='owner_birth':case['owner_observation']['birth_ticks']+=1
+    elif mutation=='driver_source':case['request']['source_sha256'][case['profile']['driver_source']['path']]='f'*64
+    elif mutation=='result_authority':case['result']['completion_authority']=True
+    else:case['receipt']['sequence']+=1
+    _write_evidence(case)
+    # Profile bytes are unchanged; authenticate only after the fresh fixture
+    # artifacts are written so the refusal tests the original evidence join.
+    handle=_historical_handle(case)
+    with pytest.raises(health.ExecutorHealthError):
+        health.verify_historical_receipt(case['profile_ref'],_ref(case['profile']['receipt_path']),
+            case['written_identity'],source_witness=handle)
+
+
+def test_historical_source_witness_rechecks_capture_after_original_source_read(historical_source_case,monkeypatch):
+    case=historical_source_case;handle=_historical_handle(case)
+    actual=health._bound_historical_project_source;calls=[]
+    def observed(pin,profile,witness):
+        raw=actual(pin,profile,witness)
+        if pin['path']==str(case['archived_path']):
+            calls.append(pin)
+            _replace(Path(case['witness_value']['sources'][0]['captured_source_ref']['path']),raw+b'# changed during validation\n')
+        return raw
+    monkeypatch.setattr(health,'_bound_historical_project_source',observed)
+    with pytest.raises(health.ExecutorHealthError):
+        health.verify_historical_receipt(case['profile_ref'],_ref(case['profile']['receipt_path']),
+            case['written_identity'],source_witness=handle)
+    assert len(calls)==1
+
+
+def test_historical_witness_keeps_unused_declared_sources_current(historical_source_case):
+    case=historical_source_case;handle=_historical_handle(case)
+    _replace(Path(case['unused_declared_ref']['path']),b'# changed unexecuted declared source\n')
+    with pytest.raises(health.ExecutorHealthError,match='descriptor_changed'):
+        health.verify_historical_receipt(case['profile_ref'],_ref(case['profile']['receipt_path']),
+            case['written_identity'],source_witness=handle)
+
+
+def _historical_one_byte_fixture(case):
+    row=case['witness_value']['sources'][0]
+    path=case['archived_path'];selected=_replace(path,b'x');info=path.stat()
+    index=next(i for i,pin in enumerate(case['profile']['source_descriptors'])if pin['path']==str(path))
+    case['profile']['source_descriptors'][index]=dict(selected)
+    case['request']['source_sha256'][str(path)]=selected['sha256']
+    for origin in case['origins']['project_imports']:
+        if origin['path']==str(path):origin.update(selected)
+    _write_evidence(case)
+    case['witness_value']['profile_ref']=case['profile_ref']
+    case['witness_value']['profile_snapshot_ref']=_replace(
+        Path(case['witness_value']['profile_snapshot_ref']['path']),Path(case['profile_ref']['path']).read_bytes())
+    row['source_ref']=dict(selected)
+    row['captured_source_ref']=_replace(Path(row['captured_source_ref']['path']),b'x')
+    identity={key:getattr(info,key)for key in ('st_dev','st_ino','st_mode','st_uid','st_gid',
+        'st_nlink','st_size','st_mtime_ns','st_ctime_ns')}
+    row['source_capture_ref']=_replace(Path(row['source_capture_ref']['path']),dict(
+        schema='resource-census-canonical-source-snapshot/v1',files=[dict(
+            source_ref=dict(selected),identity=identity,raw_base64='eA==')]))
+    _replace(path,b'y')
+    case['witness_ref']=_replace(case['witness_manifest_path'],case['witness_value'])
+    return case
+
+
+def test_historical_witness_authenticates_a_genuine_one_byte_archived_source(historical_source_case):
+    case=_historical_one_byte_fixture(historical_source_case);handle=_historical_handle(case)
+    report=health.verify_historical_receipt(case['profile_ref'],_ref(case['profile']['receipt_path']),
+        case['written_identity'],source_witness=handle)
+    assert report['historical_evidence_verified'] is True
+    assert report['verified'] is False and report['current_executor_verified'] is False
+
+
+@pytest.mark.parametrize('location,scalar',[('witness',True),('witness',1.0),
+    ('provenance',True),('provenance',1.0)])
+def test_historical_one_byte_witness_refuses_boolean_or_float_byte_descriptors(historical_source_case,location,scalar):
+    case=_historical_one_byte_fixture(historical_source_case);row=case['witness_value']['sources'][0]
+    assert row['source_ref']['bytes']==1 and type(row['source_ref']['bytes'])is int
+    if location=='witness':
+        row['source_ref']['bytes']=scalar
+    else:
+        provenance=json.loads(Path(row['source_capture_ref']['path']).read_text())
+        provenance['files'][0]['source_ref']['bytes']=scalar
+        row['source_capture_ref']=_replace(Path(row['source_capture_ref']['path']),provenance)
+    reference=_replace(case['witness_manifest_path'],case['witness_value'])
+    with pytest.raises(health.ExecutorHealthError,match='historical_source_(descriptor_bounds|capture_provenance_join)'):
+        health.authenticate_historical_source_witness(reference)
+
+
+@pytest.mark.parametrize('raw',[b'',b'x'])
+def test_current_import_origins_accept_genuine_empty_or_one_byte_source(tmp_path,raw):
+    case=_base_profile(tmp_path);old=case['profile']['driver_source'];selected=_replace(Path(old['path']),raw)
+    case['profile']['driver_source']=selected
+    case['profile']['source_descriptors']=[selected if pin==old else pin for pin in case['profile']['source_descriptors']]
+    origins=dict(schema='legal-ir-pre-execution-project-import-origins/v1',
+        project_origins_checked_before_module_execution=True,denials=[],project_imports=[dict(
+            module='fixture.driver',**selected,execution_profile='compiled_exact_authenticated_source_bytes')])
+    assert health._origins(origins,case['profile'])==origins['project_imports']
+
+
+@pytest.mark.parametrize('raw,reported_bytes',[(b'x',True),(b'x',1.0),(b'',False),(b'',0.0)])
+def test_current_import_origins_refuse_boolean_or_float_byte_identity(tmp_path,raw,reported_bytes):
+    case=_base_profile(tmp_path);old=case['profile']['driver_source'];selected=_replace(Path(old['path']),raw)
+    case['profile']['driver_source']=selected
+    case['profile']['source_descriptors']=[selected if pin==old else pin for pin in case['profile']['source_descriptors']]
+    reported=dict(selected,bytes=reported_bytes)
+    origins=dict(schema='legal-ir-pre-execution-project-import-origins/v1',
+        project_origins_checked_before_module_execution=True,denials=[],project_imports=[dict(
+            module='fixture.driver',**reported,execution_profile='compiled_exact_authenticated_source_bytes')])
+    with pytest.raises(health.ExecutorHealthError,match='original_import_origin_descriptor_bounds'):
+        health._origins(origins,case['profile'])
+
+
+@pytest.mark.parametrize('raw',[b'',b'x'])
+def test_current_receipt_accepts_genuine_empty_or_one_byte_producer_source(cycle_case,raw):
+    case=cycle_case;old=case['profile']['main_entrypoint'];selected=_replace(Path(old['path']),raw)
+    case['profile']['main_entrypoint']=selected
+    case['profile']['source_descriptors']=[selected if pin==old else pin for pin in case['profile']['source_descriptors']]
+    case['request']['source_sha256'][selected['path']]=selected['sha256']
+    case['receipt']['origins']['__main__']=dict(selected)
+    _write_evidence(case)
+    result=_verify(case,profile_ref=case['profile_ref'])
+    assert result['verified'] is True and result['dispatch_authority'] is False
+
+
+@pytest.mark.parametrize('raw,reported_bytes',[(b'x',True),(b'x',1.0),(b'',False),(b'',0.0)])
+def test_current_receipt_refuses_boolean_or_float_producer_byte_identity(cycle_case,raw,reported_bytes):
+    case=cycle_case;old=case['profile']['main_entrypoint'];selected=_replace(Path(old['path']),raw)
+    case['profile']['main_entrypoint']=selected
+    case['profile']['source_descriptors']=[selected if pin==old else pin for pin in case['profile']['source_descriptors']]
+    case['request']['source_sha256'][selected['path']]=selected['sha256']
+    case['receipt']['origins']['__main__']=dict(selected,bytes=reported_bytes)
+    _write_evidence(case)
+    result=_verify(case,profile_ref=case['profile_ref'])
+    assert result['verified'] is False and result['scope']=='none'
+    assert result['reason']=='producer_import_origin_descriptor_bounds'
+
+
+def test_historical_receipt_refuses_float_profile_descriptor(historical_source_case):
+    case=historical_source_case;handle=_historical_handle(case)
+    profile_ref=dict(case['profile_ref'],bytes=float(case['profile_ref']['bytes']))
+    with pytest.raises(health.ExecutorHealthError,match='descriptor_bounds'):
+        health.verify_historical_receipt(profile_ref,_ref(case['profile']['receipt_path']),
+            case['written_identity'],source_witness=handle)
+
+
+# CLI4 artifacts below are fictional protocol DATA. No native owner, namespace
+# loader, Source lease, process, database or resource admission is executed.
+_CLI4_HEALTH_PATHS = {
+    'parent_resource_origins': 'project-import-origins-native-physical-R-parent-resource.json',
+    'parent_namespace': 'native-physical-R-parent-namespace.json',
+    'child_namespace': 'native-physical-R-child-namespace.json',
+    'parent_bootstrap': 'native-physical-R-parent-guard-bootstrap.json',
+    'child_bootstrap': 'native-physical-R-child-guard-bootstrap.json',
+    'direct_cleanup': 'native-physical-R-parent-direct-cleanup.json',
+    'child_driver': 'native-physical-R-child-driver-bootstrap.json'}
+_CLI4_HEALTH_RELATIVES = (
+    'ipfs_datasets_py/__init__.py', 'ipfs_datasets_py/ipfs_backend_router.py',
+    'ipfs_datasets_py/logic/__init__.py', 'ipfs_datasets_py/logic/backends/process.py',
+    'ipfs_datasets_py/optimizers/__init__.py',
+    'ipfs_datasets_py/optimizers/logic_theorem_optimizer/__init__.py',
+    'ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_daemon_resources.py',
+    'ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_resource_recovery.py',
+    'ipfs_datasets_py/optimizers/logic_theorem_optimizer/existing_resource_scheduler.py',
+    'ipfs_datasets_py/optimizers/logic_theorem_optimizer/parented_phase_resources.py',
+    'ipfs_datasets_py/optimizers/logic_theorem_optimizer/proof_resource_safety.py',
+    'ipfs_datasets_py/optimizers/logic_theorem_optimizer/resource_scheduler.py',
+    'ipfs_datasets_py/optimizers/logic_theorem_optimizer/runtime_telemetry.py',
+    'ipfs_datasets_py/router_deps.py', 'scripts/ops/legal_ir/run_owned_validation.py')
+
+
+def _physical_cli4_health_shape(case, *, extra_physical_import=False):
+    case = _embedded_idle_shape(case)
+    root = case['root']; exports = root / 'proof/exports'
+    physical = root / 'physical-datasets'; canonical = root / 'canonical-datasets'
+    source_pins = [_put(physical / rel, ('# fictional source DATA: ' + rel + '\n').encode())
+                   for rel in _CLI4_HEALTH_RELATIVES]
+    for role, rel in (('owner_source', 'original_embedded_observation_owner.py'),
+                      ('driver_source', 'native_embedded_observation_driver.py')):
+        pin = _put(root / 'ipfs_accelerate_py/agent_supervisor/rescue' / rel,
+                   ('# fictional native role DATA: ' + role + '\n').encode())
+        case['profile'][role] = pin
+        case['profile']['source_descriptors'].append(pin)
+    # Copy unchanged guard bytes as DATA; its module body is never imported.
+    guard_source = Path(health.__file__).resolve().with_name('project_import_source_guard.py')
+    guard = _put(root / 'ipfs_accelerate_py/agent_supervisor/rescue/project_import_source_guard.py',
+                 guard_source.read_bytes())
+    assert guard['sha256'] == '141b7da6a57bd65d03c673c5e1041d8e26bce0ed7c02803a3d11f829925da95e'
+    case['profile']['source_descriptors'].extend([guard, *source_pins])
+    if extra_physical_import:
+        case['profile']['source_descriptors'].append(
+            _put(physical / 'unlisted_body.py', b'# fictional undeclared body DATA\n'))
+    namespace = physical / 'ipfs_datasets_py/logic/backends'; info = namespace.stat()
+    normal = dict(fullname='ipfs_datasets_py.logic.backends', path=str(namespace),
+                  device=info.st_dev, inode=info.st_ino, initializer_absent=True)
+    physical_profile = dict(schema='native-embedded-physical-R-source@1',
+        source_root_binding=dict(physical_root=str(physical), canonical_root=str(canonical)),
+        source_descriptors=source_pins, normal_namespace_profiles=[normal])
+    command = case['plan']['native_metadata_cli']
+    command.update(schema='native-embedded-scoped-observation-cli/v4', cwd=str(canonical),
+        physical_source_profile=physical_profile, pre_body_guard=guard,
+        result_path=str(exports / 'native-cli-driver-result.json'),
+        project_import_plan=dict(accelerate_root=str(root), datasets_root=str(physical),
+            publication_root=str(physical), source_pins=[pin for pin in case['profile']['source_descriptors']
+                if pin['path'] != case['profile']['unit']['interpreter']]))
+    pins = {pin['path']: pin['sha256'] for pin in case['profile']['source_descriptors']}
+    command['source_sha256'] = dict(pins)
+    profile_ref = _publish_profile(case)
+    plan_ref = _document(case, 'original-plan', case['plan'])
+    request = copy.deepcopy(case['request'])
+    request.update(cwd=str(canonical), attempt_directory=str(root / 'proof'),
+        source_roots=[str(canonical), str(root / 'primary-accelerate')],
+        source_sha256={**pins, plan_ref['path']: plan_ref['sha256']},
+        argv=[case['profile']['unit']['interpreter'], '-B', case['profile']['driver_source']['path'],
+              '--plan', plan_ref['path'], '--plan-sha256', plan_ref['sha256']])
+    request_ref = _document(case, 'original-request', request)
+    owner = dict(pid=case['terminal']['owner_pid'], birth=case['terminal']['owner_birth'])
+    child = dict(pid=314160, birth='99999001')
+    physical_sha = hashlib.sha256(json.dumps(physical_profile, sort_keys=True,
+        separators=(',', ':'), ensure_ascii=True, allow_nan=False).encode()).hexdigest()
+    def context(phase, identity):
+        return dict(phase=phase, request=request_ref, plan=plan_ref,
+            profile_sha256=physical_sha, source_root_binding=physical_profile['source_root_binding'],
+            guard=guard, identity=identity)
+    refs = {}
+    for key, phase, identity, role, source in (
+            ('parent_bootstrap', 'parent-resource', owner, 'parent-guard-bootstrap', guard),
+            ('child_bootstrap', 'child-observation', child, 'child-guard-bootstrap', guard),
+            ('direct_cleanup', 'parent-resource', owner, 'parent-cleanup', source_pins[-1]),
+            ('child_driver', 'child-observation', child, 'child-driver', case['profile']['driver_source'])):
+        info = Path(source['path']).stat()
+        stamp = {key: getattr(info, key) for key in ('st_dev', 'st_ino', 'st_mode', 'st_uid',
+            'st_gid', 'st_nlink', 'st_size', 'st_mtime_ns', 'st_ctime_ns')}
+        doc = dict(schema='native-embedded-physical-R-direct-source@1',
+            **context(phase, identity), role=role, source=source, source_identity=stamp,
+            execution_kind='compiled_exact_authenticated_source_bytes_outside_import_guard')
+        refs[key] = _put(exports / _CLI4_HEALTH_PATHS[key], doc)
+    essential = [
+        'ipfs_datasets_py.optimizers.logic_theorem_optimizer.existing_resource_scheduler',
+        'ipfs_datasets_py.optimizers.logic_theorem_optimizer.resource_scheduler',
+        'ipfs_datasets_py.optimizers.logic_theorem_optimizer.parented_phase_resources',
+        'ipfs_datasets_py.optimizers.logic_theorem_optimizer.autoencoder_daemon_resources',
+        'ipfs_datasets_py.logic.backends.process']
+    index = {pin['path']: pin for pin in source_pins}
+    parent_rows = [dict(module=name, **index[str(physical / (name.replace('.', '/') + '.py'))],
+        execution_status='execution_completed', execution_profile='compiled_exact_authenticated_source_bytes')
+        for name in essential]
+    parent_origins = dict(schema='legal-ir-pre-execution-project-import-origins/v1',
+        project_origins_checked_before_module_execution=True, denials=[], project_imports=parent_rows)
+    refs['parent_resource_origins'] = _put(exports / _CLI4_HEALTH_PATHS['parent_resource_origins'], parent_origins)
+    origins_ref = _put(exports / 'project-import-origins-closing-native-embedded-observation.json', case['origins'])
+    for key, phase, identity, origins, bootstrap in (
+            ('parent_namespace', 'parent-resource', owner, refs['parent_resource_origins'], refs['parent_bootstrap']),
+            ('child_namespace', 'child-observation', child, origins_ref, refs['child_bootstrap'])):
+        row = dict(normal, search_locations=[normal['path']], origin=None,
+                   pathfinder_loader_is_none=True, module_loaded=False)
+        doc = dict(schema='native-embedded-physical-R-namespace-checkpoint@1',
+            **context(phase, identity), origins_ref=origins, bootstrap_ref=bootstrap,
+            guard_instance_type='GuardedProjectImports', namespace=row)
+        refs[key] = _put(exports / _CLI4_HEALTH_PATHS[key], doc)
+    evidence = dict(schema='native-embedded-physical-R-source-evidence@1',
+        request=request_ref, plan=plan_ref, profile_sha256=physical_sha,
+        source_root_binding=physical_profile['source_root_binding'], guard=guard,
+        owner_identity=owner, child_identity=child, **refs)
+    execution = dict(case['execution'], request=request_ref, owner_source=case['profile']['owner_source'])
+    execution_ref = _document(case, 'original-execution-request', execution)
+    terminal = copy.deepcopy(case['terminal'])
+    terminal.update(request_sha256=request_ref['sha256'], execution_request=execution_ref,
+                    physical_source_evidence=evidence)
+    terminal['reservation']['record']['child'] = child
+    terminal_ref = _document(case, 'original-terminal', terminal)
+    result_ref = _put(exports / 'native-cli-driver-result.json', case['result'])
+    native_ref = _document(case, 'original-native', case['cycle_native'])
+    proof = dict(case['proof'], request_ref=request_ref, execution_request_ref=execution_ref,
+        terminal_ref=terminal_ref, result_ref=result_ref, plan_ref=plan_ref,
+        origins_ref=origins_ref, native_diagnostic_ref=native_ref)
+    observation = copy.deepcopy(case['owner_observation'])
+    observation['argv'] = [case['profile']['unit']['argv'][0], '-B',
+        case['profile']['owner_source']['path'], '--request', request_ref['path'],
+        '--expected-request-sha256', request_ref['sha256']]
+    proof['owner_observation'] = observation
+    proof_ref = _document(case, 'original-cycle-links', proof)
+    identity = _identity_fixture(case, profile_ref)
+    receipt = dict(case['receipt'], profile_ref=profile_ref, identity=identity, cycle_proof_ref=proof_ref)
+    _replace(Path(case['profile']['receipt_path']), receipt)
+    case.update(profile_ref=profile_ref, written_identity=identity, physical_proof_ref=proof_ref)
+    return case
+
+
+def _rehash_physical_health_artifact(case, role, mutate):
+    """Coherently reseal hostile DATA so semantic joins, not stale hashes, refuse."""
+    proof_path = Path(case['physical_proof_ref']['path'])
+    proof = json.loads(proof_path.read_bytes())
+    terminal_path = Path(proof['terminal_ref']['path'])
+    terminal = json.loads(terminal_path.read_bytes()); evidence = terminal['physical_source_evidence']
+    if role == 'terminal':
+        mutate(evidence)
+    else:
+        old = evidence[role]; path = Path(old['path']); value = json.loads(path.read_bytes())
+        mutate(value); evidence[role] = _replace(path, value)
+        for namespace, field, target in (
+                ('parent_namespace', 'origins_ref', 'parent_resource_origins'),
+                ('parent_namespace', 'bootstrap_ref', 'parent_bootstrap'),
+                ('child_namespace', 'bootstrap_ref', 'child_bootstrap')):
+            if role == target:
+                pin = evidence[namespace]; doc = json.loads(Path(pin['path']).read_bytes())
+                doc[field] = evidence[role]; evidence[namespace] = _replace(Path(pin['path']), doc)
+    proof['terminal_ref'] = _replace(terminal_path, terminal)
+    case['physical_proof_ref'] = _replace(proof_path, proof)
+    receipt_path = Path(case['profile']['receipt_path']); receipt = json.loads(receipt_path.read_bytes())
+    receipt['cycle_proof_ref'] = case['physical_proof_ref']; _replace(receipt_path, receipt)
+
+
+def test_cli4_closed_terminal_namespace_evidence_verifies_metadata_without_runtime_actions(cycle_case, monkeypatch):
+    case = _physical_cli4_health_shape(cycle_case)
+    def forbidden(*args, **kwargs):
+        pytest.fail('closed CLI4 DATA cannot query live processes, Source, Native or Git')
+    monkeypatch.setattr(health, '_stat_identity', forbidden)
+    monkeypatch.setattr(health.subprocess, 'run', forbidden)
+    before = Path(case['profile']['receipt_path']).read_bytes()
+    result = _verify(case, profile_ref=case['profile_ref'])
+    assert result['verified'] is True and result['scope'] == 'genuine_scoped_idle'
+    assert result['dispatch_authority'] is result['completion_authority'] is False
+    assert Path(case['profile']['receipt_path']).read_bytes() == before
+
+
+@pytest.mark.parametrize('mutation', ['schema', 'extra', 'request', 'plan', 'profile',
+    'root', 'owner_boolean', 'child_boolean', 'child_birth', 'child_swap', 'guard', 'missing'])
+def test_cli4_terminal_context_refuses_rehashed_foreign_or_untyped_evidence(cycle_case, mutation):
+    case = _physical_cli4_health_shape(cycle_case)
+    def change(value):
+        if mutation == 'schema': value['schema'] = 'foreign-evidence@1'
+        elif mutation == 'extra': value['grant'] = True
+        elif mutation == 'request': value['request'] = dict(value['request'], sha256='0' * 64)
+        elif mutation == 'plan': value['plan'] = dict(value['plan'], sha256='0' * 64)
+        elif mutation == 'profile': value['profile_sha256'] = '0' * 64
+        elif mutation == 'root': value['source_root_binding'] = dict(value['source_root_binding'], canonical_root='/foreign')
+        elif mutation == 'owner_boolean': value['owner_identity'] = dict(value['owner_identity'], pid=True)
+        elif mutation == 'child_boolean': value['child_identity'] = dict(value['child_identity'], pid=True)
+        elif mutation == 'child_birth': value['child_identity'] = dict(value['child_identity'], birth='not-birth')
+        elif mutation == 'child_swap': value['child_identity'] = dict(value['owner_identity'])
+        elif mutation == 'guard': value['guard'] = dict(value['guard'], sha256='0' * 64)
+        else: value.pop('parent_namespace')
+    _rehash_physical_health_artifact(case, 'terminal', change)
+    result = _verify(case, profile_ref=case['profile_ref'])
+    assert result['verified'] is False and result['scope'] == 'none'
+    assert result['dispatch_authority'] is result['completion_authority'] is False
+
+
+@pytest.mark.parametrize('mutation', ['parent_phase', 'parent_request', 'parent_identity',
+    'child_origins', 'child_bootstrap', 'namespace_initializer', 'namespace_root',
+    'namespace_device_boolean', 'namespace_loader', 'namespace_module_loaded_integer',
+    'parent_missing_process', 'namespace_compiled_row', 'cleanup_other_source',
+    'direct_execution_kind', 'direct_nlink_boolean', 'direct_size', 'artifact_foreign_path'])
+def test_cli4_checkpoint_bootstrap_and_compilation_provenance_reject_rehashed_faults(cycle_case, mutation):
+    case = _physical_cli4_health_shape(cycle_case)
+    role = 'parent_namespace'
+    def change(value):
+        if mutation == 'parent_phase': value['phase'] = 'child-observation'
+        elif mutation == 'parent_request': value['request'] = dict(value['request'], sha256='1' * 64)
+        elif mutation == 'parent_identity': value['identity'] = dict(value['identity'], pid=True)
+        elif mutation == 'child_origins': value['origins_ref'] = value['bootstrap_ref']
+        elif mutation == 'child_bootstrap': value['bootstrap_ref'] = value['origins_ref']
+        elif mutation == 'namespace_initializer': value['namespace']['initializer_absent'] = False
+        elif mutation == 'namespace_root': value['namespace']['search_locations'].append('/foreign')
+        elif mutation == 'namespace_device_boolean': value['namespace']['device'] = True
+        elif mutation == 'namespace_loader': value['namespace']['pathfinder_loader_is_none'] = False
+        elif mutation == 'namespace_module_loaded_integer': value['namespace']['module_loaded'] = 0
+        elif mutation == 'parent_missing_process': value['project_imports'].pop()
+        elif mutation == 'namespace_compiled_row': value['project_imports'][0]['module'] = 'ipfs_datasets_py.logic.backends'
+        elif mutation == 'cleanup_other_source': value['source'] = dict(value['guard'])
+        elif mutation == 'direct_execution_kind': value['execution_kind'] = 'namespace_body_compiled'
+        elif mutation == 'direct_nlink_boolean': value['source_identity']['st_nlink'] = True
+        elif mutation == 'direct_size': value['source_identity']['st_size'] += 1
+        else: value['parent_namespace'] = dict(value['parent_namespace'], path='/foreign/namespace.json')
+    if mutation.startswith('child_'): role = 'child_namespace'
+    elif mutation in ('parent_missing_process', 'namespace_compiled_row'): role = 'parent_resource_origins'
+    elif mutation.startswith('cleanup_'): role = 'direct_cleanup'
+    elif mutation.startswith('direct_'): role = 'child_driver'
+    elif mutation == 'artifact_foreign_path': role = 'terminal'
+    _rehash_physical_health_artifact(case, role, change)
+    result = _verify(case, profile_ref=case['profile_ref'])
+    assert result['verified'] is False and result['scope'] == 'none'
+    assert result['dispatch_authority'] is result['completion_authority'] is False
+
+
+
+def test_cli4_archived_namespace_and_direct_source_use_existing_witness_without_live_grants(cycle_case, monkeypatch):
+    import base64
+    case = _physical_cli4_health_shape(cycle_case)
+    proof = json.loads(Path(case['physical_proof_ref']['path']).read_bytes())
+    plan = json.loads(Path(proof['plan_ref']['path']).read_bytes())
+    selected = plan['native_metadata_cli']['physical_source_profile']['source_descriptors'][-1]
+    logical = Path(selected['path']); old = logical.read_bytes(); info = logical.stat()
+    stamp = {key: getattr(info, key) for key in ('st_dev', 'st_ino', 'st_mode', 'st_uid',
+        'st_gid', 'st_nlink', 'st_size', 'st_mtime_ns', 'st_ctime_ns')}
+    captured = _put(case['root'] / 'archived-cli4-cleanup.py', old)
+    provenance = _put(case['root'] / 'archived-cli4-source-capture.json', dict(
+        schema='resource-census-canonical-source-snapshot/v1', files=[dict(
+            source_ref=selected, identity=stamp, raw_base64=base64.b64encode(old).decode())]))
+    snapshot = _put(case['root'] / 'archived-cli4-profile.json', Path(case['profile_ref']['path']).read_bytes())
+    witness_ref = _put(case['root'] / 'archived-cli4-witness.json', dict(
+        schema='agent-supervisor/historical-project-source-witness@1',
+        purpose='closed_cycle_and_receipt_evidence_only', profile_ref=case['profile_ref'],
+        profile_snapshot_ref=snapshot, sources=[dict(source_ref=selected,
+            captured_source_ref=captured, source_capture_ref=provenance)]))
+    _replace(logical, b'# later changed current source; archived evidence is separate\n')
+    actual_raw = health._raw
+    def no_old_source(path, *args, **kwargs):
+        if str(path) == str(logical):
+            pytest.fail('archived CLI4 must not reopen changed logical source')
+        return actual_raw(path, *args, **kwargs)
+    def forbidden(*args, **kwargs):
+        pytest.fail('archived CLI4 DATA cannot observe live manager/processes or Git')
+    monkeypatch.setattr(health, '_raw', no_old_source)
+    monkeypatch.setattr(health, '_manager', forbidden)
+    monkeypatch.setattr(health, '_process', forbidden)
+    monkeypatch.setattr(health, '_stat_identity', forbidden)
+    monkeypatch.setattr(health.subprocess, 'run', forbidden)
+    handle = health.authenticate_historical_source_witness(witness_ref)
+    before = {str(path): path.read_bytes() for path in case['root'].rglob('*') if path.is_file()}
+    try:
+        result = health.verify_historical_cycle(case['profile_ref'], case['physical_proof_ref'],
+            case['written_identity'], source_witness=handle)
+        assert result['historical_evidence_verified'] is True
+        assert result['verified'] is result['current_executor_verified'] is False
+        assert result['dispatch_authority'] is result['completion_authority'] is False
+        assert result['runtime_activation_authority'] is result['new_kernel_or_native_execution_performed'] is False
+        assert {str(path): path.read_bytes() for path in case['root'].rglob('*') if path.is_file()} == before
+    finally:
+        health.close_historical_source_witness(handle)
+
+
+
+def test_cli4_closed_fifteen_body_set_refuses_fully_pinned_unlisted_physical_import(cycle_case):
+    case = _physical_cli4_health_shape(cycle_case, extra_physical_import=True)
+    result = _verify(case, profile_ref=case['profile_ref'])
+    assert result['verified'] is False and result['reason'] == 'physical_unlisted_import_body'
+    assert result['dispatch_authority'] is result['completion_authority'] is False
+
+
+
+def test_legacy_cli2_rejects_explicit_CLI4_health_evidence_keyword(cycle_case):
+    case = _embedded_idle_shape(cycle_case)
+    with pytest.raises(health.ExecutorHealthError, match='physical_legacy_evidence_forbidden'):
+        health._embedded_idle_result(case['result'], case['request'], case['plan'],
+            case['origins'], case['profile'], case['cycle_native'],
+            physical_source_evidence={'schema': 'native-embedded-physical-R-source-evidence@1'})
+
+
+def test_legacy_cycle_rejects_nonnull_CLI4_terminal_field_without_current_admission(cycle_case):
+    case = _embedded_idle_shape(cycle_case)
+    case['terminal']['physical_source_evidence'] = {'schema': 'native-embedded-physical-R-source-evidence@1'}
+    _write_evidence(case)
+    result = _verify(case, profile_ref=case['profile_ref'])
+    assert result['verified'] is False and result['reason'] == 'physical_legacy_terminal_evidence_forbidden'
+    assert result['dispatch_authority'] is result['completion_authority'] is False

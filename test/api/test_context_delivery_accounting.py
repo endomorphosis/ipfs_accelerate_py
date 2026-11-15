@@ -132,6 +132,54 @@ def test_missing_attempt_information_withholds_complete_totals(marker):
     assert result["complete_supplied_native_usage"] is False
 
 
+@pytest.mark.parametrize("field,value", [
+    ("thread_id", None), ("rollout_sha256", None),
+    ("observed_token_count_records", None), ("observed_token_count_records", 0),
+])
+def test_unbound_codex_snapshot_does_not_inflate_known_session_subtotal(field, value):
+    valid = _receipt("identified")
+    unbound = _receipt("unbound", thread="other-native-session-123456")
+    unbound["native_rollout_usage"][field] = value
+    result = _summary(valid, unbound)
+    assert result["reported_native_token_subtotal"] == 120
+    assert result["complete_native_total_tokens"] is None
+    # The literal unbound observation is retained for diagnosis; its counters
+    # cannot be attributed as an additional disjoint session charge.
+    assert result["observations"][1]["native_usage"]["counts"]["total_tokens"] == 120
+
+
+@pytest.mark.parametrize("field,value", [
+    ("usage_observation_sha256", None),
+    ("observed_final_usage_records", None), ("observed_final_usage_records", 0),
+])
+def test_unbound_grok_envelope_does_not_inflate_known_subtotal(field, value):
+    valid = _grok("identified")
+    unbound = _grok("unbound")
+    unbound["native_rollout_usage"][field] = value
+    result = _summary(valid, unbound)
+    assert result["reported_native_token_subtotal"] == 42
+    assert result["complete_native_total_tokens"] is None
+    assert result["observations"][1]["native_usage"]["counts"]["total_tokens"] == 42
+
+
+def test_resealed_grok_projection_cannot_invent_a_second_final_envelope_record():
+    observed = accounting.observe_invocation(_grok())
+    observed["native_usage"]["observed_records"] = 2
+    _reseal(observed)
+    with pytest.raises(ValueError, match="invalid_observed_records"):
+        accounting.summarize_invocations([observed], unreceipted_provider_attempt=False)
+
+
+def test_resealed_unsupported_native_schema_cannot_claim_complete_usage():
+    observed = accounting.observe_invocation(_grok())
+    native = observed["native_usage"]
+    native.update(schema=None, scope=None, identity_kind=None)
+    native["normalized_counts"] = accounting._normalized(None, native["counts"])
+    _reseal(observed)
+    with pytest.raises(ValueError, match="invalid_complete_native_projection"):
+        accounting.summarize_invocations([observed], unreceipted_provider_attempt=False)
+
+
 def test_duplicate_observation_keeps_physical_population_without_extra_charge():
     result = _summary(_receipt(), _receipt())
     assert result["supplied_observation_count"] == 2

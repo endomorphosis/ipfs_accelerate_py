@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="1" skipped="0" tests="1" time="20.836" timestamp="2026-10-15T00:08:01.351238+00:00" hostname="spark-b271"><testcase classname="api.test_public_validation_fixture" name="test_native_fixture_captures_signed_public_and_doctor_requirements" time="4.612"><failure message="KeyError: 'source_mode'">test/api/test_public_validation_fixture.py:9: in test_native_fixture_captures_signed_public_and_doctor_requirements
+    assert original.metadata["source_mode"] == "public_instruction"
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   KeyError: 'source_mode'</failure></testcase></testsuite></testsuites>

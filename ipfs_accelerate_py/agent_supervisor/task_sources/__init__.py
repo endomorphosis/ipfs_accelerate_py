@@ -22,6 +22,8 @@ Modules owned by this package:
 * ``taskboard_ingest``
 * ``todo_vector_index``
 * ``huggingface_todo_locator``
+* ``dependency_block_resolution`` (pure dependency/obligation decisions)
+* ``board_stall_watchdog`` (guarded metadata repair, no scientific dispatch)
 
 Import them via::
 
@@ -72,6 +74,8 @@ TASK_SOURCES_OWNED_MODULES: Final[tuple[str, ...]] = (
     "taskboard_ingest",
     "todo_vector_index",
     "huggingface_todo_locator",
+    "dependency_block_resolution",
+    "board_stall_watchdog",
 )
 
 # Packages that may import from task_sources (DAG dependents).

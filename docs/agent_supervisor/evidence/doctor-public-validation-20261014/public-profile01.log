@@ -1,0 +1,26 @@
+.......FF............................................................... [ 50%]
+........................................................................ [100%]
+=================================== FAILURES ===================================
+________ test_native_preparation_signs_and_reloads_every_acceptance_key ________
+benchmarks/agent_supervisor/container_coding/test_terminal_public_acceptance_profile.py:183: in test_native_preparation_signs_and_reloads_every_acceptance_key
+    prepared = prep.prepare(repository=root, instruction=instruction, state=state,
+benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py:505: in prepare
+    manifest = local.author_local_benchmark_manifest(repository=repository, profile_dir=profile_dir,
+ipfs_accelerate_py/agent_supervisor/runtime/local_planning_admission.py:474: in author_local_benchmark_manifest
+    _manifest(envelope, initial=True)
+ipfs_accelerate_py/agent_supervisor/runtime/local_planning_admission.py:698: in _manifest
+    _verify_multitask_profile_sources(payload)
+ipfs_accelerate_py/agent_supervisor/runtime/local_planning_admission.py:743: in _verify_multitask_profile_sources
+    raise LocalPlanningError("reserved public multi-task profile requires its reviewed schema")
+E   ipfs_accelerate_py.agent_supervisor.runtime.local_planning_admission.LocalPlanningError: reserved public multi-task profile requires its reviewed schema
+_ test_actual_signed_checker_rejects_fast_wrong_math_despite_valid_structure[import numpy as np\ndef find_dominant_eigenvalue_and_eigenvector(A):\n    values, vectors = np.linalg.eig(A)\n    index = np.argmax(np.abs(values))\n    return values[index], vectors[:, index]\n-passed] _
+benchmarks/agent_supervisor/container_coding/test_terminal_public_acceptance_profile.py:203: in test_actual_signed_checker_rejects_fast_wrong_math_despite_valid_structure
+    assert observed["status"] == status
+E   AssertionError: assert 'failed' == 'passed'
+E     
+E     - passed
+E     + failed
+=========================== short test summary info ============================
+FAILED benchmarks/agent_supervisor/container_coding/test_terminal_public_acceptance_profile.py::test_native_preparation_signs_and_reloads_every_acceptance_key
+FAILED benchmarks/agent_supervisor/container_coding/test_terminal_public_acceptance_profile.py::test_actual_signed_checker_rejects_fast_wrong_math_despite_valid_structure[import numpy as np\ndef find_dominant_eigenvalue_and_eigenvector(A):\n    values, vectors = np.linalg.eig(A)\n    index = np.argmax(np.abs(values))\n    return values[index], vectors[:, index]\n-passed]
+2 failed, 142 passed in 11.36s

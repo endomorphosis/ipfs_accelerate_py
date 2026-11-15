@@ -1,0 +1,116 @@
+{
+  "all_prior_qualified_accelerate_blobs_unchanged": true,
+  "all_test_assertions_decorators_and_parameter_matrices_unchanged": true,
+  "audit_violations": [],
+  "candidate_commit": "f08394dce9dd2f8be2688995fb1614bf5a49d161",
+  "capture_scope": "Module/class/test imports plus the exact OWNER_ENTRY slices exercised by these files. Unused complete-launcher closure had448 buffers and was never admitted. Authored monitor helper seams do not qualify the substituted product helper or a complete deployed launcher.",
+  "caught_audit_refusals_are_fatal": true,
+  "child_or_vendor_compilation_attested": false,
+  "deselections": 0,
+  "durable_attempt_bytes": 17328,
+  "errors": 0,
+  "evidence": {
+    "durability": {
+      "bytes": 1338,
+      "path": "/tmp/pytest-of-barberb/legal-ir-candidate-owner-wiring-20261109-v03/attempt/logs/validation-durability.json",
+      "sha256": "32f6c68ad39b27c14c65c3b86801e13be9082a2787d405d60b4244eda7d67537"
+    },
+    "junit": {
+      "bytes": 5804,
+      "path": "/tmp/pytest-of-barberb/legal-ir-candidate-owner-wiring-20261109-v03/attempt/exports/junit.xml",
+      "sha256": "217cd13e7838940de0bade9d43681d076779638e66b9f114d727fef174679061"
+    },
+    "parent": {
+      "bytes": 9968,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/legal-ir-peer-revision-reconciliation-20261109-v01/candidate-owner-wiring-v03/parent-closeout.json",
+      "sha256": "37f3d35b1c0dc1b602787ce77f1234b1113e79c333a3d00da6ff6670a5e3dea7"
+    },
+    "request": {
+      "bytes": 25846,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/legal-ir-peer-revision-reconciliation-20261109-v01/candidate-owner-wiring-v03/request.json",
+      "sha256": "c400406965977d7eba6dee902e717b2c9fcc432b49c345e55207190c6650e743"
+    },
+    "result": {
+      "bytes": 840,
+      "path": "/tmp/pytest-of-barberb/legal-ir-candidate-owner-wiring-20261109-v03/attempt/logs/result.json",
+      "sha256": "aef01ce3dce5233bb7645fd284c6a95066ec66bfaedcf2e33e2d1196b9b429e6"
+    },
+    "source_capture": {
+      "bytes": 817425,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/legal-ir-peer-revision-reconciliation-20261109-v01/candidate-owner-wiring-v03/captured-source-buffers.tar.gz",
+      "sha256": "c535c2bef34a38b2d615dc78e96f16ffb357160c81cf8a6536590a3232ecc48b"
+    },
+    "source_observation": {
+      "bytes": 7436,
+      "path": "/tmp/pytest-of-barberb/legal-ir-candidate-owner-wiring-20261109-v03/attempt/exports/source-observation.json",
+      "sha256": "7f383402c805ac35d18b10412f1d32d0557caca9442994591f4f85236e0b3294"
+    },
+    "terminal": {
+      "bytes": 5710,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/legal-ir-peer-revision-reconciliation-20261109-v01/candidate-owner-wiring-v03/owner.stdout",
+      "sha256": "3f7cd326f7fe82d112826eda8e7fe51226e16fd314817402500b36d42bf87f01"
+    }
+  },
+  "failures": 0,
+  "fix": "End only the deadline-only extracted code fragment before separately tested workspace provisioning; its prior slice included unrelated setup with absent globals.",
+  "full_branch_qualified": false,
+  "global_policy_cap_roots_or_pin_maximum_changed": false,
+  "historical_profiles": {
+    "v01": "21 passed/23 uncaptured numerical_obligation_broker import failures; failed16MiB claim retained.",
+    "v02": "33 passed/11 genuine missing owner_provider_deadline_ns fixture failures after zero audit/drift/bytecode; failed16MiB claim retained."
+  },
+  "hosted_ci_qualified": false,
+  "junit_seconds": 1.063,
+  "matched_worktree_files": 41,
+  "model_or_legal_admission": false,
+  "native_provider_or_docker_qualification": false,
+  "original_popen_wait_source_native_observed_process_closed": true,
+  "owned_operation_seconds": 135.03691578516737,
+  "parent_compiled_buffers": 40,
+  "passed": 44,
+  "prior_control_generations_not_pooled": true,
+  "prior_failed_reservations": [
+    {
+      "attempt": "candidate-owner-wiring-v01",
+      "current_status": "retained",
+      "original_status": "retained",
+      "reservation_id": "9d5835ebba7e4e96a4466d30c63af5d0"
+    },
+    {
+      "attempt": "candidate-owner-wiring-v02",
+      "current_status": "retained",
+      "original_status": "retained",
+      "reservation_id": "468d6a3c8b394cebb21cabd25883a493"
+    }
+  ],
+  "process_scope": "sampled_birth_bound_descendants",
+  "product_owner_changed": false,
+  "public_dependency_qualification_claimed": false,
+  "recorded_at": "2026-11-09T22:41:32.356871+00:00",
+  "remaining_owning_test_files": 17,
+  "request_sha256": "c400406965977d7eba6dee902e717b2c9fcc432b49c345e55207190c6650e743",
+  "resource_bounds": {
+    "child_process_slots": 4,
+    "cpu_slots": 1,
+    "memory_mb": 1536,
+    "storage_bytes": 16777216,
+    "timeout_seconds": 180
+  },
+  "schema": "candidate-owner-wiring-qualification/v1",
+  "scope": "Three complete owner refresh/worktree staging wiring files; actual inert local workers and cleanup processes with authored helper seams, exact generated setup code, refusal ordering and inherited deadlines. No native worktree provisioning, provider, model, or container qualification",
+  "selected_checks": [
+    "benchmarks/agent_supervisor/container_coding/test_owner_candidate_refresh_lifecycle.py",
+    "benchmarks/agent_supervisor/container_coding/test_owner_worktree_traversal_wiring.py",
+    "benchmarks/agent_supervisor/container_coding/test_owner_writable_worktree_wiring.py"
+  ],
+  "skips": 0,
+  "source_capture_members": 123,
+  "source_checkout_bytecode": [],
+  "source_drift": [],
+  "source_pin_maximum": 256,
+  "source_pins": 126,
+  "storage_bytes": 16777216,
+  "storage_reservation_id": "e426050cc9ee4c6c8b5fadfd4572c474",
+  "storage_status": "released",
+  "wiring_files_qualified": true
+}

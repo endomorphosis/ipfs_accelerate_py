@@ -78,7 +78,7 @@ def validate_read_event(event):
     if (type(event) is not dict or len(event) != len(_EVENT_FIELDS) or set(event) != _EVENT_FIELDS
             or event["schema"] != EVENT_SCHEMA
             or not _integer(event["generation"], 1, 8)
-            or not _enum(event["scope"], {"file", "symbol"})
+            or not _enum(event["scope"], {"file", "symbol", "line_range"})
             or not _enum(event["representation"], {"original", "compact"})
             or not _enum(event["encoding"], {"utf-8", "base64"})
             or not _digest(event["source_identity_sha256"]) or not _digest(event["content_sha256"])
@@ -110,7 +110,33 @@ def make_read_event(arguments, payload, success):
             or arguments.get("representation") == "original" and representation != "original"):
         return None
     symbol_id = arguments.get("symbol_id")
-    if "symbol_id" in arguments:
+    line_selector = any(key in arguments for key in ("start_line", "end_line"))
+    range_identity = None
+    if line_selector or payload.get("scope") == "line_range":
+        start, end = arguments.get("start_line"), arguments.get("end_line")
+        total, omitted = payload.get("total_lines"), payload.get("omitted_lines")
+        content = payload.get("content")
+        if (not line_selector or payload.get("scope") != "line_range"
+                or "symbol_id" in arguments or "symbol_id" in payload or "symbol" in payload
+                or representation != "original" or encoding != "utf-8"
+                or any(not _integer(value, 1, 2**31 - 1) for value in (start, end, total))
+                or not start <= end <= total or end - start + 1 > 4096
+                or type(payload.get("start_line")) is not int or payload["start_line"] != start
+                or type(payload.get("end_line")) is not int or payload["end_line"] != end
+                or not _integer(omitted, 0, 2**31 - 1) or omitted != total - (end - start + 1)
+                or type(content) is not str or len(content) > 65536):
+            return None
+        try:
+            raw_range = content.encode("utf-8")
+        except UnicodeError:
+            return None
+        if (not end - start + 1 <= len(raw_range) <= 65536
+                or content.count("\n") + int(not content.endswith("\n")) != end - start + 1
+                or end < total and not content.endswith("\n")):
+            return None
+        scope = "line_range"
+        range_identity = dict(start_line=start, end_line=end, total_lines=total, omitted_lines=omitted)
+    elif "symbol_id" in arguments:
         if (not _text(symbol_id, 256) or payload.get("symbol_id") != symbol_id
                 or payload.get("scope") != "python_definition" or encoding != "utf-8"):
             return None
@@ -131,6 +157,8 @@ def make_read_event(arguments, payload, success):
     except (UnicodeError, ValueError, binascii.Error):
         return None
     identity = dict(path=path, source_sha256=payload["source_sha256"], scope=scope, symbol_id=symbol_id)
+    if range_identity is not None:
+        identity.update(range_identity)
     return validate_read_event(dict(schema=EVENT_SCHEMA, generation=generation, scope=scope,
         representation=representation, encoding=encoding, source_identity_sha256=_sha(_json(identity)),
         content_sha256=_sha(raw), content_bytes=len(raw)))

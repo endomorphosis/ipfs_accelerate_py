@@ -1,0 +1,116 @@
+{
+  "audit_violations": [],
+  "candidate_commit": "8583b90aa5c176df7e993184e275f3daa8d03297",
+  "caught_audit_refusals_are_fatal": true,
+  "child_or_vendor_compilation_attested": false,
+  "deselections": 0,
+  "durable_attempt_bytes": 357861574,
+  "errors": 0,
+  "evidence": {
+    "durability": {
+      "bytes": 222989,
+      "path": "/tmp/pytest-of-barberb/legal-ir-candidate-owner-worker-20261109-v04/attempt/logs/validation-durability.json",
+      "sha256": "5ffe77848e699a957e5c8f822180ac13ead61e1b339ad3a5cfa2af726ddfe96e"
+    },
+    "junit": {
+      "bytes": 29826,
+      "path": "/tmp/pytest-of-barberb/legal-ir-candidate-owner-worker-20261109-v04/attempt/exports/junit.xml",
+      "sha256": "821348f55bd1e01d913ae33c88a3bf69aeccfc38f8d665a8751902a159f64da0"
+    },
+    "parent": {
+      "bytes": 9547,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/legal-ir-peer-revision-reconciliation-20261109-v01/candidate-owner-worker-v04/parent-closeout.json",
+      "sha256": "e75eb49b76af81a2e0222bbd70db27641220ac88261251cd30439d894c5c99db"
+    },
+    "request": {
+      "bytes": 45031,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/legal-ir-peer-revision-reconciliation-20261109-v01/candidate-owner-worker-v04/request.json",
+      "sha256": "472d8d5bef4b4c4e20ef3cda55adcc1dc8cd9eb5b4c511f3314a267298a23607"
+    },
+    "result": {
+      "bytes": 560,
+      "path": "/tmp/pytest-of-barberb/legal-ir-candidate-owner-worker-20261109-v04/attempt/logs/result.json",
+      "sha256": "61f75873735f0a2b02d3f436237975745894be3fe817c34b0ba150700ce5a323"
+    },
+    "source_capture": {
+      "bytes": 2149879,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/legal-ir-peer-revision-reconciliation-20261109-v01/candidate-owner-worker-v04/captured-source-buffers.tar.gz",
+      "sha256": "85e2b2d241f860708db7c57a3c53f6a7e9df83fd929b2b3aba448c840d9bcefe"
+    },
+    "source_observation": {
+      "bytes": 11846,
+      "path": "/tmp/pytest-of-barberb/legal-ir-candidate-owner-worker-20261109-v04/attempt/exports/source-observation.json",
+      "sha256": "f4cd9781a31f11ae94af0610574def559c0b857b8d46df41ffa1904f1d316bd5"
+    },
+    "terminal": {
+      "bytes": 5483,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/legal-ir-peer-revision-reconciliation-20261109-v01/candidate-owner-worker-v04/owner.stdout",
+      "sha256": "e3f5ae6ffcac8569ac80d7214bafbc6a3833251de340c82c458fc900be7b4267"
+    }
+  },
+  "failures": 0,
+  "fixes": [
+    "Build one retained immutable authored source/archive seed; copy every bundle file into independent ordinary per-case files and deepcopy manifests. Verify the seed inventory at module teardown. All eleven test definitions, decorators and assertions are AST-identical to the previous fixture; all 200 parameterized cases retained."
+  ],
+  "full_branch_qualified": false,
+  "global_policy_cap_roots_or_pin_maximum_changed": false,
+  "harbor_vendor_context": "Existing documented Harbor 0.23.0 environment appended to the ordinary test interpreter; no installs or shim modules. Vendor and child compilation unattested.",
+  "historical_profiles": {
+    "v01": "187 passed/13 failed on uncaptured lazy terminal_intent_action_readiness import; all custody closed, original 512MiB failed reservation retained.",
+    "v02": "Pre-record global capacity refusal; no reservation, native grant or child; genuine original source custody closed.",
+    "v03": "196 passed/four failed on uncaptured terminal_provider_backoff import; custody closed and failed 512MiB claim retained."
+  },
+  "hosted_ci_qualified": false,
+  "junit_seconds": 3.497,
+  "matched_worktree_files": 145,
+  "model_or_legal_admission": false,
+  "native_provider_or_docker_qualification": false,
+  "original_popen_wait_source_native_observed_process_closed": true,
+  "owned_operation_seconds": 229.06994721619412,
+  "parent_compiled_buffers": 62,
+  "passed": 200,
+  "prior_deadline_attempt_result_not_pooled": true,
+  "prior_deadline_attempt_selected_236_blobs_unchanged": true,
+  "prior_failed_reservations": [
+    {
+      "attempt": "candidate-owner-worker-v01",
+      "current_status": "retained",
+      "original_status": "retained",
+      "reservation_id": "b8956a2373864c33bfcae6097d6fa5fd"
+    },
+    {
+      "attempt": "candidate-owner-worker-v03",
+      "current_status": "retained",
+      "original_status": "retained",
+      "reservation_id": "d4bf5197879b442e83b1d23e0f17d611"
+    }
+  ],
+  "process_scope": "sampled_birth_bound_descendants",
+  "public_dependency_qualification_claimed": false,
+  "recorded_at": "2026-11-09T22:25:05.610877+00:00",
+  "remaining_owning_test_files": 20,
+  "request_sha256": "472d8d5bef4b4c4e20ef3cda55adcc1dc8cd9eb5b4c511f3314a267298a23607",
+  "resource_bounds": {
+    "child_process_slots": 4,
+    "cpu_slots": 1,
+    "memory_mb": 1536,
+    "storage_bytes": 536870912,
+    "timeout_seconds": 180
+  },
+  "schema": "candidate-owner-worker-qualification/v1",
+  "scope": "Complete existing test_terminal_worker_capability.py: all 200 authored parameterized cases; exact capability/source inventory, tamper refusals, all profiles, mocked Harbor adapter/prepare/run contracts. Real documented Harbor 0.23.0 vendor package; no actual provider/container/model execution; independent per-case archives and immutable module seed.",
+  "selected_checks": [
+    "benchmarks/agent_supervisor/container_coding/test_terminal_worker_capability.py"
+  ],
+  "skips": 0,
+  "source_capture_members": 223,
+  "source_checkout_bytecode": [],
+  "source_drift": [],
+  "source_pin_maximum": 256,
+  "source_pins": 226,
+  "storage_bytes": 536870912,
+  "storage_recovery": "Lossless verified archival of a stopped, released diagnostic database snapshot recovered 2,634,063,159 file bytes excluding summary records. Archive and manifest remain in named roots; ledger and failed reservations unchanged.",
+  "storage_reservation_id": "e56fe4484e9e48388fbe077219865c2a",
+  "storage_status": "released",
+  "worker_capability_file_qualified": true
+}

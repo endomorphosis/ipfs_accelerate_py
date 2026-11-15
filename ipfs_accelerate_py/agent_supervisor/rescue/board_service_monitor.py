@@ -27,6 +27,7 @@ from pathlib import Path
 import re
 import stat
 import subprocess
+import sys
 import tempfile
 import time
 from typing import Any
@@ -262,19 +263,111 @@ def _unresolved_retry_deferrals(events: list[dict[str, Any]],
     )]
 
 
+# Reuse the canonical bounded, birth-bound Linux process observer without
+# importing the supervisor package or invoking its recovery mechanisms.
+_PROCESS_SPEC = importlib.util.spec_from_file_location(
+    "_board_monitor_process_owner", Path(__file__).resolve().parents[1] / "runtime/native_graceful_recovery.py")
+_PROCESS_OWNER = importlib.util.module_from_spec(_PROCESS_SPEC)
+sys.modules[_PROCESS_SPEC.name] = _PROCESS_OWNER
+_PROCESS_SPEC.loader.exec_module(_PROCESS_OWNER)
+
+
+def _thread_ids(root: Path) -> set[int]:
+    tids: set[int] = set()
+    with os.scandir(root / "task") as entries:
+        for entry in entries:
+            if not entry.name.isascii() or not entry.name.isdecimal():
+                raise ValueError("process_thread_invalid")
+            tids.add(int(entry.name))
+            if len(tids) > 256:
+                raise ValueError("process_thread_bound")
+    if not tids:
+        raise ValueError("process_threads_unavailable")
+    return tids
+
+
+def _thread_children(root: Path) -> list[int]:
+    """Union every thread's children; partial observations never prove idle."""
+    tids = _thread_ids(root)
+    children: set[int] = set()
+    for tid in sorted(tids):
+        values = _PROCESS_OWNER._read_proc(root / "task" / str(tid) / "children", 8192).decode("ascii").split()
+        for value in values:
+            if not value.isdecimal() or int(value) <= 1:
+                raise ValueError("process_child_invalid")
+            children.add(int(value))
+            if len(children) > 256:
+                raise ValueError("process_child_bound")
+    if tids != _thread_ids(root):
+        raise ValueError("process_threads_changed")
+    return sorted(children)
+
+
 def _process_snapshot(pid: int) -> dict[str, Any] | None:
-    """Read one Linux process birth and direct children; unknown never grants repair."""
+    """Read exact Linux birth and all-thread children; unknown grants no repair."""
     try:
-        root = Path("/proc") / str(pid)
-        fields = (root / "stat").read_text().rsplit(")", 1)[1].split()
-        children = [int(value) for value in (root / "task" / str(pid) / "children").read_text().split()]
-        boot = Path("/proc/sys/kernel/random/boot_id").read_text().strip()
-        if not boot or len(children) > 256 or fields[0] in {"Z", "X"}:
+        binding = _PROCESS_OWNER.observe_process(pid)
+        children = _thread_children(Path("/proc") / str(pid))
+        _PROCESS_OWNER.require_exact_process(binding)
+        if not binding.boot_id:
             return None
-        return {"pid": pid, "birth_ticks": int(fields[19]), "boot_id": boot,
+        return {"pid": pid, "birth_ticks": binding.birth, "boot_id": binding.boot_id,
                 "children": children}
-    except (OSError, ValueError, IndexError):
+    except (OSError, ValueError, IndexError, _PROCESS_OWNER.GracefulRecoveryUnverified):
         return None
+
+
+def _owned_work_observation(service: dict[str, Any], evidence: dict[str, Any]) -> dict[str, Any]:
+    """A quiet validation child is work, without renewing any task deadline."""
+    try:
+        pid = int(service["MainPID"])
+        daemon_pid = evidence["native_daemon_pid"]
+        if (evidence.get("native_supervisor_pid") != pid
+                or evidence.get("native_daemon_pid_alive") is not True
+                or type(daemon_pid) is not int or daemon_pid <= 1):
+            raise ValueError("owned_work_identity_unverified")
+        parent = _PROCESS_OWNER.observe_process(pid)
+        daemon = _PROCESS_OWNER.observe_process(daemon_pid)
+        if daemon.parent != pid or daemon_pid not in _thread_children(Path("/proc") / str(pid)):
+            raise ValueError("owned_daemon_binding_unverified")
+        children = _thread_children(Path("/proc") / str(daemon_pid))
+        pending = [(child, daemon_pid, 1) for child in children]
+        samples = []
+        bindings = [(daemon, children)]
+        seen = {pid, daemon_pid}
+        while pending:
+            child, expected_parent, depth = pending.pop()
+            if child in seen or len(seen) >= 50 or depth > 8:
+                raise ValueError("owned_descendant_bound_or_cycle")
+            seen.add(child)
+            binding = _PROCESS_OWNER.observe_process(child)
+            if binding.parent != expected_parent:
+                raise ValueError("owned_child_binding_unverified")
+            fields = _PROCESS_OWNER._stat(child)
+            io = dict(line.split(":", 1) for line in _PROCESS_OWNER._read_proc(
+                Path("/proc") / str(child) / "io", 8192).decode("ascii").splitlines())
+            samples.append({"pid": child, "birth_ticks": binding.birth,
+                            "parent_pid": binding.parent,
+                            "cpu_ticks": int(fields[11]) + int(fields[12]),
+                            "io_bytes": sum(int(io[key]) for key in ("rchar", "wchar", "read_bytes", "write_bytes"))})
+            descendants = _thread_children(Path("/proc") / str(child))
+            bindings.append((binding, descendants))
+            pending.extend((descendant, child, depth + 1) for descendant in descendants)
+        # A new child, a reparenting or a partial thread observation cannot
+        # establish a stable tree for the final restart decision.
+        for binding, descendants in bindings:
+            if descendants != _thread_children(Path("/proc") / str(binding.pid)):
+                raise ValueError("owned_descendants_changed")
+            _PROCESS_OWNER.require_exact_process(binding)
+        samples.sort(key=lambda item: item["pid"])
+        children = [sample["pid"] for sample in samples]
+        _PROCESS_OWNER.require_exact_process(daemon)
+        _PROCESS_OWNER.require_exact_process(parent)
+        return {"verified": True, "children": children, "samples": samples,
+                "daemon_pid": daemon_pid, "daemon_birth_ticks": daemon.birth,
+                "supervisor_pid": pid, "supervisor_birth_ticks": parent.birth, "boot_id": parent.boot_id}
+    except (KeyError, TypeError, OSError, ValueError, IndexError, _PROCESS_OWNER.GracefulRecoveryUnverified):
+        return {"verified": False, "reason": "owned_work_observation_unverified"}
 
 
 def _native_recovery_observation(config: dict[str, Any], service: dict[str, Any],
@@ -511,6 +604,7 @@ def collect_evidence(config: dict[str, Any], now: float) -> dict[str, Any]:
         "native_managed_status": status.get("status"),
         "native_status_at_epoch": _latest(status, ("updated_at", "heartbeat_at"), now),
         "native_daemon_pid_alive": status.get("daemon_pid_alive"),
+        "native_daemon_pid": status.get("daemon_pid"),
         "native_last_exit_code": status.get("last_exit_code"),
         "native_restart_count": status.get("restart_count"),
         "native_idle_ready_seconds": status.get("idle_ready_seconds"),
@@ -831,6 +925,43 @@ def _monitor_locked(config: dict[str, Any], *, apply: bool) -> dict[str, Any]:
                 summary["action"] = "restart_suppressed_recovery_changed"
             elif not health["restart_eligible"]:
                 summary["action"] = "restart_suppressed_health_changed"
+            elif health["status"] == "stale_worker":
+                # Provider output can stop while its native validation thread
+                # owns a live subprocess. Keep the original absolute deadline;
+                # neither a child nor uncertainty authorizes an early restart.
+                owned = _owned_work_observation(service, evidence)
+                owned["observed_at_epoch"] = now
+                summary["owned_work_recheck"] = owned
+                current["owned_work_observation"] = owned
+                if owned.get("verified") is not True:
+                    summary.update(action="restart_suppressed_owned_work_unverified", restart_eligible=False,
+                                   status="owned_work_unverified", healthy=False,
+                                   reason="Owned subprocess safety could not be verified; no early restart authorized")
+                elif owned["children"]:
+                    old = previous.get("owned_work_observation")
+                    old = old if type(old) is dict else {}
+                    keys = ("supervisor_pid", "supervisor_birth_ticks", "daemon_pid", "daemon_birth_ticks", "boot_id", "children")
+                    old_samples = old.get("samples")
+                    same = (old.get("verified") is True and all(old.get(key) == owned.get(key) for key in keys)
+                            and type(old.get("observed_at_epoch")) in (int, float)
+                            and now - config["heartbeat_timeout_seconds"] <= old["observed_at_epoch"] < now
+                            and type(old_samples) is list and len(old_samples) == len(owned["samples"])
+                            and all(a.get("pid") == b["pid"] and a.get("birth_ticks") == b["birth_ticks"]
+                                    and a.get("parent_pid") == b.get("parent_pid") for a, b in zip(old_samples, owned["samples"])))
+                    progressed = same and any(
+                        b["cpu_ticks"] > a.get("cpu_ticks", b["cpu_ticks"])
+                        or b["io_bytes"] > a.get("io_bytes", b["io_bytes"])
+                        for a, b in zip(old_samples, owned["samples"]))
+                    if progressed or not same:
+                        summary.update(action="restart_suppressed_owned_work", restart_eligible=False,
+                                       healthy=bool(progressed),
+                                       status="quiet_owned_work" if progressed else "observing_owned_work",
+                                       reason="Birth-bound owned subprocess progress observed; original absolute deadline remains in force"
+                                              if progressed else "Sampling owned subprocess liveness before repair; original absolute deadline remains in force")
+                    else:
+                        summary["action"] = "restart_revalidated"
+                else:
+                    summary["action"] = "restart_revalidated"
             else:
                 summary["action"] = "restart_revalidated"
         if apply and summary["action"] == "restart_revalidated":
@@ -864,7 +995,7 @@ def _monitor_locked(config: dict[str, Any], *, apply: bool) -> dict[str, Any]:
         _atomic_json(config["monitor_state_path"], current)
     try:
         _append_action(config["actions_path"], {**scope, "at_epoch": now,
-                       "action": summary["action"], "status": health["status"], "apply": apply})
+                       "action": summary["action"], "status": summary["status"], "apply": apply})
     except (OSError, ValueError) as exc:
         # This is an observation log, after any charged repair has completed.
         # Preserve the actual action and publish its outcome even if logging

@@ -1,0 +1,115 @@
+{
+  "audit_violations": [],
+  "candidate_commit": "ac0667791f19f9caf6da2b0be9d84e3c5b68e8cf",
+  "caught_audit_refusals_are_fatal": true,
+  "child_or_vendor_compilation_attested": false,
+  "deselections": 0,
+  "durable_attempt_bytes": 66016,
+  "errors": 0,
+  "evidence": {
+    "durability": {
+      "bytes": 23986,
+      "path": "/tmp/pytest-of-barberb/legal-ir-candidate-owner-deployment-20261109-v03/attempt/logs/validation-durability.json",
+      "sha256": "a6cb5cdbe766e60019e881e2ba9ef4aed69566f016e30622d1d67aa02f6f1431"
+    },
+    "junit": {
+      "bytes": 1340,
+      "path": "/tmp/pytest-of-barberb/legal-ir-candidate-owner-deployment-20261109-v03/attempt/exports/junit.xml",
+      "sha256": "b0d3b16c7b3b08efe0aeabc0aa88731b2289f5ae80968d46d87c12653164c07b"
+    },
+    "parent": {
+      "bytes": 9572,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/legal-ir-peer-revision-reconciliation-20261109-v01/candidate-owner-deployment-v03/parent-closeout.json",
+      "sha256": "80af9823173016a733ad7e7d0214dc4499151c8234ee87334276c5cbf00d9e61"
+    },
+    "request": {
+      "bytes": 47212,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/legal-ir-peer-revision-reconciliation-20261109-v01/candidate-owner-deployment-v03/request.json",
+      "sha256": "b8adf7960f76c11428819ffc748fbfec2019de6c951f20c8339c90ada3c01016"
+    },
+    "result": {
+      "bytes": 561,
+      "path": "/tmp/pytest-of-barberb/legal-ir-candidate-owner-deployment-20261109-v03/attempt/logs/result.json",
+      "sha256": "493b9b5bac44f6fadbb2cec05379604295a61ac71b22e4e494e1480386f0cba7"
+    },
+    "source_capture": {
+      "bytes": 2138292,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/legal-ir-peer-revision-reconciliation-20261109-v01/candidate-owner-deployment-v03/captured-source-buffers.tar.gz",
+      "sha256": "b6fa44e2d992d3028e60338c50c55cd60680d9a5c51abdbf43d7f431c76e482c"
+    },
+    "source_observation": {
+      "bytes": 23514,
+      "path": "/tmp/pytest-of-barberb/legal-ir-candidate-owner-deployment-20261109-v03/attempt/exports/source-observation.json",
+      "sha256": "e1bff381813cb16f2f907bb680dc5658d2ab14fdaadd6acc91d1815c35ac47e2"
+    },
+    "terminal": {
+      "bytes": 5502,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/legal-ir-peer-revision-reconciliation-20261109-v01/candidate-owner-deployment-v03/owner.stdout",
+      "sha256": "5fcce54c45fba92b68c7032966c1c6d47ba35c9ab469185c8b77a595d05c36a3"
+    }
+  },
+  "failures": 0,
+  "fixes": [
+    "Keep the real copied benchmark namespace initializer bytes instead of overwriting them with placeholders. All test definitions and exact-byte assertions remain unchanged.",
+    "Keep the authored extension symlink live through the expected refusal, then retire only that alias and preserve an observation without changing its referent."
+  ],
+  "full_branch_qualified": false,
+  "global_policy_cap_roots_or_pin_maximum_changed": false,
+  "historical_profiles": {
+    "v01": "Three passed/seven failed, with seven persisted uncaptured-import refusals; original native/source/process custody closed and 16MiB claim retained.",
+    "v02": "Nine passed/one exact namespace-byte fixture failure, zero audit/drift/bytecode; original custody closed and 16MiB claim retained."
+  },
+  "hosted_ci_qualified": false,
+  "junit_seconds": 1.969,
+  "matched_worktree_files": 161,
+  "model_or_legal_admission": false,
+  "native_provider_or_docker_qualification": false,
+  "original_popen_wait_source_native_observed_process_closed": true,
+  "owned_operation_seconds": 206.06651581497863,
+  "parent_compiled_buffers": 127,
+  "passed": 10,
+  "prior_deadline_attempt_result_not_pooled": true,
+  "prior_deadline_attempt_selected_236_blobs_unchanged": true,
+  "prior_failed_reservations": [
+    {
+      "attempt": "candidate-owner-deployment-v01",
+      "current_status": "retained",
+      "original_status": "retained",
+      "reservation_id": "23444a56a7c84d0abff2d3977209a9c9"
+    },
+    {
+      "attempt": "candidate-owner-deployment-v02",
+      "current_status": "retained",
+      "original_status": "retained",
+      "reservation_id": "40fb710c1ef54320ad5f10073c39d24c"
+    }
+  ],
+  "process_scope": "sampled_birth_bound_descendants",
+  "public_dependency_qualification_claimed": false,
+  "recorded_at": "2026-11-09T21:59:58.398553+00:00",
+  "remaining_owning_test_files": 21,
+  "request_sha256": "b8adf7960f76c11428819ffc748fbfec2019de6c951f20c8339c90ada3c01016",
+  "resource_bounds": {
+    "child_process_slots": 4,
+    "cpu_slots": 1,
+    "memory_mb": 1536,
+    "storage_bytes": 16777216,
+    "timeout_seconds": 180
+  },
+  "schema": "candidate-owner-deployment-qualification/v1",
+  "scope": "Complete existing test_terminal_deployment.py; hermetic archive/asset fixtures, exact namespace bytes, credential exclusion, native dependency import probe and pre-container refusal. No deployment performed.",
+  "selected_checks": [
+    "benchmarks/agent_supervisor/container_coding/test_terminal_deployment.py"
+  ],
+  "skips": 0,
+  "source_capture_members": 239,
+  "source_checkout_bytecode": [],
+  "source_drift": [],
+  "source_pin_maximum": 256,
+  "source_pins": 242,
+  "storage_bytes": 16777216,
+  "storage_reservation_id": "bbb46573fd9340d49aea589771756a67",
+  "storage_status": "released",
+  "worker_archive_fixture_preflight": "One 42x3 parameter matrix alone repeats at least 863,559,396 raw source bytes with the original per-case fixture; the full worker-capability file remains pending.",
+  "worker_capability_file_qualified": false
+}

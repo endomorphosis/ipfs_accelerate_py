@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="1" skipped="0" tests="1" time="18.993" timestamp="2026-10-15T00:06:54.105727+00:00" hostname="spark-b271"><testcase classname="api.test_public_validation_fixture" name="test_native_fixture_captures_signed_public_and_doctor_requirements" time="2.331"><failure message="ipfs_accelerate_py.agent_supervisor.runtime.terminal_source_partition.TerminalSourcePartitionError: profile differs from independently signed task effects or checks">test/api/test_public_validation_fixture.py:6: in test_native_fixture_captures_signed_public_and_doctor_requirements
+    with public_doctor_service(tmp_path, monkeypatch) as case:
+/usr/lib/python3.12/contextlib.py:137: in __enter__
+    return next(self.gen)
+           ^^^^^^^^^^^^^^
+test/api/public_validation_fixture.py:38: in public_doctor_service
+    dispatch = doctor_dispatch.prepare_terminal_doctor_dispatch(repository=case.repository,
+benchmarks/agent_supervisor/container_coding/terminal_doctor_dispatch.py:205: in prepare_terminal_doctor_dispatch
+    prepared = prepare_doctor_task_repair(runtime=runtime, intent=intent, admission=admission,
+ipfs_accelerate_py/agent_supervisor/runtime/doctor_task_workflow.py:295: in prepare_doctor_task_repair
+    partition = terminal_doctor_source_partition(repository=root, admission=admission, task_cid=task_cid)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ipfs_accelerate_py/agent_supervisor/runtime/doctor_source_partition.py:77: in terminal_doctor_source_partition
+    partition = terminal_profile_partition(repository=root, manifest=manifest)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ipfs_accelerate_py/agent_supervisor/runtime/terminal_source_partition.py:90: in terminal_profile_partition
+    raise TerminalSourcePartitionError("profile differs from independently signed task effects or checks")
+E   ipfs_accelerate_py.agent_supervisor.runtime.terminal_source_partition.TerminalSourcePartitionError: profile differs from independently signed task effects or checks</failure></testcase></testsuite></testsuites>

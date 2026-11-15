@@ -1,0 +1,63 @@
+{
+  "limitation": "Authored router responses qualify parsing/admission/storage; no new live completion or savings established.",
+  "passed_cases": 155,
+  "prior_live_reward": 0,
+  "prior_observed_tokens": 26617,
+  "prior_token_scope": "planning_only",
+  "provider_calls": 0,
+  "runs": [
+    {
+      "all_selected_and_production_pins_match": true,
+      "counts": {
+        "passed": 55
+      },
+      "excluded_nonselected_test_file_changes": [
+        "test/api/test_agent_supervisor_prompt_goal_planner.py"
+      ],
+      "label": "native-final",
+      "selected_modules": [
+        "benchmarks/agent_supervisor/container_coding/test_terminal_public_model_planning.py",
+        "benchmarks/agent_supervisor/container_coding/test_terminal_indexed_preparation.py",
+        "benchmarks/agent_supervisor/container_coding/test_terminal_public_acceptance_profile.py",
+        "test/api/test_agent_supervisor_local_planning_admission.py"
+      ]
+    },
+    {
+      "all_selected_and_production_pins_match": true,
+      "counts": {
+        "passed": 29
+      },
+      "excluded_nonselected_test_file_changes": [],
+      "label": "planner-unit02",
+      "selected_modules": [
+        "test/api/test_agent_supervisor_prompt_goal_planner.py"
+      ]
+    },
+    {
+      "all_selected_and_production_pins_match": true,
+      "counts": {
+        "passed": 71
+      },
+      "excluded_nonselected_test_file_changes": [],
+      "label": "planner-schema01",
+      "selected_modules": [
+        "test/api/test_grok_structured_output.py"
+      ]
+    }
+  ],
+  "schema": "planner-acceptance-qualification@1",
+  "source_sha256": {
+    "benchmarks/agent_supervisor/container_coding/test_terminal_indexed_preparation.py": "71102816e020d184bd1c1fc5bf9e5ca2c18790688ea95318691090d3aeefd91d",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_public_acceptance_profile.py": "79aa4601fc6a3260e8e3ae61a7f5cc74c49724f5b27a9d9bf40c3dfce8f3d05d",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_public_model_planning.py": "4251aac4c23f2663246676f113f1451e44465d081b62fb1135671db89a34d2bd",
+    "ipfs_accelerate_py/agent_supervisor/prompt/prompt_goal_planner.py": "b7164dc4456117658ba733625fda703fff4847e3fd3e9ed9c3894aa92bdf2496",
+    "test/api/test_agent_supervisor_local_planning_admission.py": "5635419e9d1282ed3b64bd12e9b4f25cf047582d7a31c92554e20bab13f75e39",
+    "test/api/test_agent_supervisor_prompt_goal_planner.py": "8d554c4e9e2b379a73fda3334436c6d85081b9e3e4ba5e33998cc299145ad15c",
+    "test/api/test_grok_structured_output.py": "567a46e70cb73c6ade55c4c77bfd232b8719490d7f517b066ab28d623c73bf94"
+  },
+  "test_development_corrections": [
+    "Canonical records sort by identity; native records also add schema fields. Corrected assertions compare exact criterion contents by key.",
+    "native-before is a development label; production fix was already present. It is not a pre-fix causal comparison.",
+    "native-final ran while the nonselected unit-test assertion changed; its selected modules and production pins were unchanged. The corrected unit module passed separately."
+  ]
+}

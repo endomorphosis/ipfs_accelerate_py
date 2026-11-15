@@ -1,0 +1,48 @@
+{
+  "binary": {
+    "bytes": 142867512,
+    "executed": false,
+    "path": "/home/barberb/lift_coding/artifacts/source-context-substitution-20261013/live-preparation/grok-1.0.46/grok",
+    "sha256": "45b0943e736f00a249b9cf02af2be9e0749d97c09a6f55cfcf3029a1a836f23e",
+    "version_from_pinned_source": "1.0.46"
+  },
+  "canonical_configuration_read": false,
+  "credentials_read": false,
+  "docker_calls": 0,
+  "observation_only": true,
+  "pinned_public_audit": {
+    "path": "/home/barberb/lift_coding/.worktrees/supervisor-tool-event-coverage-20261015/docs/agent_supervisor/evidence/tool-event-census-20261015/request-boundary-audit.json",
+    "sha256": "80846c7c524d604a042344da0d720aad030162afd142f7d7c25e5221b689203f"
+  },
+  "provider_calls": 0,
+  "runtime_config_written": false,
+  "schema": "grok-isolated-pruning-profile-audit@1",
+  "source_references": [
+    {
+      "bytes": 43712,
+      "path": "benchmarks/agent_supervisor/container_coding/container_worker_deployment.py",
+      "sha256": "67e5eddaa8e64e6d90daa47db581a4e31dd1f27f93a6d77bdfe75b99350f28dc"
+    },
+    {
+      "bytes": 19222,
+      "path": "benchmarks/agent_supervisor/container_coding/terminal_grok_deployment.py",
+      "sha256": "cb093c8e99506b739134c9a49ac3facf05a6d6ac91d6617fdc3dd88e60b85706"
+    },
+    {
+      "bytes": 99876,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+      "sha256": "73bc9d510f202e28a12631bc1b079feeb483a538b9c2c4e23a1c741fbb72b927"
+    },
+    {
+      "bytes": 624176,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py",
+      "sha256": "da85f716215df06edd5fd3664e510f1e10dae3534b3da2174663a4c69e7397f8"
+    },
+    {
+      "bytes": 560595,
+      "path": "ipfs_accelerate_py/llm_router.py",
+      "sha256": "380d9c0b2b95033c37e8c8c6fbee6bbc05ae822d61ef4c3f0d7f64d1161fa90a"
+    }
+  ],
+  "source_snapshot_not_frozen": true
+}

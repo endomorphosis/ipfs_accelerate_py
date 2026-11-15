@@ -1,0 +1,36 @@
+{
+  "manifest": {
+    "bytes": 13145,
+    "path": "/home/barberb/lift_coding/.worktrees/supervisor-public-validation-20261014/docs/agent_supervisor/evidence/doctor-public-validation-20261014/manifest.json",
+    "sha256": "c5ddcac10c4cd29d651869856d55960417922a8c25eae814c449f007f65b2bd7"
+  },
+  "observed_at": "2026-10-15T00:43:09.664496+00:00",
+  "package_review": {
+    "bytes": 4623,
+    "path": "/home/barberb/lift_coding/.worktrees/supervisor-public-validation-20261014/docs/agent_supervisor/evidence/doctor-public-validation-20261014/package-review.json",
+    "sha256": "5d8017743e96ae12f8f574df8a4acc15dc43b5aa88b3ec15122cf4962a3c4ec2"
+  },
+  "production_source_pins_match": true,
+  "provider_generation_calls": 0,
+  "qualification": {
+    "bytes": 14321,
+    "path": "/home/barberb/lift_coding/.worktrees/supervisor-public-validation-20261014/docs/agent_supervisor/evidence/doctor-public-validation-20261014/qualification.json",
+    "sha256": "498f2d6c3ac67d5ada207698991049aa502fb057a8bba8945a4b0a6c666e3312"
+  },
+  "qualified_tests": 816,
+  "recipe": {
+    "bytes": 148886,
+    "path": "/home/barberb/lift_coding/artifacts/doctor-public-validation-20261014/recipe.json",
+    "sha256": "0bd4bfe357f43bcb46e1a5dae833c2b7350c9b114a04147c345217afb816f363"
+  },
+  "root_authorized_source_freeze": true,
+  "runner": {
+    "bytes": 11135,
+    "path": "/home/barberb/lift_coding/artifacts/doctor-public-validation-20261014/run.py",
+    "sha256": "bb7ab660da0901f383cb7fdc0448e4e5c565e6507c905cd196f547db3a884638"
+  },
+  "schema": "public-validation-source-freeze@1",
+  "scope": "One previously authorized fresh diagnostic; no automatic retry or provider fallback",
+  "source_commit": "42ba5a639e2667c3cd8a77888191482f802c2e23",
+  "worktree_clean": true
+}

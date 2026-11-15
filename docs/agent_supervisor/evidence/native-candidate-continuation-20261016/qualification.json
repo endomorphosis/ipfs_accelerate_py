@@ -1,0 +1,229 @@
+{
+  "schema": "native-candidate-continuation-qualification@1",
+  "recorded_utc": "2026-10-16T00:32:43.482005+00:00",
+  "accelerate_base": "684bb7ea1a741a25a7fef4fa014ced393b5ed490",
+  "branch": "codex/candidate-owner-continuation-20261015",
+  "datasets": "74f5d98c8ffff3c284cffddf430091b5fc4c6f8c",
+  "kit": "40c98c71b95be750509ffdb21e7e5494d91b4e79",
+  "dependency_note": "Qualification uses the pinned sibling datasets checkout; accelerate gitlink remains d0d44b3e0f7c2ba804b0d9115f7a1efd2ad926c3.",
+  "dataset_resource_scheduler_source": {
+    "bytes": 121503,
+    "sha256": "7c889bc858ff092e18bd2e97ff5a6407973e226eae33cddc9e5eef1d21f35986"
+  },
+  "resource_policy_sha256": "f07cb14289fcb6275e4497dcc36be0dcf8bfc3dc87531ff7a9537eb85fdcc661",
+  "policy_unchanged": true,
+  "qualification_and_candidate_resource_rows_remaining": 0,
+  "root_only_runtime": true,
+  "agent_work": "static reads/AST/edits only",
+  "artifact_directory": "/home/barberb/lift_coding/artifacts/native-candidate-continuation-20261016-01",
+  "qualification_counts": {
+    "tests": 298,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "modules": 5
+  },
+  "new_continuation_cases": 28,
+  "qualified_modules": [
+    "api.test_native_candidate_continuation",
+    "benchmarks.agent_supervisor.container_coding.test_terminal_worker_capability",
+    "test.api.test_candidate_dispatch",
+    "test.api.test_native_candidate_round_resources",
+    "test.api.test_router_candidate_dispatch"
+  ],
+  "qualifying_runs": [
+    "continuation-worker-pipeline-v01",
+    "continuation-preparation-custody-v01",
+    "continuation-archive-router-kernel-v01"
+  ],
+  "runs": [
+    {
+      "label": "continuation-archive-router-kernel-v01",
+      "qualifying": true,
+      "lease": {
+        "schema": "world-packet-replay-qualification-lease@1",
+        "label": "continuation-archive-router-kernel-v01",
+        "started_utc": "2026-10-16T00:28:32.226742+00:00",
+        "cpu_slots": 1,
+        "memory_mb": 2048,
+        "child_process_slots": 3,
+        "lease_released": true,
+        "policy_unchanged": true,
+        "returncode": 0,
+        "offline_validation": true,
+        "network_dependency_installation": false,
+        "ended_utc": "2026-10-16T00:29:42.237102+00:00"
+      },
+      "junit": {
+        "tests": 270,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "modules": [
+          "benchmarks.agent_supervisor.container_coding.test_terminal_worker_capability",
+          "test.api.test_candidate_dispatch",
+          "test.api.test_native_candidate_round_resources",
+          "test.api.test_router_candidate_dispatch"
+        ],
+        "bytes": 55841,
+        "sha256": "71cd22366d94cd64821d94cdb183a6d5ed8a6d05ed38f45219191754a20171fa"
+      },
+      "stdout.log": {
+        "bytes": 74359,
+        "sha256": "8f81552c910c2772aab9bbd7c4fa69ce1a8600916d392dc23a094e1393303e3b"
+      },
+      "stderr.log": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "label": "continuation-environment-v01",
+      "qualifying": false,
+      "lease": {
+        "schema": "world-packet-replay-qualification-lease@1",
+        "label": "continuation-environment-v01",
+        "started_utc": "2026-10-16T00:20:11.570419+00:00",
+        "cpu_slots": 1,
+        "memory_mb": 2048,
+        "child_process_slots": 3,
+        "lease_released": true,
+        "policy_unchanged": true,
+        "returncode": 0,
+        "offline_validation": true,
+        "network_dependency_installation": false,
+        "ended_utc": "2026-10-16T00:21:41.556292+00:00"
+      },
+      "stdout.log": {
+        "bytes": 419,
+        "sha256": "b7975c0879d316fb4b9ce0d804fc0562f8cb7eda756f3fa8771d2e4d4c2df4bd"
+      },
+      "stderr.log": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "label": "continuation-preparation-custody-v01",
+      "qualifying": true,
+      "lease": {
+        "schema": "world-packet-replay-qualification-lease@1",
+        "label": "continuation-preparation-custody-v01",
+        "started_utc": "2026-10-16T00:27:59.954195+00:00",
+        "cpu_slots": 1,
+        "memory_mb": 2048,
+        "child_process_slots": 3,
+        "lease_released": true,
+        "policy_unchanged": true,
+        "returncode": 0,
+        "offline_validation": true,
+        "network_dependency_installation": false,
+        "ended_utc": "2026-10-16T00:31:07.733055+00:00"
+      },
+      "junit": {
+        "tests": 23,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "modules": [
+          "api.test_native_candidate_continuation"
+        ],
+        "bytes": 4022,
+        "sha256": "b06fe5a4bd5ab3e34f97bb273c2814283abc714767cffe32c82502e1bd83d8e3"
+      },
+      "stdout.log": {
+        "bytes": 232318,
+        "sha256": "583a25d7c7fab5c54987788adc210fae65e9752f758725e19678b132fce3d2c0"
+      },
+      "stderr.log": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "label": "continuation-worker-pipeline-v01",
+      "qualifying": true,
+      "lease": {
+        "schema": "world-packet-replay-qualification-lease@1",
+        "label": "continuation-worker-pipeline-v01",
+        "started_utc": "2026-10-16T00:27:59.932037+00:00",
+        "cpu_slots": 1,
+        "memory_mb": 2048,
+        "child_process_slots": 3,
+        "lease_released": true,
+        "policy_unchanged": true,
+        "returncode": 0,
+        "offline_validation": true,
+        "network_dependency_installation": false,
+        "ended_utc": "2026-10-16T00:29:41.325774+00:00"
+      },
+      "junit": {
+        "tests": 5,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "modules": [
+          "api.test_native_candidate_continuation"
+        ],
+        "bytes": 1027,
+        "sha256": "7135a7b811c2af73f130f0755050ced852d13923e97058613088739b3bdaa7f9"
+      },
+      "stdout.log": {
+        "bytes": 61849,
+        "sha256": "1f977a608db79779da703ee89939094007187f23e684fbf27b01c9400d91a7ba"
+      },
+      "stderr.log": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    }
+  ],
+  "source_verification": "All changed source hashes frozen before qualification and verified again before evidence publication.",
+  "environment": {
+    "duckdb_module_path": "/home/barberb/.local/lib/python3.12/site-packages/duckdb/__init__.py",
+    "duckdb_version": "1.5.5",
+    "model_calls": 0,
+    "native_default_owner_bound_to_existing_policy": true,
+    "native_default_owner_policy_sha256": "f07cb14289fcb6275e4497dcc36be0dcf8bfc3dc87531ff7a9537eb85fdcc661",
+    "native_sql_health_check": true,
+    "network_dependency_installation": false,
+    "schema": "world-prelaunch-environment@1"
+  },
+  "model_inference_calls": 0,
+  "external_provider_calls": 0,
+  "docker_runs": 0,
+  "real_boundaries": [
+    "Same-owner exact native allocation, independent supervisor_run coordinator/lease and actual quantitative ResourceLease parent",
+    "Actually failed first Popen and immutable true wait/cleanup/broker census precede candidate generation",
+    "Task/grant, independent run and keyed parent refusal before candidate scanner; same original requirements and absolute deadline",
+    "Original parent/scheduler/run material pinned across preparation callbacks; parent mutation refused before reservation",
+    "One preparation per original source broker and one consumed run under explicit max_worker_children=2",
+    "Complete candidate prompt sealed for fresh worker census, then input descriptor closed before child launch",
+    "Genuine native child capacity, candidate admission and actual dispatch endpoint composed without serialized handle reconstruction",
+    "Actual second Popen receives exact input bytes and generated descriptor/census argv; CPU thread environment and immutable retirement observed",
+    "Code0 and code7 outcomes preserve parent capacity and leave native task in_progress",
+    "Failed cleanup retains actual leaf and typed session; explicit resource recovery preserves historical false census flags",
+    "Prelistener, descriptor-publication and running-thread construction failures preserve original error and cleanup handles",
+    "Descriptor-publication close-audit failure retains capacity after transport stop; second explicit abort verifies quiescence and releases",
+    "Local release flag cannot override resource kernel confirmed-release state or drop strong pending session custody",
+    "Existing archive, typed router, resource kernel and full-native router provider-stub success/failure regressions pass"
+  ],
+  "authored_fixture_boundaries": [
+    "Existing native fixture authors Quack transport and deployment UID/path admission; local claims/projections/allocation/run leases remain real",
+    "First inert child edits literal fixture bytes and exits7; composed second child reads prompt and returns0/7 without provider or target execution",
+    "Trusted descendant-cleanup callback proves the inert child group absent; failure injection authors publication/init outcomes",
+    "Separate existing full-native router regression authors provider/catalog initialization and provider observations"
+  ],
+  "limitations": [
+    "Same-owner host composition only; installed Terminal daemon and wrapper still have separate live ownership scopes",
+    "Protected native allocation still rejects group-writable production workspaces; authenticated writable delegation remains open",
+    "Caller retains original allocation/run/parent lifetime ownership; the composer does not reserve or launch the first worker",
+    "Two-child bound applies to this composed lineage, not arbitrary owner subprocesses or machine-wide model calls",
+    "Resource custody remains live-owner cooperative accounting, not cgroups or crash-safe external-child accounting",
+    "Candidate source generation is synchronous and checked around generation, not forcibly interrupted mid-scanner",
+    "Partial service publication may require further explicit owner cleanup; uncertain capacity is retained",
+    "No installed retry default, native authority transfer, task completion or proof acceptance enabled",
+    "No Docker deployment, external provider/model run, matched TerminalBench trial or measured total token savings",
+    "Provider-stub observations do not establish billing or legal autoformalization correctness"
+  ]
+}

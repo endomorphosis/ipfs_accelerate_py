@@ -84,6 +84,9 @@ REUSE_ROOTS = (DATASETS/'workspace/test-logs', DATASETS/'workspace/todo-queues',
 
 def capsule_reuse_binding(c):
     """Authenticate closed read-only cache metadata; canonical SDK validates bytes."""
+    if c.get('schema') == PHYSICAL_CLI_SCHEMA:
+        need('source_capsule_ref' not in c, 'physical observation cannot reuse a capsule')
+        return None
     if c.get('schema') == 'native-embedded-scoped-observation-cli/v2':
         return None
     need(c.get('schema') == 'native-embedded-scoped-observation-cli/v3', 'closed reuse CLI version required')
@@ -130,6 +133,99 @@ def capsule_reuse_binding(c):
     return value
 
 
+PHYSICAL_CLI_SCHEMA = 'native-embedded-scoped-observation-cli/v4'
+PHYSICAL_PROFILE_SCHEMA = 'native-embedded-physical-R-source@1'
+PHYSICAL_NAMESPACE = 'ipfs_datasets_py.logic.backends'
+PHYSICAL_CLI_FIELDS = frozenset({'schema', 'runtime_root', 'cwd', 'attempt_directory',
+    'temporary_directory', 'project_import_plan', 'pre_body_guard', 'result_path',
+    'source_sha256', 'observation_binding', 'import_head_capsule_Git', 'physical_source_profile'})
+PHYSICAL_RELATIVES = (
+    'ipfs_datasets_py/__init__.py',
+    'ipfs_datasets_py/ipfs_backend_router.py',
+    'ipfs_datasets_py/logic/__init__.py',
+    'ipfs_datasets_py/logic/backends/process.py',
+    'ipfs_datasets_py/optimizers/__init__.py',
+    'ipfs_datasets_py/optimizers/logic_theorem_optimizer/__init__.py',
+    'ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_daemon_resources.py',
+    'ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_resource_recovery.py',
+    'ipfs_datasets_py/optimizers/logic_theorem_optimizer/existing_resource_scheduler.py',
+    'ipfs_datasets_py/optimizers/logic_theorem_optimizer/parented_phase_resources.py',
+    'ipfs_datasets_py/optimizers/logic_theorem_optimizer/proof_resource_safety.py',
+    'ipfs_datasets_py/optimizers/logic_theorem_optimizer/resource_scheduler.py',
+    'ipfs_datasets_py/optimizers/logic_theorem_optimizer/runtime_telemetry.py',
+    'ipfs_datasets_py/router_deps.py',
+    'scripts/ops/legal_ir/run_owned_validation.py',
+)
+
+
+def _physical_source_profile(c, *, canonical_root, request_pins=None):
+    """Closed constructor DATA only; live Source ownership is checked separately."""
+    need(type(c) is dict and set(c) == PHYSICAL_CLI_FIELDS and c.get('schema') == PHYSICAL_CLI_SCHEMA
+         and type(c['runtime_root']) is str and Path(c['runtime_root']).is_absolute()
+         and (request_pins is None or type(request_pins) is dict),
+         'explicit physical observation CLI required')
+    profile = c.get('physical_source_profile')
+    need(type(profile) is dict and set(profile) == {'schema', 'source_root_binding',
+         'source_descriptors', 'normal_namespace_profiles'}
+         and profile['schema'] == PHYSICAL_PROFILE_SCHEMA, 'closed physical source profile required')
+    binding = profile['source_root_binding']
+    need(type(binding) is dict and set(binding) == {'physical_root', 'canonical_root'}
+         and binding['canonical_root'] == str(canonical_root)
+         and type(binding['physical_root']) is str, 'closed original physical/canonical binding required')
+    root = Path(binding['physical_root'])
+    canonical = Path(canonical_root)
+    need(root != canonical and not root.is_relative_to(canonical)
+         and not canonical.is_relative_to(root), 'disjoint physical/canonical source roots required')
+    need(root.is_absolute() and str(root) == binding['physical_root']
+         and root.resolve(strict=True) == root and root.is_dir()
+         and not any(p.is_symlink() for p in (root, *root.parents)),
+         'unaliased physical source root required')
+    refs = profile['source_descriptors']
+    expected = sorted(str(root / relative) for relative in PHYSICAL_RELATIVES)
+    need(type(refs) is list and len(refs) == 15
+         and [row.get('path') if type(row) is dict else None for row in refs] == expected,
+         'exact ordered fifteen physical source descriptors required')
+    source_map = c.get('source_sha256')
+    imports = c.get('project_import_plan')
+    need(type(source_map) is dict and type(imports) is dict
+         and set(imports) == {'accelerate_root', 'datasets_root', 'publication_root', 'source_pins'}
+         and imports['accelerate_root'] == c['runtime_root']
+         and imports['datasets_root'] == imports['publication_root'] == str(root)
+         and type(imports['source_pins']) is list and 0 < len(imports['source_pins']) <= 1024,
+         'exact physical import roots required')
+    for row in refs:
+        need(set(row) == {'path', 'bytes', 'sha256'} and type(row['bytes']) is int
+             and 0 < row['bytes'] <= 4 * 1024**2 and type(row['sha256']) is str
+             and re.fullmatch(r'[0-9a-f]{64}', row['sha256'])
+             and source_map.get(row['path']) == row['sha256']
+             and (request_pins is None or request_pins.get(row['path']) == row['sha256'])
+             and sum(type(item) is dict and item.get('path') == row['path']
+                     for item in imports['source_pins']) == 1
+             and row in imports['source_pins'], 'physical source maps or exact import descriptors differ')
+    for row in imports['source_pins']:
+        need(type(row) is dict and type(row.get('path')) is str, 'closed import descriptor required')
+        path = Path(row['path'])
+        if path.is_relative_to(root):
+            need(row in refs, 'physical project import outside exact fifteen-source profile')
+    namespaces = profile['normal_namespace_profiles']
+    need(type(namespaces) is list and len(namespaces) == 1 and type(namespaces[0]) is dict,
+         'one physical backends namespace required')
+    namespace = namespaces[0]
+    need(set(namespace) == {'fullname', 'path', 'device', 'inode', 'initializer_absent'}
+         and namespace['fullname'] == PHYSICAL_NAMESPACE
+         and namespace['path'] == str(root / 'ipfs_datasets_py/logic/backends')
+         and type(namespace['device']) is int and namespace['device'] > 0
+         and type(namespace['inode']) is int and namespace['inode'] > 0
+         and namespace['initializer_absent'] is True, 'closed physical namespace descriptor required')
+    # Snapshot caller-owned nested mappings; this is not an ownership capability.
+    return json.loads(json.dumps(profile, sort_keys=True, allow_nan=False))
+
+
+def _physical_profile_sha(profile):
+    return hashlib.sha256(json.dumps(profile, sort_keys=True, separators=(',', ':'),
+        ensure_ascii=True, allow_nan=False).encode()).hexdigest()
+
+
 def configuration(plan):
     need(type(plan) is dict and set(plan)==PLAN_FIELDS
          and plan['schema']=='native-embedded-scoped-observation-plan/v1'
@@ -142,7 +238,8 @@ def configuration(plan):
          'finite unique task CID scope required')
     c=plan['native_metadata_cli']
     need(type(c) is dict and ((c.get('schema')=='native-embedded-scoped-observation-cli/v2' and set(c)==CLI_FIELDS)
-         or (c.get('schema')=='native-embedded-scoped-observation-cli/v3' and set(c)==CLI_FIELDS|{'source_capsule_ref'}))
+         or (c.get('schema')=='native-embedded-scoped-observation-cli/v3' and set(c)==CLI_FIELDS|{'source_capsule_ref'})
+         or (c.get('schema')==PHYSICAL_CLI_SCHEMA and set(c)==CLI_FIELDS|{'physical_source_profile'}))
          and c['runtime_root']==str(RUNTIME) and c['cwd']==str(WORKSPACE),
          'closed original observation CLI binding required')
     attempt=Path(c['attempt_directory']);temporary=Path(c['temporary_directory'])
@@ -177,6 +274,8 @@ def configuration(plan):
          'exact actual database/helper/catalogue binding required')
     validate_import_git_binding(c)
     capsule_reuse_binding(c)
+    if c['schema'] == PHYSICAL_CLI_SCHEMA:
+        _physical_source_profile(c, canonical_root=DATASETS)
     return c
 
 
@@ -400,7 +499,7 @@ def save(path,value):
     return descriptor(path)
 
 
-def main():
+def main(*, physical_owner=None):
     parser=argparse.ArgumentParser();parser.add_argument('--plan',required=True,type=Path)
     parser.add_argument('--plan-sha256',required=True);args=parser.parse_args()
     raw=regular(args.plan);need(hashlib.sha256(raw).hexdigest()==args.plan_sha256,'plan changed')
@@ -414,10 +513,43 @@ def main():
     need(descriptor(guard_ref['path'])==guard_ref and guard_ref['sha256']==GUARD_SHA,
          'original before-body source guard required')
     import_plan=c['project_import_plan']
-    need(import_plan['accelerate_root']==str(RUNTIME) and import_plan['datasets_root']==str(DATASETS)
-         and import_plan['publication_root']==str(DATASETS),'sealed original source roots required')
-    guarded=runpy.run_path(guard_ref['path'],run_name='_original_embedded_observation_before_body_guard')
-    importer=guarded['GuardedProjectImports'](import_plan,attempt/'exports').install()
+    physical_mode = c['schema'] == PHYSICAL_CLI_SCHEMA
+    physical_state = None
+    if physical_mode:
+        _physical_source_profile(c, canonical_root=DATASETS)
+        owner_path = RUNTIME / 'ipfs_accelerate_py/agent_supervisor/rescue/original_embedded_observation_owner.py'
+        need(type(physical_owner) is types.ModuleType and physical_owner.__dict__.get('__file__') == str(owner_path)
+             and source_pin(owner_path, c)['sha256'] == c['source_sha256'][str(owner_path)],
+             'CLI4 requires the exact current original owner module')
+        child_frame = frame_for(physical_owner, physical_owner.child_main)
+        need(child_frame.f_locals.get('driver') is sys.modules[__name__]
+             and child_frame.f_locals.get('physical_mode') is True
+             and child_frame.f_locals.get('physical_publication_ready') is True
+             and physical_owner.child_main.__code__.co_filename == str(owner_path),
+             'CLI4 requires the actual original child frame, not task DATA')
+        owner_args = child_frame.f_locals['args']; owner_value = child_frame.f_locals['value']
+        need(owner_value['argv'][4] == str(args.plan) and owner_value['argv'][6] == args.plan_sha256
+             and owner_value['argv'][2] == str(Path(__file__).absolute())
+             and child_frame.f_locals.get('actor_path') == Path(__file__).absolute()
+             and child_frame.f_locals.get('raw') == physical_owner.regular(owner_args.request)
+             and hashlib.sha256(child_frame.f_locals['raw']).hexdigest() == owner_args.expected_request_sha256
+             and all(owner_value['source_sha256'].get(path) == digest for path, digest in c['source_sha256'].items()),
+             'CLI4 internal request/plan context differs')
+        for name in ('_physical_context', '_physical_guard_install', '_physical_guard_checkpoint', '_physical_publish_direct'):
+            function = getattr(physical_owner, name)
+            need(type(function) is types.FunctionType and function.__globals__ is physical_owner.__dict__
+                 and function.__code__.co_filename == str(owner_path), 'exact physical owner helper required')
+        context = physical_owner._physical_context(owner_value, owner_args, c, 'child-observation')
+        physical_state = physical_owner._physical_guard_install(c, context)
+        physical_state['publication_ready'] = True
+        physical_state['bootstrap_ref'] = physical_owner._physical_publish_direct(physical_state, physical_state['bootstrap'], 'native-physical-R-child-guard-bootstrap.json')
+        importer = physical_state['importer']
+    else:
+        need(physical_owner is None, 'legacy driver does not accept a physical owner context')
+        need(import_plan['accelerate_root']==str(RUNTIME) and import_plan['datasets_root']==str(DATASETS)
+             and import_plan['publication_root']==str(DATASETS),'sealed original source roots required')
+        guarded=runpy.run_path(guard_ref['path'],run_name='_original_embedded_observation_before_body_guard')
+        importer=guarded['GuardedProjectImports'](import_plan,attempt/'exports').install()
     temporary=Path(c['temporary_directory']);info=temporary.lstat()
     need(stat.S_ISDIR(info.st_mode) and info.st_uid==os.geteuid() and info.st_mode&0o077==0,
          'private original-owned temporary directory required')
@@ -470,7 +602,10 @@ def main():
         # Closing an unactivated original daemon does not create its stores.
         if daemon is not None:daemon.close()
         if source is not None:source.close()
-        importer.checkpoint('closing-native-embedded-observation')
+        if physical_mode:
+            physical_owner._physical_guard_checkpoint(physical_state, 'closing-native-embedded-observation', publish=True)
+        else:
+            importer.checkpoint('closing-native-embedded-observation')
         need(regular(args.plan)==raw,'plan changed during original observation')
         for path,digest in c['source_sha256'].items():
             need(descriptor(path)['sha256']==digest,'source changed: '+path)

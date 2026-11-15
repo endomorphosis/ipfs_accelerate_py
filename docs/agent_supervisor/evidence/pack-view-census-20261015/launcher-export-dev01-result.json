@@ -1,0 +1,12 @@
+{
+  "docker_calls": 0,
+  "errors": 0,
+  "exit_code": 0,
+  "failures": 0,
+  "provider_calls": 0,
+  "schema": "terminal-artifact-qualification@1",
+  "seconds": 2.2309318950865418,
+  "skipped": 0,
+  "source_pins_unchanged": true,
+  "tests": 47
+}

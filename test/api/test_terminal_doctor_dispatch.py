@@ -185,9 +185,13 @@ def test_driver_selects_before_owner_and_preserves_provider_accounting(
     def doctor(**kwargs):
         events.append('doctor')
         assert kwargs['task_cid'] == task.task_cid
-        return {'route': route, 'status': 'candidate_ready' if provider_free else 'residual',
+        result = {'route': route, 'status': 'candidate_ready' if provider_free else 'residual',
             'provider_calls': 0, 'artifact': '/app/.runtime/doctor-handoffs/candidate.json',
             'sha256': 'a' * 64, 'task_cid': task.task_cid}
+        if controls.get('doctor_coding_policy') is not None and not provider_free:
+            result['residual_context'] = {'artifact': '/app/.runtime/doctor-residuals/residual.json',
+                'sha256': 'd' * 64, 'task_cid': task.task_cid}
+        return result
     monkeypatch.setattr(dispatch, 'prepare_terminal_doctor_dispatch', doctor)
     @contextmanager
     def owner(**_):
@@ -223,7 +227,10 @@ def test_driver_selects_before_owner_and_preserves_provider_accounting(
     assert result['task_completed'], result
     assert result['implementation_route'] == route
     assert result['provider_invocations'] == []
-    assert ('unreceipted_provider_attempt' in result) == (route == 'model_router')
+    # The mocked native runtime emits no materialization or round lifecycle.
+    # A selected continuation cannot infer zero coding usage from its route.
+    assert ('unreceipted_provider_attempt' in result) == (
+        route == 'model_router' or controls.get('candidate_rounds') == 2)
     assert events.count('retrieval_options') == 1
     assert events.count('planning') == 1
     assert result.get('semantic_transport_schema', 'supervisor-semantic-router-input@1') == transport

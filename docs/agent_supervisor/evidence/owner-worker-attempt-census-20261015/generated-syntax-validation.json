@@ -1,0 +1,26 @@
+{
+  "schema": "generated-owner-worker-syntax-qualification@1",
+  "application_imports": 0,
+  "programs": {
+    "OWNER_MONITOR": {
+      "sha256": "8e780ce11a49382dd871d39f372a9f7d45bb30cca8c77db8e85672974e817d4f",
+      "bytes": 4847,
+      "compiles": true
+    },
+    "OWNER_ENTRY": {
+      "sha256": "4c5e56fa98b48a3e02dc0445de09b5f2568094d5ba4024ae3ffacdc0bfc21a1c",
+      "bytes": 13213,
+      "compiles": true
+    },
+    "VALIDATION_ENTRY": {
+      "sha256": "8ce91af163eebe186138fc7d8c16677915f1cf1beee89f4d045fe748d09fc0fc",
+      "bytes": 5188,
+      "compiles": true
+    },
+    "WORKER_ENTRY": {
+      "sha256": "9968de7d7ec2224350eb0f15ca7436c652572a87bb2572a59d2b30c4860356d8",
+      "bytes": 28885,
+      "compiles": true
+    }
+  }
+}

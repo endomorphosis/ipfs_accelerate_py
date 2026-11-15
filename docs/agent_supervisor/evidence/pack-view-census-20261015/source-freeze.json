@@ -1,0 +1,210 @@
+{
+  "docker_calls": 0,
+  "files": [
+    {
+      "bytes": 16292,
+      "path": "/home/barberb/lift_coding/artifacts/pack-view-census-20261015/live/run.py",
+      "sha256": "39df1934147d60d2099f01fab3ed9c282cdc60532590d2cc4a9545a5f5967d97"
+    },
+    {
+      "bytes": 2767,
+      "path": "/home/barberb/lift_coding/artifacts/pack-view-census-20261015/live/prepare_draft.py",
+      "sha256": "d3bdef0ed91d1b4663fce18e1d044e2e5d933b21bb1c95e36a42c4e5edf6ba57"
+    },
+    {
+      "bytes": 4222,
+      "path": "/home/barberb/lift_coding/artifacts/pack-view-census-20261015/live/recipe-draft.json",
+      "sha256": "57e348294541b4553efa7114906dd7ed57fcdafe9ff5d5ccce4f9cf3dec03caf"
+    },
+    {
+      "bytes": 1690,
+      "path": "/home/barberb/lift_coding/artifacts/pack-view-census-20261015/live/environment.json",
+      "sha256": "aab89ecf5882c5477d16a15692e09ee40c4bc26297dfdfb388f1114cfbe7b15c"
+    },
+    {
+      "bytes": 375,
+      "path": "/home/barberb/lift_coding/artifacts/pack-view-census-20261015/live/largest-eigenval-public-profile.json",
+      "sha256": "274146542fd5d4c611b0b01700fbeea48a202da875525303bddbd44b2a4e67c3"
+    },
+    {
+      "bytes": 17733,
+      "path": "/home/barberb/lift_coding/artifacts/pack-view-census-20261015/live/closed_export.py",
+      "sha256": "ecffa74dc105caafd6f49164561c18b752ac5da9316b618e22ad3a1e7abcfe3e"
+    },
+    {
+      "bytes": 4857,
+      "path": "/home/barberb/lift_coding/artifacts/pack-view-census-20261015/live/local-asset-readiness-draft01.json",
+      "sha256": "b9d9de822c04b4ec9ca3c5d1c8f925add7005f907240398741df9a9aaea1ab8c"
+    },
+    {
+      "bytes": 3207,
+      "path": "/home/barberb/lift_coding/artifacts/pack-view-census-20261015/live/test_run.py",
+      "sha256": "08d1ebfcae4462fd876ead4c6eecbe5dce11cc77df23f6f52e3b4d8aac4ff55b"
+    },
+    {
+      "bytes": 16408,
+      "path": "/home/barberb/lift_coding/artifacts/pack-view-census-20261015/live/test_closed_export.py",
+      "sha256": "c74913122d667d8ca5d704ef8d9bf11677eda2fc288ecc8a2b4677186c284374"
+    },
+    {
+      "bytes": 2133,
+      "path": "/home/barberb/lift_coding/artifacts/pack-view-census-20261015/live/scaffold-origin.json",
+      "sha256": "9a87df0c616bde13902cd0fe2fa292f6b14b09b64cadda7f5de098b637efa18e"
+    },
+    {
+      "bytes": 5115,
+      "path": "/home/barberb/lift_coding/artifacts/pack-view-census-20261015/qualification-final01.json",
+      "sha256": "463d517aad127684029d8391185c63374c7643ceef40ff62289476c9e67f8c12"
+    }
+  ],
+  "inputs": [
+    {
+      "bytes": 1739,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-suite-eigenval-pilot-20261004/source384-config.json",
+      "sha256": "b81ecc3487dd077e92024a60c0317ca80057b1680e6a2e74389331b360ca61c5"
+    },
+    {
+      "bytes": 716,
+      "path": "/home/barberb/lift_coding/.benchmarks/terminal-bench-2/largest-eigenval/instruction.md",
+      "sha256": "6fa938389f99648508e5a9772e0d5e95d1102738c68d1ff61bd65469d76c52ab"
+    },
+    {
+      "bytes": 642,
+      "path": "/home/barberb/lift_coding/.benchmarks/terminal-bench-2/largest-eigenval/environment/src/eigen.py",
+      "sha256": "bbd5be97fb11e9ed46fd5f1fb9d407efb19b265b549d3c36e2cfba923efe3d9d"
+    },
+    {
+      "bytes": 2246,
+      "path": "/home/barberb/lift_coding/.benchmarks/terminal-bench-2/largest-eigenval/environment/src/eval.py",
+      "sha256": "70a12a80b9caa392b1f1f0439de853932c5ac61f1a2274b5de1ce93aebd4e139"
+    },
+    {
+      "bytes": 493355,
+      "path": "/home/barberb/lift_coding/artifacts/distributed384-20261001/run-01/security_ir/coordinator/checkpoints/2ca38dfcc05536315fc3e2c0647b710b930ef4066b474061a7b4e5bfb9a258c5.json",
+      "sha256": "2ca38dfcc05536315fc3e2c0647b710b930ef4066b474061a7b4e5bfb9a258c5"
+    },
+    {
+      "bytes": 142867512,
+      "path": "/home/barberb/lift_coding/artifacts/source-context-substitution-20261013/live-preparation/grok-1.0.46/grok",
+      "sha256": "45b0943e736f00a249b9cf02af2be9e0749d97c09a6f55cfcf3029a1a836f23e"
+    },
+    {
+      "bytes": 155005253,
+      "path": "/home/barberb/lift_coding/artifacts/source384-torch-wheel-20261003/torch-2.13.0+cpu-cp312-cp312-manylinux_2_28_aarch64.whl",
+      "sha256": "6f307c2c32d764ffc6ff6893b801fad6d4752f3e67966cb8abf1843427c02604"
+    },
+    {
+      "bytes": 190,
+      "path": "/home/barberb/.cache/huggingface/hub/models--thenlper--gte-small/snapshots/17e1f347d17fe144873b1201da91788898c639cd/1_Pooling/config.json",
+      "sha256": "4be450dde3b0273bb9787637cfbd28fe04a7ba6ab9d36ac48e92b11e350ffc23"
+    },
+    {
+      "bytes": 583,
+      "path": "/home/barberb/.cache/huggingface/hub/models--thenlper--gte-small/snapshots/17e1f347d17fe144873b1201da91788898c639cd/config.json",
+      "sha256": "00273cdfb3e05c7304d180270bdef8adae45023e7bdfc396338bdd815943dc59"
+    },
+    {
+      "bytes": 66746168,
+      "path": "/home/barberb/.cache/huggingface/hub/models--thenlper--gte-small/snapshots/17e1f347d17fe144873b1201da91788898c639cd/model.safetensors",
+      "sha256": "9a1eb90bbac323ea08aa5629b624fe6ae75db121b904799c2266a1e2c2de22d2"
+    },
+    {
+      "bytes": 385,
+      "path": "/home/barberb/.cache/huggingface/hub/models--thenlper--gte-small/snapshots/17e1f347d17fe144873b1201da91788898c639cd/modules.json",
+      "sha256": "73348a3d8f8ae4cc5f851dc6b98be3ea819390b814e83656d5eebbadf75fe43e"
+    },
+    {
+      "bytes": 57,
+      "path": "/home/barberb/.cache/huggingface/hub/models--thenlper--gte-small/snapshots/17e1f347d17fe144873b1201da91788898c639cd/sentence_bert_config.json",
+      "sha256": "948201d8329907aae938fa62f9ceeed53f5694dacc2b87b9f3b78b37ee986529"
+    },
+    {
+      "bytes": 125,
+      "path": "/home/barberb/.cache/huggingface/hub/models--thenlper--gte-small/snapshots/17e1f347d17fe144873b1201da91788898c639cd/special_tokens_map.json",
+      "sha256": "b6d346be366a7d1d48332dbc9fdf3bf8960b5d879522b7799ddba59e76237ee3"
+    },
+    {
+      "bytes": 711661,
+      "path": "/home/barberb/.cache/huggingface/hub/models--thenlper--gte-small/snapshots/17e1f347d17fe144873b1201da91788898c639cd/tokenizer.json",
+      "sha256": "da0e79933b9ed51798a3ae27893d3c5fa4a201126cef75586296df9b4d2c62a0"
+    },
+    {
+      "bytes": 394,
+      "path": "/home/barberb/.cache/huggingface/hub/models--thenlper--gte-small/snapshots/17e1f347d17fe144873b1201da91788898c639cd/tokenizer_config.json",
+      "sha256": "e1790949631401af1bfb6c9c7aeec7fcf612e274d73579d99f704faea40c8ba7"
+    },
+    {
+      "bytes": 231508,
+      "path": "/home/barberb/.cache/huggingface/hub/models--thenlper--gte-small/snapshots/17e1f347d17fe144873b1201da91788898c639cd/vocab.txt",
+      "sha256": "07eced375cec144d27c900241f3e339478dec958f92fddbc551f295c992038a3"
+    },
+    {
+      "bytes": 32143862,
+      "path": "/home/barberb/.duckdb/extensions/v1.5.5/linux_arm64/ducklake.duckdb_extension",
+      "sha256": "d0b57c8e261b89a1ae367c7224f0857cfde72ab6cf2609f188e0de9b897b1088"
+    },
+    {
+      "bytes": 19861758,
+      "path": "/home/barberb/.duckdb/extensions/v1.5.5/linux_arm64/httpfs.duckdb_extension",
+      "sha256": "eba6e263e395a83966090f1f11ade63630b1b21422f0f2813858d179d42ea1e9"
+    },
+    {
+      "bytes": 29708110,
+      "path": "/home/barberb/.duckdb/extensions/v1.5.5/linux_arm64/quack.duckdb_extension",
+      "sha256": "41b2b9292bfb860c5ca8c5f818f9dd7a2c6bc24f9c750cffbc3169286fe59f08"
+    },
+    {
+      "bytes": 1032,
+      "path": "/home/barberb/lift_coding/.benchmarks/terminal-bench-2/largest-eigenval/task.toml",
+      "sha256": "f7b9b7dda446f969a3ce88f61039d216f4d58b5fc5c10ff9faa24e2403bbd830"
+    },
+    {
+      "bytes": 307,
+      "path": "/home/barberb/lift_coding/.benchmarks/terminal-bench-2/largest-eigenval/environment/Dockerfile",
+      "sha256": "93253c52a674766179244f2290ba8ed43680a7cbbbc0f7168322298c5f5a4b94"
+    }
+  ],
+  "provider_calls": 0,
+  "qualification": {
+    "bytes": 5115,
+    "path": "/home/barberb/lift_coding/artifacts/pack-view-census-20261015/qualification-final01.json",
+    "sha256": "463d517aad127684029d8391185c63374c7643ceef40ff62289476c9e67f8c12"
+  },
+  "recipe": {
+    "bytes": 4740,
+    "path": "/home/barberb/lift_coding/artifacts/pack-view-census-20261015/live/recipe.json",
+    "sha256": "df8f6d1538e163fb1e16ecb296e90df82890bb289ff7ac41f478b937fd7d1986"
+  },
+  "roots": {
+    "datasets": {
+      "commit": "28b9ef1f0b9da51e87b1e68ee565b43681397109",
+      "path": "/home/barberb/lift_coding/.worktrees/supervisor-bounded-rounds-datasets-20261014"
+    },
+    "kit": {
+      "commit": "8ac00bb1974b1378e12091d546d8425af34049e0",
+      "path": "/home/barberb/lift_coding/.worktrees/publication-main-20261004/kit"
+    },
+    "source": {
+      "commit": "19dbb524c80d6fdfedd5ce15e696cbf911eed8c1",
+      "path": "/home/barberb/lift_coding/.worktrees/supervisor-pack-view-census-20261015"
+    }
+  },
+  "schema": "working-set-owner-census-source-freeze@1",
+  "source_frozen_before_execution": true,
+  "source_sha256": {
+    "benchmarks/agent_supervisor/container_coding/container_worker_deployment.py": "67e5eddaa8e64e6d90daa47db581a4e31dd1f27f93a6d77bdfe75b99350f28dc",
+    "benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py": "6555ea4dbb82333ceeaa3cc130b61a6bfa24478720824b352de9bcc81143e888",
+    "benchmarks/agent_supervisor/container_coding/terminal_semantic_working_set_policy.py": "1da0b785e476db8f63459821c20a8fbce0d345e826971c0b09e26345e3de5456",
+    "benchmarks/agent_supervisor/container_coding/terminal_working_set_census_observation.py": "e2516fcc34330d4391ee993ca578819cb5bf4d5f43c62b4dc48aabeca366bf9c",
+    "benchmarks/agent_supervisor/container_coding/test_semantic_working_set_census_worker_wiring.py": "fe27915623892bc1b6c7ad39d59bb6b8c87067506b72f8fc866ee30b0b400bf1",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_semantic_working_set_policy.py": "1de78cc1331401f8c2147aa165fde444c5831b2b425f9cb17ee1111a8662c328",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_working_set_census_driver.py": "7495c181d6192011d19b3bc6b0a73ce8240ed504111edd714790137efb39c6eb",
+    "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py": "a8876c3c1520fb54801b49deeb077541a010a0fe935da4703e2133f19507d8ff",
+    "ipfs_accelerate_py/agent_supervisor/runtime/semantic_pack_projection.py": "54d3ed887b4037dd860c431053e6e45fff6d7182b66b1b90bc566d00a1384ddf",
+    "ipfs_accelerate_py/agent_supervisor/runtime/semantic_working_set_census.py": "e8d13db2ae702cb39d74e2add87927675e4262b676d314ff31c81b46f5799873",
+    "test/api/test_semantic_pack_census.py": "95c89e8f827874ca4e92c9296cfab10603646dd0cfac4223bd6d0e8159d23a7e",
+    "test/api/test_semantic_pack_projection.py": "7d88cc8129497129435c090950c2375ba6392bd77ae45dbea62874e54ce57f48",
+    "test/api/test_semantic_working_set_census_dispatch.py": "bf8114ed83f949f007fcd5a5bf3ec5be7992d1e0b50a01db427aeb38982f87a7",
+    "test/api/test_terminal_working_set_census_replay.py": "0507a231fbe9100c11a11a9e392fc20f4bed00fe631415cd4690ad85c5a718aa"
+  }
+}

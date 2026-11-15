@@ -267,6 +267,7 @@ from ..validation.validation_runtime import (
     canonical_validation_environment_contract,
     sealed_validation_python_runner,
     validation_command_launcher_argv0,
+    validation_executable_path,
     validation_python_launcher_environment,
     validation_shell_command,
 )
@@ -1076,6 +1077,9 @@ PRODUCTION_PROVIDER_ALLOW_RAW_COMMAND_ENV = (
 )
 REQUIRE_TASK_EXECUTION_METADATA_ENV = (
     "IPFS_ACCELERATE_AGENT_REQUIRE_TASK_EXECUTION_METADATA"
+)
+REQUIRE_PROVIDER_TASK_CONTRACT_ENV = (
+    "IPFS_ACCELERATE_AGENT_REQUIRE_PROVIDER_TASK_CONTRACT"
 )
 _GOOSE_BIN_ENV = "IPFS_ACCELERATE_AGENT_GOOSE_BIN"
 _GOOSE_MODEL_ENV = "IPFS_ACCELERATE_AGENT_GOOSE_MODEL"
@@ -4010,6 +4014,14 @@ class ImplementationRetryDeferred(RuntimeError):
         self.backoff_seconds = backoff_seconds
 
 
+class ProviderTaskContractDeferred(ImplementationRetryDeferred):
+    """A writing task lacks a reviewed dispatch contract; no attempt is spent."""
+
+    def __init__(self, reason: str, *, receipt: Mapping[str, Any]) -> None:
+        super().__init__(reason, backoff_seconds=300)
+        self.receipt = dict(receipt)
+
+
 class Source384ResourceDeferred(ImplementationRetryDeferred):
     """Native resource refusal before a nominated context can be dispatched."""
 
@@ -5553,6 +5565,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         # relative --worktree-root cannot be resolved a second time below it.
         if not configured_worktree_root.is_absolute():
             configured_worktree_root = self.repo_root / configured_worktree_root
+        self._configured_worktree_root_lexical = configured_worktree_root
         self.worktree_root = configured_worktree_root.resolve()
         self.worktree_pool_enabled = (
             _env_bool(WORKTREE_POOL_ENABLED_ENV, True)
@@ -16255,7 +16268,29 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             },
         )
 
-    def _record_empty_backlog_state(self, *, reason: str, error: str = "") -> dict[str, Any]:
+    @staticmethod
+    def _runtime_projection_source_changed(
+        before: Mapping[str, Any],
+        after: Mapping[str, Any],
+    ) -> bool:
+        """Do not consume a peer's new task revision using an older projection.
+
+        Own event, index and lease writes are expected during a pass. Task
+        board and configured task-source revisions require a fresh projection.
+        """
+
+        return any(
+            before.get(kind) != after.get(kind)
+            for kind in ("task_board", "task_source_identity")
+        )
+
+    def _record_empty_backlog_state(
+        self,
+        *,
+        reason: str,
+        error: str = "",
+        projection_sources: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
         previous = PortalTaskState.load(self.state_path)
         strategy = self.load_strategy()
         live_inflight_implementation = self._find_live_inflight_implementation()
@@ -16342,7 +16377,13 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         if task_source_identity is not None:
             result["task_source_identity"] = task_source_identity
         final_source_digest, final_sources = self._runtime_source_head()
-        if state_written:
+        projection_source_changed = (
+            projection_sources is not None
+            and self._runtime_projection_source_changed(projection_sources, final_sources)
+        )
+        if projection_source_changed:
+            result["source_changed_during_projection"] = True
+        if state_written and not projection_source_changed:
             checkpoint_result = self._save_runtime_checkpoint(
                 source_digest=final_source_digest,
                 sources=final_sources,
@@ -16351,7 +16392,9 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             )
             result["delta_checkpoint"] = checkpoint_result
             result["write_count"] += int(checkpoint_result["write_count"])
-        self._runtime_last_source_digest = final_source_digest
+        self._runtime_last_source_digest = (
+            "" if projection_source_changed else final_source_digest
+        )
         self._runtime_last_result = self._runtime_result_projection(result)
         self._acknowledge_runtime_events()
         return result
@@ -18608,7 +18651,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 }
         wake_kinds = self._consume_runtime_wake_kinds()
         self._current_runtime_wake_kinds = set(wake_kinds)
-        source_digest, _source_metadata = self._runtime_source_head()
+        source_digest, projection_sources = self._runtime_source_head()
         forced_wake_kinds = wake_kinds.difference({"observation_window"})
         safety_reconciliation_due = (
             time.monotonic() - self._last_safety_reconciliation_monotonic
@@ -18770,9 +18813,13 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     if self.task_source is not None
                     else "todo_read_failed"
                 )
-                return self._record_empty_backlog_state(reason=reason, error=str(exc))
+                return self._record_empty_backlog_state(
+                    reason=reason, error=str(exc), projection_sources=projection_sources
+                )
         if not tasks:
-            return self._record_empty_backlog_state(reason="no_tasks_found")
+            return self._record_empty_backlog_state(
+                reason="no_tasks_found", projection_sources=projection_sources
+            )
         aliases_by_cid = self._register_task_identities(tasks)
         merge_train_progress: dict[str, Any] | None = None
         if not self.manual_completion_authority_revalidation_only:
@@ -19575,6 +19622,17 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             selection_scope["selection_idle_reason"] = (
                 "all_selectable_ready_tasks_deferred_by_resource_claim"
             )
+        if selected is None and not selection_scope["selection_idle_reason"]:
+            eligible_ids = set(selection_scope["eligible_ready_task_ids"])
+            eligible_tasks = [task for task in selectable_tasks if task.task_id in eligible_ids]
+            if (eligible_ids and len(eligible_tasks) == len(eligible_ids)
+                    and all(self.task_queue.is_cooled_down(self._canonical_ref(task))
+                            for task in eligible_tasks)):
+                # Preserve exact canonical queue fences in the idle projection.
+                # Polls must not turn retry backpressure into a dispatch stall.
+                selection_scope["selection_idle_reason"] = (
+                    "implementation_retry_deferred:all_eligible_ready_tasks_in_cooldown"
+                )
         state = PortalTaskState.load(self.state_path)
         state.heartbeat_at = previous.heartbeat_at
         if newly_completed or not state.last_progress_at:
@@ -20039,11 +20097,19 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         if task_source_identity is not None:
             result["task_source_identity"] = task_source_identity
         final_source_digest, final_sources = self._runtime_source_head()
+        projection_source_changed = self._runtime_projection_source_changed(
+            projection_sources, final_sources
+        )
+        if projection_source_changed:
+            result["source_changed_during_projection"] = True
         # An implementation may mutate attempt, lease, validation, and active
         # execution state after the board projection above was selected. Do
         # not acknowledge that source head until a follow-up pass reconciles
         # those effects into the task projection.
-        if (state_written or completion_receipt_writes) and (
+        # A sibling can also complete or publish a task during this pass.
+        # Preserve the older checkpoint and require the next ordinary pass
+        # to reload that revision rather than caching stale waiting counts.
+        if not projection_source_changed and (state_written or completion_receipt_writes) and (
             implementation_result is None or stable_admission_deferral_result
         ):
             checkpoint_result = self._save_runtime_checkpoint(
@@ -20056,7 +20122,8 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             result["write_count"] += int(checkpoint_result["write_count"])
         self._runtime_last_source_digest = (
             final_source_digest
-            if implementation_result is None or stable_admission_deferral_result
+            if not projection_source_changed
+            and (implementation_result is None or stable_admission_deferral_result)
             else ""
         )
         self._runtime_last_result = self._runtime_result_projection(result)
@@ -22228,6 +22295,242 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             for task in tasks
         )
 
+    def _required_validation_file_pin_contract(self, task: PortalTask) -> dict[str, Any]:
+        """Check optional exact input pins without granting file or model authority.
+
+        This is an availability fence only. Actual validation still verifies
+        its inputs and authority independently after dispatch. Hashing is
+        bounded and rechecks descriptor and canonical-path identity.
+        """
+        metadata = task.metadata or {}
+        if "required validation file pins" not in metadata:
+            return {}
+        raw = metadata["required validation file pins"]
+        required: list[dict[str, Any]] = []
+        invalid: list[str] = []
+        unavailable: list[dict[str, str]] = []
+        if not isinstance(raw, str) or len(raw.encode("utf-8", errors="surrogatepass")) > 65536:
+            invalid.append("declaration_must_be_json_string_at_most_65536_bytes")
+            rows = []
+        else:
+            try:
+                rows = json.loads(raw)
+            except (ValueError, TypeError, RecursionError):
+                rows = None
+            if not isinstance(rows, list) or not 1 <= len(rows) <= 64:
+                invalid.append("declaration_requires_1_to_64_pins")
+                rows = []
+        total = 0
+        seen: set[str] = set()
+        for row in rows:
+            if not isinstance(row, dict) or set(row) != {"path", "bytes", "sha256"}:
+                invalid.append("pin_requires_exact_path_bytes_sha256_fields")
+                continue
+            name, size, digest = row["path"], row["bytes"], row["sha256"]
+            if (not isinstance(name, str) or not name or len(name.encode("utf-8", errors="surrogatepass")) > 4096
+                    or any(ord(character) < 32 or ord(character) == 127
+                           or 0xD800 <= ord(character) <= 0xDFFF for character in name)
+                    or not Path(name).is_absolute() or str(Path(name)) != name
+                    or ".." in Path(name).parts):
+                invalid.append("pin_path_must_be_canonical_absolute")
+                continue
+            if type(size) is not int or not 0 <= size <= 1024 ** 3:
+                invalid.append("pin_size_must_be_integer_from_0_to_1073741824")
+                continue
+            if not isinstance(digest, str) or re.fullmatch(r"[0-9a-f]{64}", digest) is None:
+                invalid.append("pin_sha256_must_be_64_lowercase_hex")
+                continue
+            if name in seen:
+                invalid.append("duplicate_pin_path")
+                continue
+            seen.add(name)
+            total += size
+            required.append({"path": name, "bytes": size, "sha256": digest})
+        required.sort(key=lambda row: row["path"])
+        if total > 2 * 1024 ** 3:
+            invalid.append("pin_total_exceeds_2147483648_bytes")
+        if not invalid:
+            def identity(value):
+                return (value.st_dev, value.st_ino, value.st_size,
+                        value.st_mtime_ns, value.st_ctime_ns)
+
+            for row in required:
+                path = Path(row["path"])
+                try:
+                    if path.resolve(strict=False) != path:
+                        unavailable.append({"path": str(path), "reason": "noncanonical_or_symlink"})
+                        continue
+                    descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+                                         | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_CLOEXEC", 0))
+                    try:
+                        before = os.fstat(descriptor)
+                        if not stat_module.S_ISREG(before.st_mode):
+                            unavailable.append({"path": str(path), "reason": "not_regular_file"})
+                            continue
+                        if before.st_size != row["bytes"]:
+                            unavailable.append({"path": str(path), "reason": "size_changed"})
+                            continue
+                        digest = hashlib.sha256()
+                        consumed = 0
+                        while consumed <= row["bytes"]:
+                            chunk = os.read(descriptor, min(1024 * 1024, row["bytes"] + 1 - consumed))
+                            if not chunk:
+                                break
+                            consumed += len(chunk)
+                            digest.update(chunk)
+                        after = os.fstat(descriptor)
+                        current = path.stat(follow_symlinks=False)
+                        if (identity(before) != identity(after) or identity(after) != identity(current)
+                                or not stat_module.S_ISREG(current.st_mode)
+                                or path.resolve(strict=True) != path or consumed != row["bytes"]):
+                            unavailable.append({"path": str(path), "reason": "file_changed_during_read"})
+                        elif digest.hexdigest() != row["sha256"]:
+                            unavailable.append({"path": str(path), "reason": "sha256_changed"})
+                    finally:
+                        os.close(descriptor)
+                except FileNotFoundError:
+                    unavailable.append({"path": str(path), "reason": "missing"})
+                except (OSError, RuntimeError, ValueError):
+                    unavailable.append({"path": str(path), "reason": "unavailable"})
+        contract = {
+            "required_validation_file_pins": required,
+            "invalid_required_validation_file_pins": sorted(set(invalid)),
+            "unavailable_validation_file_pins": unavailable,
+        }
+        if invalid or unavailable:
+            receipt = {
+                "schema": "ipfs_accelerate_py/agent-supervisor/provider-task-contract@1",
+                "task_id": task.task_id,
+                "canonical_task_cid": self._canonical_ref(task),
+                **contract,
+            }
+            raise ProviderTaskContractDeferred(
+                "provider_task_contract_invalid_required_validation_file_pins" if invalid
+                else "provider_task_contract_required_validation_file_pins_unavailable",
+                receipt={**receipt, "contract_fingerprint": content_identity(receipt),
+                         "missing_fields": [], "invalid_validation_command": False,
+                         "provider_call_allowed": False, "attempt_consumed": False},
+            )
+        return contract
+
+    def _require_provider_task_contract(
+        self, task: PortalTask, *, provider_writing: bool,
+    ) -> None:
+        """Optionally reject incomplete writing contracts before model work.
+
+        Outputs are not required for explicitly local/read-only operations.
+        Writing scope may also come from reviewed Allowed paths, Predicted
+        files, or the existing validation AST companion rules. A missing
+        declaration never grants authority over provider-created files.
+        Optional required validation executables are checked only against the
+        approved validation PATH, before any provider attempt is consumed.
+        """
+
+        if not _env_bool(REQUIRE_PROVIDER_TASK_CONTRACT_ENV, False):
+            return
+        file_pin_contract = self._required_validation_file_pin_contract(task)
+        if not provider_writing:
+            return
+        scope = self._proposal_scope_paths(task)
+        commands = []
+        for value in task.validation:
+            if not isinstance(value, str):
+                continue
+            # Use the same reviewed rewrites and normalization as validation
+            # execution, including supported legacy shell-to-helper forms.
+            command, _notes = self._normalize_validation_command(
+                rewrite_validation_command(value)
+            )
+            if command and command.lower() not in {
+                "none", "n/a", "na", "not required", "not applicable", "skip", "true", ":",
+            } and not command.startswith("#"):
+                commands.append(command)
+        missing = []
+        if not scope:
+            missing.append("editable_scope")
+        if not commands:
+            missing.append("validation_commands")
+        invalid_validation = False
+        for command in commands:
+            try:
+                validation_shell_command(command)
+            except ValidationRuntimeError:
+                invalid_validation = True
+                break
+        executable_contract: dict[str, Any] = {}
+        executable_metadata = task.metadata or {}
+        invalid_executables: list[str] = []
+        missing_executables: list[str] = []
+        executable_path_error = ""
+        if "required validation executables" in executable_metadata:
+            raw_executables = executable_metadata["required validation executables"]
+            required_executables: list[str] = []
+            if not isinstance(raw_executables, str):
+                invalid_executables = ["declaration_must_be_csv_string"]
+            elif len(raw_executables) > 4096:
+                invalid_executables = ["declaration_exceeds_4096_characters"]
+            else:
+                tokens = [value.strip() for value in raw_executables.split(",")]
+                if len(tokens) > 32:
+                    invalid_executables = ["declaration_exceeds_32_executables"]
+                else:
+                    for name in tokens:
+                        if len(name) > 128 or re.fullmatch(r"[A-Za-z0-9_][A-Za-z0-9_.+-]*", name) is None:
+                            invalid_executables.append(name)
+                        else:
+                            required_executables.append(name)
+            required_executables = sorted(set(required_executables))
+            approved_path = ""
+            if not invalid_executables:
+                try:
+                    approved_path = validation_executable_path(os.environ)
+                    missing_executables = [name for name in required_executables
+                                           if shutil.which(name, path=approved_path) is None]
+                except (ValidationRuntimeError, OSError, ValueError) as exc:
+                    executable_path_error = f"{type(exc).__name__}: {exc}"
+                    missing_executables = list(required_executables)
+            executable_contract = {
+                "required_validation_executables": required_executables,
+                "missing_validation_executables": missing_executables,
+                "invalid_required_validation_executables": sorted(set(invalid_executables)),
+                "approved_validation_executable_path": approved_path,
+                "validation_executable_path_error": executable_path_error,
+            }
+        if not missing and not invalid_validation and not invalid_executables and not missing_executables and not executable_path_error:
+            return
+        reason = (
+            "provider_task_contract_missing_scope_and_validation"
+            if len(missing) == 2
+            else "provider_task_contract_missing_editable_scope"
+            if missing == ["editable_scope"]
+            else "provider_task_contract_missing_validation_commands"
+            if missing
+            else "provider_task_contract_invalid_validation_command"
+            if invalid_validation
+            else "provider_task_contract_invalid_required_validation_executables"
+            if invalid_executables
+            else "provider_task_contract_validation_executable_path_invalid"
+            if executable_path_error
+            else "provider_task_contract_missing_validation_executables"
+        )
+        contract = {
+            "schema": "ipfs_accelerate_py/agent-supervisor/provider-task-contract@1",
+            "task_id": task.task_id,
+            "canonical_task_cid": self._canonical_ref(task),
+            "editable_scope": list(scope),
+            "validation_commands": list(commands),
+            **executable_contract,
+            **file_pin_contract,
+        }
+        raise ProviderTaskContractDeferred(reason, receipt={
+            **contract,
+            "contract_fingerprint": content_identity(contract),
+            "missing_fields": missing,
+            "invalid_validation_command": invalid_validation,
+            "provider_call_allowed": False,
+            "attempt_consumed": False,
+        })
+
     @_workspace_mutation_boundary(pool=True)
     def _run_implementation(self, task: PortalTask, state: PortalTaskState) -> dict[str, Any]:
         retained = self._retained_provider_capacity_deferral()
@@ -22539,6 +22842,9 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             f"{task.task_id.lower()}-attempt-{attempt}-{secrets.token_hex(16)}.log"
         )
         try:
+            self._require_provider_task_contract(
+                task, provider_writing=not deterministic_only,
+            )
             if authority_revalidation_only:
                 if self._implementation_cancel_requested():
                     raise ImplementationRetryDeferred(
@@ -22602,6 +22908,14 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     else ""
                 ),
             }
+            if isinstance(exc, ProviderTaskContractDeferred):
+                result.update(
+                    deferred=True,
+                    retryable=True,
+                    provider_call_allowed=False,
+                    contract_fingerprint=exc.receipt["contract_fingerprint"],
+                    provider_task_contract=dict(exc.receipt),
+                )
             try:
                 # Prompt/context compilation happens before a worker is
                 # launched and before an implementation attempt is marked
@@ -27491,7 +27805,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         target_set = set(target_task_ids)
         current_task_id = ""
         header_indices: dict[str, int] = {}
-        status_indices: dict[str, int] = {}
+        status_indices: dict[str, list[int]] = {}
         checkbox_indices: dict[str, int] = {}
         checkbox_pattern = re.compile(
             r"^(?P<prefix>\s*[-*]\s+\[)(?P<mark>[^\]])"
@@ -27501,15 +27815,24 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             checkbox = checkbox_pattern.match(line.rstrip("\r\n"))
             if checkbox and checkbox.group("task_id") in target_set:
                 checkbox_indices[checkbox.group("task_id")] = index
-            if line.startswith(self.task_header_prefix):
+            if line.startswith("## "):
+                current_task_id = ""
+                if not line.startswith(self.task_header_prefix):
+                    continue
                 header = line[3:].strip()
                 current_task_id = header.split(" ", 1)[0] if header else ""
                 if current_task_id in target_set:
                     header_indices[current_task_id] = index
                 continue
-            if current_task_id in target_set and line.startswith("- Status:"):
-                status_indices[current_task_id] = index
-                current_task_id = ""
+            if (
+                current_task_id in target_set
+                and ":" in line
+                and line.split(":", 1)[0].strip().lower() == "- status"
+            ):
+                # Task parsing treats field names case-insensitively and
+                # later declarations win. Update every existing declaration
+                # so earlier native insertions cannot leave a trailing todo.
+                status_indices.setdefault(current_task_id, []).append(index)
 
         missing_status_task_ids = [
             task_id
@@ -27534,15 +27857,17 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         already_completed_task_ids: list[str] = []
         updated_checkbox_task_ids: list[str] = []
         for task_id in target_task_ids:
-            status_index = status_indices.get(task_id)
-            if status_index is None:
+            member_status_indices = status_indices.get(task_id)
+            if not member_status_indices:
                 continue
-            current = lines[status_index].split(":", 1)[1].strip()
             task_updated = False
-            if normalize_status(current) != "completed":
-                newline = "\n" if lines[status_index].endswith("\n") else ""
-                lines[status_index] = "- Status: completed" + newline
-                task_updated = True
+            for status_index in member_status_indices:
+                current = lines[status_index].split(":", 1)[1].strip()
+                if normalize_status(current) != "completed":
+                    newline = "\n" if lines[status_index].endswith("\n") else ""
+                    prefix = lines[status_index].split(":", 1)[0]
+                    lines[status_index] = prefix + ": completed" + newline
+                    task_updated = True
             checkbox_index = checkbox_indices.get(task_id)
             if checkbox_index is not None:
                 raw_checkbox = lines[checkbox_index]
@@ -30937,20 +31262,28 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 return result
         if result.get("merged") or result.get("already_merged"):
             worktree_path_text = str(metadata.get("worktree_path") or "")
-            cleanup_result = (
-                self._cleanup_merged_worktree(
-                    Path(worktree_path_text) if worktree_path_text else None,
-                    branch_name,
+            if result.get("already_merged"):
+                cleanup_result = {}
+            elif worktree_path_text:
+                cleanup_result = self._cleanup_merged_worktree(
+                    Path(worktree_path_text), branch_name,
                 )
-                if (
-                    not result.get("already_merged")
-                    and (
-                        worktree_path_text
-                        or metadata.get("worktree_pool_handoff") is True
-                    )
-                )
-                else {}
-            )
+            elif metadata.get("worktree_pool_handoff") is True:
+                # Enqueue cleared the path after returning its pool lease.
+                # The checkout may already belong to another attempt, so this
+                # callback has no workspace mutation or branch cleanup scope.
+                # Acknowledge the completed handoff without entering the
+                # deliberately fail-closed unbound-path mutation guard.
+                cleanup_result = {
+                    "cleaned": True,
+                    "reason": "worktree_pool_handoff_already_released",
+                    "pooled": True,
+                    "removed_worktree": False,
+                    "deleted_branch": False,
+                    "submodule_cleanup": [],
+                }
+            else:
+                cleanup_result = {}
             result["cleanup_result"] = cleanup_result
             if cleanup_result and not cleanup_result.get("cleaned", False):
                 result["merged"] = False
@@ -37800,7 +38133,24 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         allow_pool: bool = True,
         seed_context: bool = True,
         offline_local_only: bool = False,
+        protected_initial_parent: bool = False,
     ) -> str:
+        if type(protected_initial_parent) is not bool:
+            raise ValueError("protected initial worktree parent selection must be an exact boolean")
+        if protected_initial_parent:
+            from ..runtime.owner_worktree_parent import prepare_owner_worktree_parent
+
+            lexical_root = self._configured_worktree_root_lexical
+            candidate = Path(worktree_path)
+            if ((self.worktree_pool is not None and allow_pool is not False)
+                    or seed_context is not False or self._effective_worktree_submodule_paths(task)
+                    or not lexical_root.is_absolute() or ".." in lexical_root.parts
+                    or lexical_root.resolve() != lexical_root or self.worktree_root != lexical_root
+                    or not candidate.is_absolute() or ".." in candidate.parts
+                    or candidate == lexical_root or not candidate.is_relative_to(lexical_root)
+                    or candidate.resolve() != candidate or candidate.exists() or candidate.is_symlink()):
+                raise ValueError("protected initial parent requires an absent native-profile checkout within its lexical root")
+            prepare_owner_worktree_parent(directory=candidate.parent)
         if self.worktree_pool is not None and allow_pool:
             base_ref = self._main_branch_name()
             cache_key = self._implementation_worktree_cache_key()
@@ -37878,6 +38228,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         self._run_git(
             ["worktree", "add", "-b", branch_name, str(worktree_path), self._main_branch_name()],
             cwd=self.repo_root,
+            child_umask=0o077,
         )
         baseline_ref = self._run_git(["rev-parse", "HEAD"], cwd=worktree_path).stdout.strip()
         self._initialize_worktree_submodules(
@@ -58570,17 +58921,25 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     historical_integration_record.update(
                         historical_merge_result
                     )
-                    # A queued merge records the synchronous train callback
-                    # below the queue handoff result.  The callback carries
-                    # the immutable integration commit even when a
-                    # target-only rebase rewrites the daemon-owned branch.
-                    # Recover only those exact commit fields; the ancestry
-                    # proof below still has to bind the rewritten branch to
-                    # that commit and the configured target history.
+                    # A lane can consume another request after enqueueing its
+                    # own.  Its nested train result is diagnostic unless the
+                    # request identity matches this candidate's handoff.
+                    # For matching requests recover only the exact commit
+                    # fields; the ancestry proof below must still bind this
+                    # candidate to that commit and the target history.
                     train_result = historical_merge_result.get(
                         "train_result"
                     )
-                    if isinstance(train_result, Mapping):
+                    request_id = str(
+                        historical_merge_result.get("request_id") or ""
+                    ).strip()
+                    if (
+                        isinstance(train_result, Mapping)
+                        and request_id
+                        and self._merge_train_result_request_id(
+                            dict(train_result)
+                        ) == request_id
+                    ):
                         train_merge_result = train_result.get(
                             "merge_result"
                         )
@@ -64322,8 +64681,15 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             return ""
         return result.stdout.strip()
 
-    def _run_git(self, args: list[str], *, cwd: Path) -> subprocess.CompletedProcess[str]:
-        result = subprocess.run(["git", "--no-optional-locks", *args], cwd=cwd, text=True, capture_output=True, check=False)
+    def _run_git(self, args: list[str], *, cwd: Path,
+                 child_umask: int | None = None) -> subprocess.CompletedProcess[str]:
+        child_options = {}
+        if child_umask is not None:
+            if type(child_umask) is not int or child_umask != 0o077 or args[:2] != ["worktree", "add"]:
+                raise ValueError("owner-only child umask requires an initial Git worktree add")
+            child_options["umask"] = child_umask
+        result = subprocess.run(["git", "--no-optional-locks", *args], cwd=cwd,
+            text=True, capture_output=True, check=False, **child_options)
         if result.returncode != 0:
             raise RuntimeError(f"git {' '.join(args)} failed: {result.stderr.strip()}")
         return result
@@ -81325,6 +81691,15 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Optional DuckDB path for fenced task claims (defaults beside --database-path).",
     )
     parser.add_argument(
+        "--execution-path",
+        type=Path,
+        default=None,
+        help=(
+            "Optional DuckDB path for this daemon's execution store. "
+            "When omitted, a single lane still derives a sidecar beside --database-path."
+        ),
+    )
+    parser.add_argument(
         "--owner-session-id",
         default="",
         help="Daemon session identity used for fenced claims.",
@@ -81360,7 +81735,20 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default="portal",
         help="State file prefix inside --state-dir",
     )
-    parser.add_argument("--implement", action="store_true", help="Invoke an autonomous implementation agent for the ready task")
+    implement_group = parser.add_mutually_exclusive_group()
+    implement_group.add_argument(
+        "--implement",
+        dest="implement",
+        action="store_true",
+        help="Invoke an autonomous implementation agent for the ready task. This is the default.",
+    )
+    implement_group.add_argument(
+        "--no-implement",
+        dest="implement",
+        action="store_false",
+        help="Poll the board without invoking an implementation agent.",
+    )
+    parser.set_defaults(implement=True)
     parser.add_argument(
         "--implementation-command",
         default="",
@@ -81819,14 +82207,20 @@ def main(argv: list[str] | None = None) -> None:
             if args.native_metadata_execution_task_cid:
                 from ..task_sources.database_task_source import DatabaseTaskSource
                 metadata_source_kwargs = {
-                    "task_source": DatabaseTaskSource(Path(database_path),
+                    "task_source": DatabaseTaskSource(
+                        Path(database_path),
                         owner_id="native-metadata-executor:" + str(args.owner_session_id),
-                        install_schema=False),
+                        install_schema=False,
+                        # Signed packet evidence stays current for this one task.
+                        # The repository default drops it after one hour.
+                        evidence_freshness_seconds=0,
+                    ),
                     "close_task_source": True,
                 }
             daemon: Any = DatabaseImplementationDaemon(
                 database_path=Path(database_path),
                 coordination_path=getattr(args, "coordination_path", None),
+                execution_path=getattr(args, "execution_path", None),
                 state_dir=Path(args.state_dir),
                 state_prefix=str(args.state_prefix),
                 owner_session_id=str(getattr(args, "owner_session_id", "") or ""),
@@ -82016,6 +82410,17 @@ def main(argv: list[str] | None = None) -> None:
                     from .native_owner_bootstrap import observe_typed_database_without_dispatch
                     result = observe_typed_database_without_dispatch(daemon)
                 elif args.native_metadata_execution_task_cid:
+                    state_dir = Path(args.state_dir)
+                    state_dir.mkdir(parents=True, exist_ok=True)
+                    os.chmod(state_dir, 0o700)
+                    if (
+                        not state_dir.is_dir()
+                        or state_dir.stat().st_uid != os.geteuid()
+                        or state_dir.stat().st_mode & 0o077
+                    ):
+                        raise RuntimeError(
+                            "native metadata execution state directory is not private"
+                        )
                     result = daemon.run_native_metadata_validation(
                         task_cid=args.native_metadata_execution_task_cid,
                         expected_revision=args.native_metadata_execution_task_revision,

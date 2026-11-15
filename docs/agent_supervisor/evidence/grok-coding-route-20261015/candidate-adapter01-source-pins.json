@@ -1,0 +1,8 @@
+{
+  "base_commit": "4acfdce7aa7059d40e2bdcfa9a0470bce195c40c",
+  "files": {
+    "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py": "9abe4d304d2ae3f5a9b0f843ff4dc289408bba5c2d1918ee7b94c962c22094ef",
+    "test/api/test_candidate_router_dispatch.py": "fab0112d6bc0e732b140ea7244585ce486ddd3b74ec1849008a72ebbda1671ea",
+    "test/api/test_grok_stream_router.py": "dba9401bcdab44702b6e1f883e1f0d5c60d2539acd80545e153d5f4960e37c6b"
+  }
+}

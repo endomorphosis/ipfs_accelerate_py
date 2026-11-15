@@ -1,0 +1,56 @@
+{
+  "batches": [
+    {
+      "label": "codecs-final01",
+      "passed_cases": 260,
+      "result_sha256": "402edc487931433720167a69f3b47c4b63779a043f5069cd241f5e4061437b29",
+      "source_pins_sha256": "96576e002d367019c063d67c6e3b25defa38159d6b8d023a474c5cd75239e2c5"
+    },
+    {
+      "label": "routes-final01",
+      "passed_cases": 300,
+      "result_sha256": "2e7e682a7f4718ee02c7163a4e2052737706920568b0d66c5039d4b377ab4111",
+      "source_pins_sha256": "78388a8e09d8b1f9f80018336f4fb643c9aa995a22fbfb66ebc2d240ba7dc405"
+    },
+    {
+      "label": "external-final02",
+      "passed_cases": 35,
+      "result_sha256": "638f61f52c0223f9c2b767a105fa5b7703c5492aae542bcd092f8dfe55bb7e8a",
+      "source_pins_sha256": "99beb0faec3c316afe7a7bfdc4c7887f0fb13a88b6441c832b8d2faf11396822"
+    }
+  ],
+  "errors": 0,
+  "external_sha256": {
+    "/home/barberb/lift_coding/artifacts/tool-event-census-20261015/authored-e2e/test_authored_pipeline.py": "2ec8b57b35eedb307fe7cdb584fef9dc56d84b536dc81027eefc570772a55b39",
+    "/home/barberb/lift_coding/artifacts/tool-event-census-20261015/live/closed_export.py": "2cd4ac9e0a7d3fed5d9f4aaeb33321da1890d42970994d9ef8eefc0dfbc5aa41",
+    "/home/barberb/lift_coding/artifacts/tool-event-census-20261015/live/prepare_draft.py": "ea3dba783fe4ec376152b6f8ecb715dad810cd01dfede506f31d3140bf637f31",
+    "/home/barberb/lift_coding/artifacts/tool-event-census-20261015/live/run.py": "5297158682025e2ffa1ef56b90b23853f1c161c4caf99902e7e690a144b8be17",
+    "/home/barberb/lift_coding/artifacts/tool-event-census-20261015/live/test_closed_export.py": "ee24a02237cafb9cbd85c2a9d53069f234fdd46bfbbdd2278b6a16744551451c",
+    "/home/barberb/lift_coding/artifacts/tool-event-census-20261015/live/test_run.py": "2d59122a8fc3fa802850734c1039e42ac2e40351703e60a507b926af205824c6"
+  },
+  "failures": 0,
+  "live_provider_calls": 0,
+  "passed": true,
+  "passed_cases": 595,
+  "qualification_script_sha256": "47c342edc2279c2f95bc8271ff3e8d6f0e73103cfebcbc177da15a05f09e116b",
+  "runtime_commit": "24de5a01c43aede768426cca794e36f68c5d3fe4",
+  "schema": "tool-event-census-qualification@1",
+  "skipped": 0,
+  "source_sha256": {
+    "benchmarks/agent_supervisor/container_coding/benchmark_comparison.py": "11f01e729a7230a5a3df61301e5066868d6ef4a0a299e564218ac2e8b9e27ae9",
+    "benchmarks/agent_supervisor/container_coding/terminal_worker_capability.py": "18a023344317c76345a0b0ed8510d2a3846b5a7772b6ea7b14e8d2d722638758",
+    "benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py": "3aaef733917340645c511d8d967bbd70554535275e393dab2cd15c0ce8c8608b",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_worker_capability.py": "5690bf5ff65b56de469bfc2fd3a4c249eb4c68a4d1837df6389954a2d6cc709a",
+    "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py": "59cd95d263197520c26765d94d39454c87138970a1315c187f38b3b194ef8aa0",
+    "ipfs_accelerate_py/cli_runtime/grok_stream_capture.py": "51316911a5cf9b17b9aa67ef95d03ce5833b0dfa986d0b7a4e1168dac6daf25d",
+    "ipfs_accelerate_py/cli_runtime/grok_tool_events.py": "da6fbbef8ac95ef5b9785b5fccfd962af983c010ac8aa45780f24182d3490dbc",
+    "ipfs_accelerate_py/llm_router.py": "1b6667ab6149ef547c52f1ad85c41fbd8eea9ddc544a563dc97101cf586e35bd",
+    "test/api/test_grok_stream_capture.py": "20de776a8293ee38bd423c317de6f28f02a529330f0b58e4a15b138d3a2ca3ce",
+    "test/api/test_grok_stream_router.py": "ceff20db5c5ade73bf384949ab3a17b1e09071447557eaa732ffd8ce7c234036",
+    "test/api/test_grok_stream_usage.py": "83e40adb35d026b4f7e5afa75fbd55859773566ec233b99a9214a370e8ee6796",
+    "test/api/test_grok_tool_event_capture.py": "c180e7910667f830d50fe776205b2a0e583fc6e8de2f180c78a871b6a68c59f5",
+    "test/api/test_grok_tool_events.py": "67a56e3bbbae5d3a1d26ac51cc6578ad53143f5a2b44d55186850dda1e3b0064",
+    "test/api/test_router_implementation_runner.py": "27f118ee04d6ad956d35d68a6c7a21ff956e627a9c23b0432c8225b2daccf0a1"
+  },
+  "test_runner_sha256": "5cfb565f70c12801a8e9471ba0b2170944fbe5d4bc64d25b1de43ae05a56adcb"
+}

@@ -1,0 +1,578 @@
+{
+  "archive_sha256": "d0e5407d28bf742356583628e76952a3831f418afa0951fc0b680fbd5d11add0",
+  "complete_run_token_savings_claimed": false,
+  "container_id_sha256": "858ba7bf9f9dfd7235f0fc5286d9e89b6932e0c66dcec7975c25b6b1de31f270",
+  "container_stop_returned": true,
+  "controls": {
+    "candidate_rounds": 1,
+    "coding_reply_mode": "legacy",
+    "disable_intent_autoencoder": true,
+    "doctor_coding_policy": null,
+    "grok_coding_max_turns": 8,
+    "planning_mode": "declared-contract@1",
+    "provider_profile": "grok-4.7-cli-1.0.46@1",
+    "resource_profile": "source384-5cpu-20gib-formalization@1",
+    "semantic_metadata_view": "legacy",
+    "semantic_transport_schema": "supervisor-semantic-router-input@1",
+    "semantic_working_set": "capsule-references@1",
+    "source_edit_mode": "disabled",
+    "source_view_profile": "identity@1",
+    "working_set_census_only": true
+  },
+  "driver_report_sha256": "7596c0483611074be48f186b92470b1696654b8fee6150b711b372614b2a705c",
+  "exact_container_absence_observations": [
+    true,
+    true
+  ],
+  "frozen_inputs_unchanged": true,
+  "instruction_sha256": "6fa938389f99648508e5a9772e0d5e95d1102738c68d1ff61bd65469d76c52ab",
+  "observation": {
+    "coding_provider_calls": 0,
+    "complete_run_token_savings_claimed": false,
+    "official_reward": null,
+    "official_verifier_executed": false,
+    "owner_closed_runtime_match": true,
+    "phases": {
+      "context_seconds": 3.7036439441144466,
+      "initial_context_seconds": 14.633816689020023,
+      "planning_seconds": 4.4779155070427805,
+      "prepare_seconds": 0.4432224400807172,
+      "working_set_census_seconds": 29.57173674297519
+    },
+    "planning_provider_calls": 0,
+    "provider_generation_calls": 0,
+    "provider_tokens": null,
+    "qualified": true,
+    "report_semantics_independently_replayed_by_exporter": false,
+    "schema": "terminal-public-working-set-census-readout@1",
+    "source384": {
+      "checkpoint_sha256": "2ca38dfcc05536315fc3e2c0647b710b930ef4066b474061a7b4e5bfb9a258c5",
+      "config_sha256": "c0ef8114ecf81303295c0fc8b7b55a4bf74e83eaad3e677dfa57d686a36eb6d7",
+      "inference_sha256": "587b96f9485b31b7e7632555a31d2a7e6a1bd79eb18eb36e39c5551b99902fc2",
+      "seconds": 9.744395572924986
+    },
+    "task_completed": false,
+    "worker_cleanup_returncode": 0,
+    "working_set_census": {
+      "census": {
+        "behavioral_fields_deferred": false,
+        "candidate_complete_byte_reduction": 81,
+        "candidate_complete_bytes": 67120,
+        "candidate_complete_sha256": "e0993fac6497f1c7251726662fe5942ad33417d6705066257ffe31782d6077ea",
+        "candidate_view_bytes": 60541,
+        "candidate_view_sha256": "c888856688c3ef22a6e8a63d0e05a64933f0045f6b67166f24ed1039a7bf4d2b",
+        "capsule_count": 2,
+        "capsule_native_bytes": 6716,
+        "complete_expansion_verified": false,
+        "complete_run_token_savings_claimed": false,
+        "deferred_field_allowlist": [
+          "capsule_compiler_version",
+          "capsule_schema",
+          "dependency_fact_cids",
+          "dependency_link_ids",
+          "dependency_version_cids",
+          "extractor_version",
+          "relevant_binding_projection_cid",
+          "schema",
+          "semantic_index_schema",
+          "source_cid",
+          "symbol_fact_cid",
+          "version_cid"
+        ],
+        "deferred_field_count": 24,
+        "descriptor_session_id_sha256": "3973af0a999edb2b93e71277162d42137a763a1f870ef1cf52a67a5fc6288d49",
+        "descriptor_sha256": "310c97e6988200ab0eb1b50ed55a5474e7d0c56f4a34ee5a0786c2ba913cb676",
+        "fallback_reason": null,
+        "native_complete_bytes": 67201,
+        "native_complete_sha256": "facbe668f2d657a38fca9781859e704cf9d83743a2341d8b890e0fefd254759a",
+        "native_transport_bytes": 60622,
+        "native_transport_sha256": "e241b984fe13ea1aee20fb7128a59c4fc9abb6894c2de1ef214a8b984ef8e244",
+        "projection_receipt_sha256": "7c9bd9d80092c9b8b4b6d3117764e5bf98502b6a7ffcd0a8e70f2606cd4866d7",
+        "provider_token_usage": null,
+        "raw_source_deferred": false,
+        "requested_profile": "capsule-references@1",
+        "schema": "supervisor-semantic-working-set-census@1",
+        "selected_complete_byte_reduction": 81,
+        "selected_complete_bytes": 67120,
+        "selected_complete_sha256": "e0993fac6497f1c7251726662fe5942ad33417d6705066257ffe31782d6077ea",
+        "selected_mode": "capsule-references@1",
+        "selection_basis": "complete_prompt_utf8_bytes",
+        "selection_receipt_sha256": "573a1c4ae79f650d4a879b325f5985cc5b4f12d1f794925e61772cc1e08dea36",
+        "semantic_binding_sha256": "0ead18fe4c0e33204eebdfee69348d4a09e0964bdc23a88d163b37beec6f8fe9",
+        "token_estimate": false
+      },
+      "cli_system_prompt_measured": false,
+      "completion_authority": false,
+      "container_boundary_artifact_sha256": "57a2ef87e808f865e34f21e160816ef66440fde866ba96c21e0bc9ebcc2c5969",
+      "container_boundary_checked": true,
+      "credential_isolation_checked": true,
+      "current_semantic_encoder_used": true,
+      "doctor_residual_included": true,
+      "doctor_residual_receipt_sha256": "6a4d4aeea4c00aae0993b3ef9c9780324f74edb97bec4ea2d3e17140039f310b",
+      "execution_authority": false,
+      "input_measurement_scope": "router-model-prompt-with-literal-wrappers-and-reply-instruction@1",
+      "model_sha256": "459415a966d88d3e30f7e0408fa7b6ce3eef5316ab8bde26d78213aaf583a606",
+      "native_output_schema_bytes": null,
+      "native_output_schema_sha256": null,
+      "native_output_schema_tokens_measured": false,
+      "native_prompt_bytes": 67174,
+      "native_prompt_sha256": "13f33b96dec282697c75b8b2f3018e2ae283ee911a72ca70e35bc9ea143c8a07",
+      "observation_only": true,
+      "planning_performed_by_census": false,
+      "proof_authority": false,
+      "provider": "grok_cli",
+      "provider_calls": 0,
+      "provider_dispatch_observed": false,
+      "provider_token_usage": null,
+      "public_instruction_included": true,
+      "public_instruction_receipt_sha256": "0a05a4bab0569b00bd086c702d43132baa9c625086bd3bdc5a1bc4feaeda84af",
+      "publication_authority": false,
+      "purpose": "coding",
+      "raw_content_exported": false,
+      "repository_common_dir_checked": true,
+      "required_fact_omission_authority": false,
+      "router_calls": 0,
+      "schema": "router-semantic-working-set-census@1",
+      "selected_reply_contract_sha256": null,
+      "semantic_prompt_components": {
+        "completion_authority": false,
+        "dynamic_labels_exported": false,
+        "exact_native_round_trip_verified": true,
+        "execution_authority": false,
+        "measurement_scope": "canonical-serialized-prompt-utf8-bytes@1",
+        "model_prompt_wrappers_included": false,
+        "native_evidence": {
+          "array_bytes": 58931,
+          "groups": {
+            "code_retrieval_context": {
+              "count": 1,
+              "row_bytes": 5899,
+              "row_envelope_bytes": 802,
+              "summary_json_string_bytes": 5097,
+              "summary_json_string_overhead_bytes": 265,
+              "summary_utf8_bytes": 4832
+            },
+            "intent_world_context": {
+              "count": 2,
+              "row_bytes": 9246,
+              "row_envelope_bytes": 1588,
+              "summary_json_string_bytes": 7658,
+              "summary_json_string_overhead_bytes": 596,
+              "summary_utf8_bytes": 7062
+            },
+            "other_evidence": {
+              "count": 0,
+              "row_bytes": 0,
+              "row_envelope_bytes": 0,
+              "summary_json_string_bytes": 0,
+              "summary_json_string_overhead_bytes": 0,
+              "summary_utf8_bytes": 0
+            },
+            "semantic_context": {
+              "count": 6,
+              "row_bytes": 36825,
+              "row_envelope_bytes": 4842,
+              "summary_json_string_bytes": 31983,
+              "summary_json_string_overhead_bytes": 2342,
+              "summary_utf8_bytes": 29641
+            },
+            "source_formalization_context": {
+              "count": 1,
+              "row_bytes": 6950,
+              "row_envelope_bytes": 798,
+              "summary_json_string_bytes": 6152,
+              "summary_json_string_overhead_bytes": 512,
+              "summary_utf8_bytes": 5640
+            }
+          },
+          "outer_punctuation_bytes": 11
+        },
+        "native_object": {
+          "members": {
+            "acceptance": {
+              "count": 1,
+              "member_bytes": 664,
+              "value_bytes": 651
+            },
+            "authority": {
+              "count": 1,
+              "member_bytes": 6338,
+              "value_bytes": 6326
+            },
+            "evidence": {
+              "count": 1,
+              "member_bytes": 58942,
+              "value_bytes": 58931
+            },
+            "goal": {
+              "count": 1,
+              "member_bytes": 304,
+              "value_bytes": 297
+            },
+            "other_fields": {
+              "count": 9,
+              "member_bytes": 491,
+              "value_bytes": 363
+            },
+            "scope": {
+              "count": 1,
+              "member_bytes": 420,
+              "value_bytes": 412
+            }
+          },
+          "object_bytes": 67174,
+          "outer_punctuation_bytes": 15
+        },
+        "native_prompt_bytes": 67174,
+        "native_prompt_sha256": "13f33b96dec282697c75b8b2f3018e2ae283ee911a72ca70e35bc9ea143c8a07",
+        "native_suffix_bytes": 0,
+        "nested_partitions_overlap": true,
+        "omission_authority": false,
+        "partition_rule": "member_bytes_plus_outer_punctuation_equals_object_bytes",
+        "proof_authority": false,
+        "provider_calls": 0,
+        "provider_object": {
+          "members": {
+            "instructions": {
+              "count": 1,
+              "member_bytes": 644,
+              "value_bytes": 629
+            },
+            "native_context": {
+              "count": 1,
+              "member_bytes": 30360,
+              "value_bytes": 30343
+            },
+            "native_suffix": {
+              "count": 1,
+              "member_bytes": 18,
+              "value_bytes": 2
+            },
+            "other_fields": {
+              "count": 4,
+              "member_bytes": 179,
+              "value_bytes": 107
+            },
+            "translated_semantic": {
+              "count": 1,
+              "member_bytes": 28773,
+              "value_bytes": 28751
+            },
+            "translation_table": {
+              "count": 1,
+              "member_bytes": 638,
+              "value_bytes": 618
+            }
+          },
+          "object_bytes": 60622,
+          "outer_punctuation_bytes": 10
+        },
+        "provider_prompt_bytes": 60622,
+        "provider_prompt_sha256": "e241b984fe13ea1aee20fb7128a59c4fc9abb6894c2de1ef214a8b984ef8e244",
+        "provider_tokens": null,
+        "raw_content_exported": false,
+        "remaining_native_context": {
+          "members": {
+            "acceptance": {
+              "count": 1,
+              "member_bytes": 664,
+              "value_bytes": 651
+            },
+            "authority": {
+              "count": 1,
+              "member_bytes": 6338,
+              "value_bytes": 6326
+            },
+            "evidence": {
+              "count": 1,
+              "member_bytes": 22111,
+              "value_bytes": 22100
+            },
+            "goal": {
+              "count": 1,
+              "member_bytes": 304,
+              "value_bytes": 297
+            },
+            "other_fields": {
+              "count": 9,
+              "member_bytes": 491,
+              "value_bytes": 363
+            },
+            "scope": {
+              "count": 1,
+              "member_bytes": 420,
+              "value_bytes": 412
+            }
+          },
+          "object_bytes": 30343,
+          "outer_punctuation_bytes": 15
+        },
+        "remaining_native_evidence": {
+          "array_bytes": 22100,
+          "groups": {
+            "code_retrieval_context": {
+              "count": 1,
+              "row_bytes": 5899,
+              "row_envelope_bytes": 802,
+              "summary_json_string_bytes": 5097,
+              "summary_json_string_overhead_bytes": 265,
+              "summary_utf8_bytes": 4832
+            },
+            "intent_world_context": {
+              "count": 2,
+              "row_bytes": 9246,
+              "row_envelope_bytes": 1588,
+              "summary_json_string_bytes": 7658,
+              "summary_json_string_overhead_bytes": 596,
+              "summary_utf8_bytes": 7062
+            },
+            "other_evidence": {
+              "count": 0,
+              "row_bytes": 0,
+              "row_envelope_bytes": 0,
+              "summary_json_string_bytes": 0,
+              "summary_json_string_overhead_bytes": 0,
+              "summary_utf8_bytes": 0
+            },
+            "semantic_context": {
+              "count": 0,
+              "row_bytes": 0,
+              "row_envelope_bytes": 0,
+              "summary_json_string_bytes": 0,
+              "summary_json_string_overhead_bytes": 0,
+              "summary_utf8_bytes": 0
+            },
+            "source_formalization_context": {
+              "count": 1,
+              "row_bytes": 6950,
+              "row_envelope_bytes": 798,
+              "summary_json_string_bytes": 6152,
+              "summary_json_string_overhead_bytes": 512,
+              "summary_utf8_bytes": 5640
+            }
+          },
+          "outer_punctuation_bytes": 5
+        },
+        "schema": "supervisor-semantic-prompt-component-census@2",
+        "source_freshness_verified": false,
+        "token_estimate": false,
+        "translated_semantic": {
+          "members": {
+            "admissions": {
+              "count": 1,
+              "member_bytes": 1168,
+              "value_bytes": 1155
+            },
+            "capsules": {
+              "count": 1,
+              "member_bytes": 6406,
+              "value_bytes": 6395
+            },
+            "manifest": {
+              "count": 1,
+              "member_bytes": 889,
+              "value_bytes": 878
+            },
+            "other_fields": {
+              "count": 8,
+              "member_bytes": 1190,
+              "value_bytes": 1061
+            },
+            "pack": {
+              "count": 1,
+              "member_bytes": 6273,
+              "value_bytes": 6266
+            },
+            "preparation_bounds": {
+              "count": 1,
+              "member_bytes": 69,
+              "value_bytes": 48
+            },
+            "program_paths": {
+              "count": 1,
+              "member_bytes": 38,
+              "value_bytes": 22
+            },
+            "raw_sources": {
+              "count": 1,
+              "member_bytes": 9991,
+              "value_bytes": 9977
+            },
+            "reconstruction": {
+              "count": 1,
+              "member_bytes": 549,
+              "value_bytes": 532
+            },
+            "refresh_lineage": {
+              "count": 1,
+              "member_bytes": 22,
+              "value_bytes": 4
+            },
+            "required_raw_paths": {
+              "count": 1,
+              "member_bytes": 81,
+              "value_bytes": 60
+            },
+            "task_data_projection": {
+              "count": 0,
+              "member_bytes": 0,
+              "value_bytes": 0
+            },
+            "worker_projection": {
+              "count": 1,
+              "member_bytes": 2055,
+              "value_bytes": 2035
+            }
+          },
+          "object_bytes": 28751,
+          "outer_punctuation_bytes": 20
+        }
+      },
+      "semantic_working_set_preflight": {
+        "capsule_sha256": "0094bbc8500b05cc9d3e98e5e4ec07c9bcf788f1d90409bfd3b56418f0cb1337",
+        "capsules_probed": 1,
+        "complete_capsule_expansion_verified": false,
+        "proof_authority": false,
+        "provider_input_bytes": 0,
+        "requests": 1,
+        "response_bytes": 4096,
+        "response_sha256": "bd1342d4c388dfc93950bae6ea14ccc7ea7709c2e3787ab294308e92fcee3a7b",
+        "schema": "supervisor-semantic-working-set-census-preflight@1",
+        "session_id_sha256": "3973af0a999edb2b93e71277162d42137a763a1f870ef1cf52a67a5fc6288d49",
+        "source_freshness_checked": true
+      },
+      "settlement_authority": false,
+      "source_formalization_receipt_sha256": "918101d85328e8ca139e7989518c6a76a153e831cd1421a7db563d1f125dd470",
+      "source_freshness_authority": false,
+      "source_view_receipt_sha256": "4d9646f03539f778a7fe243a5d73b51a5a066b95616aa8802a4ad4bd150623c7",
+      "total_token_savings_measured": false,
+      "workspace_advisory_bytes": 915,
+      "workspace_advisory_sha256": "d1a63a5ee9ea6ad33a44c5c87f9f6da1383b3d6837735d20cfb86d4553843177",
+      "workspace_identity_sha256": "73c3b69586a97a0ef8499b95c9574b636e77f0335c4426f6d98fe494d7fa4086"
+    },
+    "working_set_census_context": {
+      "admission_metadata_sha256": "59c2295bf3e8ac7b0e123862a9b405ffab74eff4648c14e6180c5914b6f830ed",
+      "allocated_worktree_removed": true,
+      "baseline_commit_sha256": "e64e777c5a0fd490df6216975b7db074a54a8b9c2ea8de308e06ed9f471aa3c9",
+      "completion_authority": false,
+      "context_metadata_sha256": "644ab8d80926f83ce8501b6bcab9fce200807070011afac3a87f86c8f6f71dbc",
+      "declared_contract_planning_receipt_sha256": "36daecf1599bfa74ec10eb9bdc7f08ab270adbee995457f89afa3844544c839e",
+      "detached_same_common_dir_checked": true,
+      "doctor_repair_execution_permitted": false,
+      "doctor_residual_included": true,
+      "execution_authority": false,
+      "existing_native_owner_state_observed": true,
+      "explicit_external_worktree_root": true,
+      "full_capsule_count": 8,
+      "graph_cid_sha256": "1dd8d88e4cf34950979117887bbb252a91be20227cdb111948c6f7ebe725ab28",
+      "graph_goal_count": 2,
+      "graph_provenance": "persisted-native-declared-contract-plan",
+      "graph_task_count": 1,
+      "guarded_cleanup": true,
+      "hidden_evaluator_reads": false,
+      "implementation_executed": false,
+      "index_id_sha256": "1b1aaac92c04fb8800d674826a44f46a9f653980d690e10ae60db5aa09e670da",
+      "indexed_symbol_count": 4,
+      "initial_context_supplied_to_router": false,
+      "isolation_verified_here": false,
+      "live_llm_execution_verified_here": false,
+      "manifest_cid_sha256": "772bb81519039495087a2198866712ded064f2f2fe903706dd607ba611fd4052",
+      "metadata_digest_encoding": "canonical-json-utf8@1",
+      "model_runs": 0,
+      "native_fact_rows_replayed": 4,
+      "native_prompt_bytes": 67174,
+      "native_prompt_sha256": "13f33b96dec282697c75b8b2f3018e2ae283ee911a72ca70e35bc9ea143c8a07",
+      "native_task_cid_sha256": "d021c339f7c0d67e9011b6c3171e22b7705a78652ddd484000966192cbcfa843",
+      "native_task_contract_sha256": "1dcde6abb3e2e034842393fa2f80ac165d21ff64b5df10a2c93f33c7a2ae6132",
+      "native_task_revision": 1,
+      "observation_only": true,
+      "official_verifier_executed": false,
+      "owner_state_created_by_census": false,
+      "planning_metadata_sha256": "142fd501ad3064124ecf92b3c036a984b347d081048a422d314ddb275564a3cf",
+      "planning_performed_by_census": false,
+      "post_yield_admission_task_revalidated": true,
+      "prepared_metadata_sha256": "aee955ccd94887930c5acc8fb132a1d017990417b2b0b0cffa0b16838f4c287b",
+      "prior_planning_provider_calls": 0,
+      "proof_authority": false,
+      "provider_calls": 0,
+      "provider_response_reads": false,
+      "public_instruction_artifact_sha256": "21654e1d88d11972874342830cde9a961d06f63d9a73cd7f1ca55501561b15a3",
+      "publication_authority": false,
+      "required_fact_omission_authority": false,
+      "retained_owner_planning_receipt_join_verified": true,
+      "schema": "terminal-working-set-census-context@1",
+      "semantic_root_cid_sha256": "f27d5c337ddce40418ca255dbf3a5ed7855b51f40823c55ce1d76927237d7abb",
+      "solution_reads": false,
+      "source384_checkpoint_sha256": "2ca38dfcc05536315fc3e2c0647b710b930ef4066b474061a7b4e5bfb9a258c5",
+      "source384_config_sha256": "c0ef8114ecf81303295c0fc8b7b55a4bf74e83eaad3e677dfa57d686a36eb6d7",
+      "source384_currentness_verified": true,
+      "source384_inference_performed_by_census": false,
+      "source384_inference_sha256": "587b96f9485b31b7e7632555a31d2a7e6a1bd79eb18eb36e39c5551b99902fc2",
+      "source384_neural_inference_replayed": false,
+      "source384_present": true,
+      "source384_receipt_sha256": "9d72e36134f759d6fb47e0ec4526710017317ba51f476b267e1b625472bf47d1",
+      "source_count": 5,
+      "validation_executed": false,
+      "worker_capsule_count": 2,
+      "worker_writable_workspace_selected": true
+    },
+    "working_set_census_source_observation": {
+      "audit_sha256": "65f519ea6a49afa6134c5eff374abdf6c55a25056a2b490d4cc2da9972e16012",
+      "closed_observation_replayed": true,
+      "complete_input_replayed": true,
+      "completion_authority": false,
+      "deployment_sha256": "24184d60ed1b70e25e04dcbb1bf89550a137a4819defbf0913c9e63a1c5ed0d4",
+      "descriptor_sha256": "310c97e6988200ab0eb1b50ed55a5474e7d0c56f4a34ee5a0786c2ba913cb676",
+      "observation_only": true,
+      "proof_authority": false,
+      "provider_calls": 0,
+      "provider_input_bytes": 0,
+      "provider_tokens": null,
+      "raw_content_exported": false,
+      "schema": "terminal-working-set-census-source-observation@1",
+      "source_evidence_bytes": 2327,
+      "source_response_bytes": 4096,
+      "source_session_accounting_complete": true,
+      "source_session_requests": 1,
+      "source_session_stopped": true,
+      "total_token_savings_measured": false
+    }
+  },
+  "official_reward": null,
+  "official_verifier_executed": false,
+  "provider_tokens_measured": false,
+  "public_input_bindings": [
+    {
+      "bytes": 716,
+      "path": "/home/barberb/lift_coding/.benchmarks/terminal-bench-2/largest-eigenval/instruction.md",
+      "sha256": "6fa938389f99648508e5a9772e0d5e95d1102738c68d1ff61bd65469d76c52ab"
+    },
+    {
+      "bytes": 642,
+      "path": "/home/barberb/lift_coding/.benchmarks/terminal-bench-2/largest-eigenval/environment/src/eigen.py",
+      "sha256": "bbd5be97fb11e9ed46fd5f1fb9d407efb19b265b549d3c36e2cfba923efe3d9d"
+    },
+    {
+      "bytes": 2246,
+      "path": "/home/barberb/lift_coding/.benchmarks/terminal-bench-2/largest-eigenval/environment/src/eval.py",
+      "sha256": "70a12a80b9caa392b1f1f0439de853932c5ac61f1a2274b5de1ce93aebd4e139"
+    }
+  ],
+  "public_profile_sha256": "274146542fd5d4c611b0b01700fbeea48a202da875525303bddbd44b2a4e67c3",
+  "qualified": true,
+  "resources": {
+    "available_memory_mb": 14201,
+    "cgroup_path": "/sys/fs/cgroup",
+    "cpu_max": "500000 100000",
+    "detected_cpu_slots": 5,
+    "detected_total_memory_mb": 20480,
+    "memory_max": "21474836480",
+    "schema": "terminal-source384-cgroup-observation@1"
+  },
+  "schema": "terminal-public-working-set-owner-census@1",
+  "scope": "fresh-source384-declared-plan-coding-input-census",
+  "seconds": 491.37290179892443,
+  "source_freeze_sha256": "bf26a01dc3ea324ec79b0ff4bf4cb7b3ee052069bd82c66a5ef1a7d6f4b340fb",
+  "task_completed": false,
+  "task_name": "largest-eigenval"
+}

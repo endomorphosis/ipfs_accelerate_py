@@ -1,0 +1,138 @@
+{
+  "files": [
+    {
+      "bytes": 1946,
+      "path": "candidate-adapter01-result.json",
+      "sha256": "ad92797ed62a4857fab550ea622b6e55367d39ea6a202eccaaeba148eb352703"
+    },
+    {
+      "bytes": 461,
+      "path": "candidate-adapter01-source-pins.json",
+      "sha256": "4fdfee934ad9d57c2f93eb411064e4869c593b9ff5d3e5b20d526afb381d94fa"
+    },
+    {
+      "bytes": 111,
+      "path": "candidate-adapter01.log",
+      "sha256": "a0f3e98d0e6bae7d4f0948963acb5a4e227078324336971a929ddc649a794731"
+    },
+    {
+      "bytes": 6032,
+      "path": "candidate-adapter01.xml",
+      "sha256": "555980343851583ada494dce424d471601e50b8b53101619bff03ae331f04c5f"
+    },
+    {
+      "bytes": 2028,
+      "path": "cap-final01-result.json",
+      "sha256": "3d2efd9babbebb5399d67ec4f1fa6eeddc037ae48138fe9a77e0cf5df201211f"
+    },
+    {
+      "bytes": 1156,
+      "path": "cap-final01-source-pins.json",
+      "sha256": "5acf9bdedbdc77cac9d8119e09668f71536c744a98fe6b986b976e0b09350232"
+    },
+    {
+      "bytes": 261,
+      "path": "cap-final01.log",
+      "sha256": "59bdda437e618a2e0b81641a61b70cf0abbcab3fa07609086153a400091a4c4a"
+    },
+    {
+      "bytes": 32409,
+      "path": "cap-final01.xml",
+      "sha256": "4ca5f610d1d95c4104847102b30be0cc014d71b57571472282347104a253ca4e"
+    },
+    {
+      "bytes": 2119,
+      "path": "cap-trailer-dev01-result.json",
+      "sha256": "beb61a65be40279ba9f13ecb14303e81040a0464f061d58b07c4883dd4a4e6de"
+    },
+    {
+      "bytes": 1151,
+      "path": "cap-trailer-dev01-source-pins.json",
+      "sha256": "edfc331aa61ddcdb83c8425f049de9c5d753b3c331c901188b1160f9bedb552a"
+    },
+    {
+      "bytes": 421,
+      "path": "cap-trailer-dev01.log",
+      "sha256": "cfb318d4d28a61dfbec05f4cae48013957f349daaedd74dfb01e14e63e671205"
+    },
+    {
+      "bytes": 49224,
+      "path": "cap-trailer-dev01.xml",
+      "sha256": "52fc86e0f7d3763316aa10f79e399f7ceab10a7a9f3ca7abd8a5652f5693fce4"
+    },
+    {
+      "bytes": 1963,
+      "path": "cap-trailer-red01-result.json",
+      "sha256": "20ed52537f158e7478d1e25781d179e44b703d20791aac17f3e9b06cfb06d9ab"
+    },
+    {
+      "bytes": 192,
+      "path": "cap-trailer-red01-source-pins.json",
+      "sha256": "26e8a5c615c7002b5340ed89e1dadef4b50a394c5a911fa29f2e5698dbdacb39"
+    },
+    {
+      "bytes": 1788,
+      "path": "cap-trailer-red01.log",
+      "sha256": "c22d3152620771377c9cff697117f7bfab25cb4f5d85ec30efa7d3d3b3e10305"
+    },
+    {
+      "bytes": 1813,
+      "path": "cap-trailer-red01.xml",
+      "sha256": "282094b85984e083707c200a8e7c1d7d9b764715a19ce6bad2b4db7dff35689c"
+    },
+    {
+      "bytes": 5958,
+      "path": "independent-review.json",
+      "sha256": "9bed29acb03746b35870cf604b10db9a4120305bc992ac7f656b15de3c27c59d"
+    },
+    {
+      "bytes": 288,
+      "path": "model-run-cleanup-observation.json",
+      "sha256": "4684d137d813ad0cfd6010d9feefdbf9119efcfefa7c02a1a52172b00deef9f3"
+    },
+    {
+      "bytes": 532,
+      "path": "model-run-execute-result.json",
+      "sha256": "f56bf18f94dc6281b2033e4491d66b0effb72e9a436eda47fc29b5f7b843a21c"
+    },
+    {
+      "bytes": 3632,
+      "path": "model-run-live-outcome.json",
+      "sha256": "1fc322e3e030eea4fca68bb0e6e3598177253132a11a918c8edceb9fb8660437"
+    },
+    {
+      "bytes": 41773,
+      "path": "model-run-readout-final.json",
+      "sha256": "085fc22ad3c834001b058ea69e7b39aa6f1d3da1df5d69670fcc698f3525dcaa"
+    },
+    {
+      "bytes": 149865,
+      "path": "model-run-recipe.json",
+      "sha256": "3c512c8480559f51ee5f4e4798168e034534476af7149099ff07b6ce589588b1"
+    },
+    {
+      "bytes": 1674,
+      "path": "model-run-source-freeze.json",
+      "sha256": "c4b41e043a7c03d6eaf9775b33fd40a2efbcc8fd7d1b577d752b186f39c6db1c"
+    },
+    {
+      "bytes": 2704,
+      "path": "qualification.json",
+      "sha256": "18f461eb8fe2b2960fcc8d5adebdcd41a7b1b445f8e7105641266a54c63b59f6"
+    },
+    {
+      "bytes": 4266,
+      "path": "run-tests.py",
+      "sha256": "c4b10a1988b8450bb79d5628670268622608c57c3263e421a1713e1780831d9f"
+    },
+    {
+      "bytes": 710,
+      "path": "second-coding-option-diagnosis.json",
+      "sha256": "ee04aa8ec7f09b041a6e4241c1d9af559a16aa023450f0f80af805f05a61b396"
+    }
+  ],
+  "live_fix_qualification_pending": true,
+  "provider_calls_in_tests": 0,
+  "qualification_case_count": 415,
+  "schema": "grok-coding-route-evidence-manifest@1"
+}

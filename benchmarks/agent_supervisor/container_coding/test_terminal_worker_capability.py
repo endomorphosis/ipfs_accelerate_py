@@ -3,6 +3,10 @@ import asyncio
 import copy
 import hashlib
 import json
+import os
+import shutil
+import stat
+import tempfile
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
@@ -17,19 +21,136 @@ from benchmarks.agent_supervisor.container_coding.benchmark_resource_profile imp
 )
 from benchmarks.agent_supervisor.container_coding.terminal_deployment import build_runtime_archive
 from benchmarks.agent_supervisor.container_coding.test_terminal_deployment import _supervisor_inputs
+from test.common.native_quack_fixtures import (
+    _all_native_case_phases_passed, _catalog_identity, _sync_native_fixture_directory,
+)
 
 GTE_REVISION = '17e1f347d17fe144873b1201da91788898c639cd'
 
 
-@pytest.fixture
-def packaged(tmp_path):
-    inputs = _supervisor_inputs(tmp_path)
-    archive = tmp_path / 'bundle'
-    snapshot = tmp_path / GTE_REVISION
+WORKER_BUNDLE_RETENTION = "IPFS_TEST_WORKER_BUNDLE_RETENTION"
+
+
+def _build_fixture_archive(root):
+    inputs = _supervisor_inputs(root)
+    archive = root / 'bundle'
+    snapshot = root / GTE_REVISION
     snapshot.mkdir()
     # Packaging selection fixture; actual GTE inference has a separate probe.
     (snapshot / 'config.json').write_text('{"fixture":true}')
     manifest = build_runtime_archive(output=archive, model_snapshot=snapshot, **inputs)
+    return archive, manifest
+
+
+@pytest.fixture(scope='module')
+def packaged_seed(tmp_path_factory):
+    profile = os.environ.get(WORKER_BUNDLE_RETENTION, "")
+    if profile not in ("", "deduplicate-after-pass@1"):
+        raise ValueError("unknown worker bundle fixture retention profile")
+    root = Path(tempfile.mkdtemp(prefix='worker-capability-seed-',
+                                 dir=tmp_path_factory.getbasetemp()))
+    archive, manifest = _build_fixture_archive(root)
+    payload = archive / 'runtime.tar.gz'
+    def inventory():
+        digests = {}
+        for path in root.rglob('*'):
+            assert not path.is_symlink()
+            if path.is_file():
+                _catalog_identity(path)
+                digests[str(path.relative_to(root))] = hashlib.sha256(path.read_bytes()).hexdigest()
+        return digests
+
+    baseline = inventory()
+    seed_identity = _catalog_identity(payload)
+    seed_digest = hashlib.sha256(payload.read_bytes()).hexdigest()
+    with payload.open('rb') as stream:
+        os.fsync(stream.fileno())
+    _sync_native_fixture_directory(archive)
+    _sync_native_fixture_directory(root)
+    _sync_native_fixture_directory(root.parent)
+    yield archive, manifest, seed_identity, seed_digest
+    assert _catalog_identity(payload) == seed_identity
+    assert hashlib.sha256(payload.read_bytes()).hexdigest() == seed_digest
+    assert inventory() == baseline
+
+
+def _retire_duplicate_worker_payload(tmp_path, archive, seed, nodeid):
+    seed_archive, _, seed_identity, seed_digest = seed
+    payload = archive / 'runtime.tar.gz'
+    seed_payload = seed_archive / payload.name
+    identity = _catalog_identity(payload)
+    if identity['st_size'] != seed_identity['st_size']:
+        return
+    if hashlib.sha256(payload.read_bytes()).hexdigest() != seed_digest:
+        return
+    if (_catalog_identity(seed_payload) != seed_identity
+            or hashlib.sha256(seed_payload.read_bytes()).hexdigest() != seed_digest):
+        raise ValueError("worker bundle seed changed before duplicate retirement")
+    receipt = tmp_path / 'worker-bundle-retention.json'
+    record = {
+        'schema': 'worker-bundle-fixture-retention@1',
+        'case': nodeid,
+        'original': payload.relative_to(tmp_path.parent).as_posix(),
+        'seed': seed_payload.relative_to(tmp_path.parent).as_posix(),
+        'sha256': seed_digest,
+        'bytes': identity['st_size'],
+        'mode': stat.S_IMODE(identity['st_mode']),
+        'uid': identity['st_uid'],
+        'gid': payload.lstat().st_gid,
+        'mtime_ns': identity['st_mtime_ns'],
+        'passed_phases': ['setup', 'call', 'teardown'],
+        'restoration': 'Copy the verified seed into a distinct regular file and restore its recorded metadata.',
+    }
+    with receipt.open('x') as stream:
+        json.dump(record, stream, sort_keys=True)
+        stream.write('\n')
+        stream.flush()
+        os.fsync(stream.fileno())
+    _sync_native_fixture_directory(tmp_path)
+    if (_catalog_identity(payload) != identity
+            or hashlib.sha256(payload.read_bytes()).hexdigest() != seed_digest):
+        raise ValueError("worker bundle changed before duplicate retirement")
+    payload.unlink()
+    _sync_native_fixture_directory(archive)
+
+
+class _WorkerBundleRetention:
+    def __init__(self, request, tmp_path, archive, seed):
+        self.request = request
+        self.tmp_path = tmp_path
+        self.archive = archive
+        self.seed = seed
+        self.reports = {}
+
+    @pytest.hookimpl(hookwrapper=True)
+    def pytest_runtest_makereport(self, item, call):
+        outcome = yield
+        if item is not self.request.node:
+            return
+        report = outcome.get_result()
+        self.reports[report.when] = report
+        if report.when == 'teardown':
+            try:
+                if _all_native_case_phases_passed(self.reports):
+                    _retire_duplicate_worker_payload(self.tmp_path, self.archive, self.seed, item.nodeid)
+            finally:
+                self.request.config.pluginmanager.unregister(self)
+
+
+@pytest.fixture
+def packaged(tmp_path, packaged_seed, request):
+    seed_archive, seed_manifest, _, _ = packaged_seed
+    archive = tmp_path / 'bundle'
+    archive.mkdir()
+    for source in seed_archive.iterdir():
+        _catalog_identity(source)
+        target = archive / source.name
+        shutil.copyfile(source, target)
+        _catalog_identity(target)
+        assert target.read_bytes() == source.read_bytes()
+    manifest = copy.deepcopy(seed_manifest)
+    if os.environ.get(WORKER_BUNDLE_RETENTION):
+        request.config.pluginmanager.register(_WorkerBundleRetention(request, tmp_path, archive, packaged_seed))
     dataset = tmp_path / 'dataset'
     task = dataset / benchmark.TASK
     task.mkdir(parents=True)
@@ -38,7 +159,6 @@ def packaged(tmp_path):
     (task / 'environment').mkdir()
     (task / 'tests').mkdir()
     return archive, manifest, dataset
-
 
 def test_builder_binds_exact_installer_template_and_shared_router_cap(packaged):
     from benchmarks.agent_supervisor.container_coding.container_worker_deployment import WORKER_ENTRY
@@ -65,6 +185,7 @@ def test_builder_binds_exact_installer_template_and_shared_router_cap(packaged):
         'source/benchmarks/agent_supervisor/container_coding/terminal_source_view_policy.py',
         'source/benchmarks/agent_supervisor/container_coding/terminal_source_view_observation.py',
         'source/benchmarks/agent_supervisor/container_coding/terminal_numerical_retrieval_observation.py',
+        'source/benchmarks/agent_supervisor/container_coding/terminal_owner_worker_attempt_observation.py',
         'source/benchmarks/agent_supervisor/container_coding/terminal_doctor_dispatch.py',
         'source/benchmarks/agent_supervisor/container_coding/terminal_context_audit.py',
         'source/benchmarks/agent_supervisor/container_coding/terminal_context_evidence.py',
@@ -82,6 +203,24 @@ def test_builder_binds_exact_installer_template_and_shared_router_cap(packaged):
         'source/ipfs_accelerate_py/agent_supervisor/procedure_compiler/world_model.py',
         'source/benchmarks/agent_supervisor/container_coding/container_worker_deployment.py',
         'source/ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py',
+        'source/ipfs_accelerate_py/agent_supervisor/runtime/owner_worker_attempt.py',
+        'source/ipfs_accelerate_py/agent_supervisor/runtime/candidate_dispatch_client.py',
+        'source/ipfs_accelerate_py/agent_supervisor/runtime/candidate_dispatch_broker.py',
+        'source/ipfs_accelerate_py/agent_supervisor/runtime/worker_candidate_round_client.py',
+        'source/ipfs_accelerate_py/agent_supervisor/runtime/worker_candidate_round_broker.py',
+        'source/ipfs_accelerate_py/agent_supervisor/runtime/native_candidate_round_admission.py',
+        'source/ipfs_accelerate_py/agent_supervisor/runtime/native_candidate_round_worker.py',
+        'source/ipfs_accelerate_py/agent_supervisor/runtime/native_candidate_round_resources.py',
+        'source/ipfs_accelerate_py/agent_supervisor/runtime/owner_provider_deadline.py',
+        'source/ipfs_accelerate_py/agent_supervisor/runtime/native_candidate_continuation.py',
+        'source/ipfs_accelerate_py/agent_supervisor/runtime/owner_candidate_round_context.py',
+        'source/ipfs_accelerate_py/agent_supervisor/runtime/owner_candidate_round_prompt.py',
+        'source/ipfs_accelerate_py/agent_supervisor/runtime/current_source_task_admission.py',
+        'source/ipfs_accelerate_py/agent_supervisor/runtime/current_source_worktree_allocation.py',
+        'source/ipfs_accelerate_py/agent_supervisor/runtime/native_writable_allocation.py',
+        'source/ipfs_accelerate_py/agent_supervisor/runtime/owner_writable_worktree.py',
+        'source/ipfs_accelerate_py/agent_supervisor/runtime/owner_worktree_parent.py',
+        'source/ipfs_accelerate_py/agent_supervisor/runtime/owner_worktree_traversal.py',
         'source/ipfs_accelerate_py/agent_supervisor/runtime/representation_displacement.py',
         'source/ipfs_accelerate_py/agent_supervisor/runtime/source_formalization_context.py',
         'source/ipfs_accelerate_py/agent_supervisor/runtime/numerical_obligation_broker.py',
@@ -103,6 +242,7 @@ def test_builder_binds_exact_installer_template_and_shared_router_cap(packaged):
         'source/ipfs_accelerate_py/llm_router.py',
         'source/ipfs_accelerate_py/cli_runtime/grok_stream_capture.py',
         'source/ipfs_accelerate_py/cli_runtime/grok_stream_usage.py',
+        'source/ipfs_accelerate_py/cli_runtime/grok_tool_events.py',
         'source/ipfs_accelerate_py/cli_runtime/cli_metadata.py',
         'source/ipfs_accelerate_py/cli_runtime/grok_native_usage.py',
         'source/ipfs_accelerate_py/agent_supervisor/runtime/benchmark_budget_policy.py',
@@ -125,13 +265,24 @@ def test_builder_binds_exact_installer_template_and_shared_router_cap(packaged):
 
 
 @pytest.mark.parametrize('name', ['terminal_container_supervisor.py', 'terminal_output_observation.py',
-    'llm_router.py', 'grok_stream_capture.py', 'grok_stream_usage.py', 'cli_metadata.py', 'grok_native_usage.py',
+    'llm_router.py', 'grok_stream_capture.py', 'grok_stream_usage.py', 'grok_tool_events.py', 'cli_metadata.py', 'grok_native_usage.py',
     'source_formalization_context.py', 'validation_runtime.py', 'representation_displacement.py',
     'numerical_obligation_broker.py', 'numerical_obligation_client.py', 'source_view_policy.py',
     'context_selection_observation.py', 'worker_source_request_observation.py',
     'terminal_world_packet_audit.py', 'terminal_world_nomination_audit.py', 'repository_world_packet.py',
     'repository_world_packet_replay.py', 'repository_world_invocation_replay.py',
-    'repository_world_artifact_store.py', 'delta_task_packet.py', 'world_model.py'])
+    'repository_world_artifact_store.py', 'delta_task_packet.py', 'world_model.py',
+    'owner_worker_attempt.py', 'terminal_owner_worker_attempt_observation.py',
+    'candidate_dispatch_client.py', 'candidate_dispatch_broker.py',
+    'worker_candidate_round_client.py', 'worker_candidate_round_broker.py',
+    'native_candidate_round_admission.py', 'native_candidate_round_worker.py',
+    'native_candidate_round_resources.py',
+    'owner_provider_deadline.py',
+    'native_candidate_continuation.py', 'native_writable_allocation.py', 'owner_writable_worktree.py',
+    'owner_worktree_parent.py',
+    'owner_worktree_traversal.py',
+    'owner_candidate_round_context.py', 'owner_candidate_round_prompt.py',
+    'current_source_task_admission.py', 'current_source_worktree_allocation.py'])
 @pytest.mark.parametrize('kind', ['missing', 'stale', 'copied-feature'])
 def test_output_observation_requires_matching_owner_driver_and_collector(packaged, name, kind):
     manifest = copy.deepcopy(packaged[1])

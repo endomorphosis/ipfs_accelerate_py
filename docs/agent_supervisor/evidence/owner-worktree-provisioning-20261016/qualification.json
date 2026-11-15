@@ -1,0 +1,467 @@
+{
+  "schema": "owner-worktree-provisioning-qualification@1",
+  "recorded_utc": "2026-10-16T02:37:45.700180+00:00",
+  "accelerate_base": "f5b1d08fe22da5075e4a585d95a51d00f094333f",
+  "branch": "codex/candidate-owner-continuation-20261015",
+  "datasets": "74f5d98c8ffff3c284cffddf430091b5fc4c6f8c",
+  "kit": "40c98c71b95be750509ffdb21e7e5494d91b4e79",
+  "dependency_note": "Qualification uses the pinned sibling datasets checkout; accelerate gitlink remains d0d44b3e0f7c2ba804b0d9115f7a1efd2ad926c3.",
+  "dataset_resource_scheduler_source": {
+    "bytes": 121503,
+    "sha256": "7c889bc858ff092e18bd2e97ff5a6407973e226eae33cddc9e5eef1d21f35986"
+  },
+  "resource_policy_sha256": "f07cb14289fcb6275e4497dcc36be0dcf8bfc3dc87531ff7a9537eb85fdcc661",
+  "policy_unchanged": true,
+  "qualification_and_candidate_resource_rows_remaining": 0,
+  "root_only_runtime": true,
+  "agent_work": "Static reads/AST/edits/security review only; no agent runtime, imports, tests or probes.",
+  "artifact_directory": "/home/barberb/lift_coding/artifacts/owner-worktree-provisioning-20261016-01",
+  "qualification_counts": {
+    "tests": 317,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "modules": 7
+  },
+  "new_provisioning_cases": 37,
+  "new_generated_wrapper_cases": 7,
+  "qualified_modules": [
+    "benchmarks.agent_supervisor.container_coding.test_owner_provider_deadline_wiring",
+    "benchmarks.agent_supervisor.container_coding.test_owner_writable_worktree_wiring",
+    "benchmarks.agent_supervisor.container_coding.test_source_formalization_worker_deployment",
+    "benchmarks.agent_supervisor.container_coding.test_source_view_worker_wiring",
+    "benchmarks.agent_supervisor.container_coding.test_terminal_deployment",
+    "benchmarks.agent_supervisor.container_coding.test_terminal_worker_capability",
+    "test.api.test_owner_writable_worktree"
+  ],
+  "module_normalization": "api.* and test.api.* pytest classnames are normalized to the same test/api source module.",
+  "qualifying_runs": [
+    "provisioning-original-deadline-v01",
+    "provisioning-direct-wiring-v02",
+    "provisioning-native-continuation-v03",
+    "provisioning-archive-deployment-v02"
+  ],
+  "runs": [
+    {
+      "label": "provisioning-archive-deployment-v01",
+      "qualifying": false,
+      "lease": {
+        "schema": "world-packet-replay-qualification-lease@1",
+        "label": "provisioning-archive-deployment-v01",
+        "started_utc": "2026-10-16T02:27:06.696664+00:00",
+        "cpu_slots": 1,
+        "memory_mb": 2048,
+        "child_process_slots": 3,
+        "lease_released": true,
+        "policy_unchanged": true,
+        "returncode": 0,
+        "offline_validation": true,
+        "network_dependency_installation": false,
+        "ended_utc": "2026-10-16T02:27:30.784829+00:00"
+      },
+      "junit": {
+        "tests": 253,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "raw_modules": [
+          "benchmarks.agent_supervisor.container_coding.test_source_formalization_worker_deployment",
+          "benchmarks.agent_supervisor.container_coding.test_source_view_worker_wiring",
+          "benchmarks.agent_supervisor.container_coding.test_terminal_deployment",
+          "benchmarks.agent_supervisor.container_coding.test_terminal_worker_capability"
+        ],
+        "normalized_modules": [
+          "benchmarks.agent_supervisor.container_coding.test_source_formalization_worker_deployment",
+          "benchmarks.agent_supervisor.container_coding.test_source_view_worker_wiring",
+          "benchmarks.agent_supervisor.container_coding.test_terminal_deployment",
+          "benchmarks.agent_supervisor.container_coding.test_terminal_worker_capability"
+        ],
+        "bytes": 55423,
+        "sha256": "0c8bdf90973b8383fced7568d5967ccda937736886daba154c2085039a970941"
+      },
+      "nonqualifying_reason": "Archive contained the pre-hardening helper; all 253 passes are excluded from final qualification.",
+      "stdout.log": {
+        "bytes": 49030,
+        "sha256": "f83431ccef948106e3ee82c018d21fa6960df4f08f53dabad2d8de99537e9781"
+      },
+      "stderr.log": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "label": "provisioning-archive-deployment-v02",
+      "qualifying": true,
+      "lease": {
+        "schema": "world-packet-replay-qualification-lease@1",
+        "label": "provisioning-archive-deployment-v02",
+        "started_utc": "2026-10-16T02:30:53.686085+00:00",
+        "cpu_slots": 1,
+        "memory_mb": 2048,
+        "child_process_slots": 3,
+        "lease_released": true,
+        "policy_unchanged": true,
+        "returncode": 0,
+        "offline_validation": true,
+        "network_dependency_installation": false,
+        "ended_utc": "2026-10-16T02:32:04.567786+00:00"
+      },
+      "junit": {
+        "tests": 253,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "raw_modules": [
+          "benchmarks.agent_supervisor.container_coding.test_source_formalization_worker_deployment",
+          "benchmarks.agent_supervisor.container_coding.test_source_view_worker_wiring",
+          "benchmarks.agent_supervisor.container_coding.test_terminal_deployment",
+          "benchmarks.agent_supervisor.container_coding.test_terminal_worker_capability"
+        ],
+        "normalized_modules": [
+          "benchmarks.agent_supervisor.container_coding.test_source_formalization_worker_deployment",
+          "benchmarks.agent_supervisor.container_coding.test_source_view_worker_wiring",
+          "benchmarks.agent_supervisor.container_coding.test_terminal_deployment",
+          "benchmarks.agent_supervisor.container_coding.test_terminal_worker_capability"
+        ],
+        "bytes": 55423,
+        "sha256": "6388ec2f83d591b05d2a6c9fa9c6c3ac48fd022c89111e0c1ff307022a318cee"
+      },
+      "stdout.log": {
+        "bytes": 49030,
+        "sha256": "7e70a6951e664301d2ffe86d26f72956acc0b5d9280e3e044c50538b91108103"
+      },
+      "stderr.log": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "label": "provisioning-direct-wiring-v01",
+      "qualifying": false,
+      "lease": {
+        "schema": "world-packet-replay-qualification-lease@1",
+        "label": "provisioning-direct-wiring-v01",
+        "started_utc": "2026-10-16T02:27:06.719300+00:00",
+        "cpu_slots": 1,
+        "memory_mb": 2048,
+        "child_process_slots": 3,
+        "lease_released": true,
+        "policy_unchanged": true,
+        "returncode": 0,
+        "offline_validation": true,
+        "network_dependency_installation": false,
+        "ended_utc": "2026-10-16T02:27:09.198675+00:00"
+      },
+      "junit": {
+        "tests": 38,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "raw_modules": [
+          "benchmarks.agent_supervisor.container_coding.test_owner_writable_worktree_wiring",
+          "test.api.test_owner_writable_worktree"
+        ],
+        "normalized_modules": [
+          "benchmarks.agent_supervisor.container_coding.test_owner_writable_worktree_wiring",
+          "test.api.test_owner_writable_worktree"
+        ],
+        "bytes": 6695,
+        "sha256": "977b3b07f22aa07a69376cd26ace66613e4c9d9f4b69613f72175bb6e0e1dab1"
+      },
+      "nonqualifying_reason": "Pre-hardening iteration; superseded after static review identified private-path overlap and root-versus-parent mount gates. All 38 passes are excluded from final qualification.",
+      "stdout.log": {
+        "bytes": 5889,
+        "sha256": "708b872f83a3ad6fe2662eb56fb6f2b3ad9502fbacd72b87853910ec14e9b416"
+      },
+      "stderr.log": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "label": "provisioning-direct-wiring-v02",
+      "qualifying": true,
+      "lease": {
+        "schema": "world-packet-replay-qualification-lease@1",
+        "label": "provisioning-direct-wiring-v02",
+        "started_utc": "2026-10-16T02:30:53.703598+00:00",
+        "cpu_slots": 1,
+        "memory_mb": 2048,
+        "child_process_slots": 3,
+        "lease_released": true,
+        "policy_unchanged": true,
+        "returncode": 0,
+        "offline_validation": true,
+        "network_dependency_installation": false,
+        "ended_utc": "2026-10-16T02:31:42.532992+00:00"
+      },
+      "junit": {
+        "tests": 43,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "raw_modules": [
+          "benchmarks.agent_supervisor.container_coding.test_owner_writable_worktree_wiring",
+          "test.api.test_owner_writable_worktree"
+        ],
+        "normalized_modules": [
+          "benchmarks.agent_supervisor.container_coding.test_owner_writable_worktree_wiring",
+          "test.api.test_owner_writable_worktree"
+        ],
+        "bytes": 7530,
+        "sha256": "8b21752e25d7dd6246a77ecca051a4bc53b6f2aedfd6ee13e40e808908ed39dd"
+      },
+      "stdout.log": {
+        "bytes": 6594,
+        "sha256": "f59e80c01072945f4a6898c213c8cc409c50dca959d324c5463a4b2573944232"
+      },
+      "stderr.log": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "label": "provisioning-environment-v01",
+      "qualifying": false,
+      "lease": {
+        "schema": "world-packet-replay-qualification-lease@1",
+        "label": "provisioning-environment-v01",
+        "started_utc": "2026-10-16T02:17:32.873182+00:00",
+        "cpu_slots": 1,
+        "memory_mb": 2048,
+        "child_process_slots": 3,
+        "lease_released": true,
+        "policy_unchanged": true,
+        "returncode": 0,
+        "offline_validation": true,
+        "network_dependency_installation": false,
+        "ended_utc": "2026-10-16T02:17:37.035936+00:00"
+      },
+      "nonqualifying_reason": "Native environment probe; no contribution to test counts.",
+      "stdout.log": {
+        "bytes": 419,
+        "sha256": "b7975c0879d316fb4b9ce0d804fc0562f8cb7eda756f3fa8771d2e4d4c2df4bd"
+      },
+      "stderr.log": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "label": "provisioning-native-continuation-v01",
+      "qualifying": false,
+      "lease": {
+        "schema": "world-packet-replay-qualification-lease@1",
+        "label": "provisioning-native-continuation-v01",
+        "started_utc": "2026-10-16T02:27:06.717507+00:00",
+        "cpu_slots": 1,
+        "memory_mb": 2048,
+        "child_process_slots": 3,
+        "lease_released": true,
+        "policy_unchanged": true,
+        "returncode": 1,
+        "offline_validation": true,
+        "network_dependency_installation": false,
+        "ended_utc": "2026-10-16T02:27:11.199723+00:00"
+      },
+      "junit": {
+        "tests": 1,
+        "failures": 1,
+        "errors": 0,
+        "skipped": 0,
+        "raw_modules": [
+          "api.test_owner_writable_worktree"
+        ],
+        "normalized_modules": [
+          "test.api.test_owner_writable_worktree"
+        ],
+        "bytes": 4926,
+        "sha256": "f7a0d0b3e124d41cbed2bc57b3759f9233c91d37a1c94717757c46ec83c2246e"
+      },
+      "nonqualifying_reason": "Failed before the provisioning helper or worker birth: AF_UNIX native gateway pathname exceeded the platform limit under the initial long protected TMPDIR. Final rerun uses fresh shorter protected basetemp and tempfile roots.",
+      "stdout.log": {
+        "bytes": 14514,
+        "sha256": "8367d481b232f2e21e10567dc2a63dbf85bd1e782d4ddd68774e668dfc9b99c6"
+      },
+      "stderr.log": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "label": "provisioning-native-continuation-v02",
+      "qualifying": false,
+      "lease": {
+        "schema": "world-packet-replay-qualification-lease@1",
+        "label": "provisioning-native-continuation-v02",
+        "started_utc": "2026-10-16T02:30:53.715023+00:00",
+        "cpu_slots": 1,
+        "memory_mb": 2048,
+        "child_process_slots": 3,
+        "lease_released": true,
+        "policy_unchanged": true,
+        "returncode": 1,
+        "offline_validation": true,
+        "network_dependency_installation": false,
+        "ended_utc": "2026-10-16T02:31:55.567294+00:00"
+      },
+      "junit": {
+        "tests": 1,
+        "failures": 1,
+        "errors": 0,
+        "skipped": 0,
+        "raw_modules": [
+          "api.test_owner_writable_worktree"
+        ],
+        "normalized_modules": [
+          "test.api.test_owner_writable_worktree"
+        ],
+        "bytes": 5756,
+        "sha256": "e583d2f46edba48fbd50c2674dac68eb8447670d06d20ad2383807a185f63cac"
+      },
+      "nonqualifying_reason": "Actual provisioning and first-child retirement completed; candidate-dispatch broker socket then exceeded AF_UNIX pathname length. Only the private tempfile root was shortened again for v03; implementation and tests remain byte-identical to v02.",
+      "stdout.log": {
+        "bytes": 29013,
+        "sha256": "b535b610d22af1ee213c04ef451c6ff7b3f75fd5b0cfe6ee4e7c85796829f725"
+      },
+      "stderr.log": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "label": "provisioning-native-continuation-v03",
+      "qualifying": true,
+      "lease": {
+        "schema": "world-packet-replay-qualification-lease@1",
+        "label": "provisioning-native-continuation-v03",
+        "started_utc": "2026-10-16T02:34:35.532756+00:00",
+        "cpu_slots": 1,
+        "memory_mb": 2048,
+        "child_process_slots": 3,
+        "lease_released": true,
+        "policy_unchanged": true,
+        "returncode": 0,
+        "offline_validation": true,
+        "network_dependency_installation": false,
+        "ended_utc": "2026-10-16T02:34:58.754008+00:00"
+      },
+      "junit": {
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "raw_modules": [
+          "api.test_owner_writable_worktree"
+        ],
+        "normalized_modules": [
+          "test.api.test_owner_writable_worktree"
+        ],
+        "bytes": 396,
+        "sha256": "6dff9554d22c074388c1165403d360f4a0dae26b3354cecc82bcf0c29e480831"
+      },
+      "stdout.log": {
+        "bytes": 13224,
+        "sha256": "b2dd496718dc8931edffb5044abd5ecaef89213d6c6c3593ce62c00a9ee13aab"
+      },
+      "stderr.log": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "label": "provisioning-original-deadline-v01",
+      "qualifying": true,
+      "lease": {
+        "schema": "world-packet-replay-qualification-lease@1",
+        "label": "provisioning-original-deadline-v01",
+        "started_utc": "2026-10-16T02:24:13.993283+00:00",
+        "cpu_slots": 1,
+        "memory_mb": 2048,
+        "child_process_slots": 3,
+        "lease_released": true,
+        "policy_unchanged": true,
+        "returncode": 0,
+        "offline_validation": true,
+        "network_dependency_installation": false,
+        "ended_utc": "2026-10-16T02:24:14.851171+00:00"
+      },
+      "junit": {
+        "tests": 20,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "raw_modules": [
+          "benchmarks.agent_supervisor.container_coding.test_owner_provider_deadline_wiring"
+        ],
+        "normalized_modules": [
+          "benchmarks.agent_supervisor.container_coding.test_owner_provider_deadline_wiring"
+        ],
+        "bytes": 4542,
+        "sha256": "d18d927d42c0db65c9f7199eb064fe41403a3a548b0d8e9e6a5745e2da02a52a"
+      },
+      "stdout.log": {
+        "bytes": 4208,
+        "sha256": "cab3cdc4fe3df2737b9359ca413cd0334567fecc0259179018fc6b1920f86a30"
+      },
+      "stderr.log": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    }
+  ],
+  "source_verification": "Final eight qualification source hashes frozen before v02 and verified before publication; v03 uses the same sources. After qualification exactly one extra newline byte at the new test EOF was removed. Both hashes and that exact one-byte difference are verified in final review. Earlier original-deadline regression uses the same five unchanged wrapper/archive sources. Previous core/native dependencies remain byte-identical to f5b1d08fe2 evidence. Earlier helper/test/doc pins are retained as pre-hardening provenance, not final qualification.",
+  "whitespace_only_postqualification_revision": {
+    "path": "test/api/test_owner_writable_worktree.py",
+    "qualification_sha256": "3fb67691f80b342934fc1b1229951cac8dbadb871eaf5e9298e9c543676ecff2",
+    "final_review_sha256": "4c2027f7c8f18553ecaf4aeecca77cc0447bae94267577b0cf99ae7c19d011f6",
+    "change": "Remove exactly one extra newline byte at EOF; runtime and test logic unchanged."
+  },
+  "review_corrections": [
+    "Require explicit canonical owner_private_paths disjoint from workspace in both directions.",
+    "Require workspace root mount identity to equal its protected parent before preflight.",
+    "Bound and rewind directory descriptor scans; no unbounded listdir population.",
+    "Use fresh short protected test paths after two distinct AF_UNIX pathname-length fixture failures: the native gateway first, then the longer candidate-dispatch socket."
+  ],
+  "environment": {
+    "duckdb_module_path": "/home/barberb/.local/lib/python3.12/site-packages/duckdb/__init__.py",
+    "duckdb_version": "1.5.5",
+    "model_calls": 0,
+    "native_default_owner_bound_to_existing_policy": true,
+    "native_default_owner_policy_sha256": "f07cb14289fcb6275e4497dcc36be0dcf8bfc3dc87531ff7a9537eb85fdcc661",
+    "native_sql_health_check": true,
+    "network_dependency_installation": false,
+    "schema": "world-prelaunch-environment@1"
+  },
+  "model_inference_calls": 0,
+  "external_provider_calls": 0,
+  "docker_runs": 0,
+  "real_boundaries": [
+    "Actual protected host ancestors and no-follow descriptor-relative workspace traversal; all-owner single-link regular-file/directory preflight before any fchmod",
+    "Actual root0700 gate, descriptor-based executable/data/directory/marker mode changes, complete retained inventory rechecks and root3770 final publication",
+    "Actual bytes and inode identities preserved while outside private sentinel state remains untouched",
+    "Actual symlink/hardlink/FIFO/group-writable-input refusals make zero fchmod calls and retain the complete input snapshot",
+    "Actual planned file/directory replacements, workspace replacement, partial chmod, apply-then-raise and failed quarantine preserve truthful refusal observations and close tracked descriptors",
+    "Original deadline expiry and suppressed recursive provisioning refuse without success; failed mutations distinguish verified from uncertain named-root quarantine",
+    "Actual provisioning precedes prepared first census, real first child, exact delegated native allocation, composed second child and genuine nested resource-leaf release",
+    "Generated owner prefix passes original/minimum local deadline and refuses before worker arguments, source brokers or census when provisioning fails",
+    "Archive capability pins the helper and refuses missing/stale/copied-feature support; deployment packaging and existing source/worker wiring regressions pass"
+  ],
+  "authored_fixture_boundaries": [
+    "Boundary authentication and selected UID admission remain authored host seams, including explicit empty private-path declarations in direct/native happy-path fixtures",
+    "Negative UID/GID cases author named/opened stat ownership consistently; ACL-name and root/nested-mount refusal cases substitute observations, not actual privileged ownership, ACL or mount changes",
+    "Private-path overlap cases author authenticated manifest scope; production root-owned manifest issuance is not exercised",
+    "Native fixture explicitly protects fresh checkout inputs before calling the real helper; daemon ambient-umask behavior is not qualified or changed",
+    "Existing native fixture authors Quack transport; actual local task/claim/Portal/lifecycle/Git controls, first/second Popen and resource sublease remain real",
+    "Generated prefix tests author the helper result/error to isolate ordering and deadline propagation; they do not install a wrapper or run sudo/Docker"
+  ],
+  "limitations": [
+    "Initial protected all-owner tree only; existing group-writable/worker-owned entries, foreign groups, nested .git controls, submodules and nested repositories are refused",
+    "Fresh checkout creation still needs protected input permissions; daemon worktree-creation umask remains unchanged",
+    "Caller must control initial no-live-worker phase; root0700 does not revoke existing descriptors and the helper proves no filesystem writer lease",
+    "No rollback after mutation failure; partial descendants may retain changed permissions, quarantine may be uncertain, and owner recovery is separate",
+    "Receipt is an inert filesystem observation, not native task/allocation/run/resource authority; delegated capture remains separate and does not adopt receipt authority",
+    "Generated wrapper changed and host-tested only; separate worker UID/group membership, sudo cleanup, actual deployment/Docker and daemon-to-wrapper native ownership handoff remain unqualified",
+    "No installed continuation retry default, external provider/model/training run, matched TerminalBench measurement, token-savings or legal-correctness claim"
+  ]
+}

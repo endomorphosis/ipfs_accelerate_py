@@ -1,0 +1,21 @@
+{
+  "all_archive_members_verified": true,
+  "archive": {
+    "bytes": 1411536034,
+    "path": "/home/barberb/lift_coding/artifacts/working-set-owner-census-20261015/live/runtime-01/runtime.tar.gz",
+    "sha256": "d0e5407d28bf742356583628e76952a3831f418afa0951fc0b680fbd5d11add0"
+  },
+  "archive_members": 27551,
+  "docker_calls": 0,
+  "exit_code": 0,
+  "frozen_inputs_unchanged": true,
+  "manifest": {
+    "bytes": 6226453,
+    "path": "/home/barberb/lift_coding/artifacts/working-set-owner-census-20261015/live/runtime-01/manifest.json",
+    "sha256": "4ef108308f5a426c0e617b95094bd1ffe1c092c52ad6042c8fe503f3bf8f7454"
+  },
+  "provider_calls": 0,
+  "seconds": 11.854262250941247,
+  "step": "verify",
+  "uncompressed_bytes": 4072761258
+}

@@ -3413,13 +3413,18 @@ def test_finite_repair_budget_escalates_without_starving_other_boards(tmp_path):
 def test_direct_repair_call_cannot_bypass_configured_budget(tmp_path, monkeypatch, attempts):
     cfg = config(tmp_path)
     cfg["boards"][0]["max_repair_attempts"] = 3
-    # Even a caller retaining an older uncapped board copy uses the current cap.
+    # A stale uncapped board copy is rejected before any budget or effect.
     board = {key: value for key, value in cfg["boards"][0].items() if key != "max_repair_attempts"}
     path = tmp_path / "repairs/spar/job.json"
     write_json(path, {"status": "queued", "attempts": attempts, "next_attempt_at": 9876})
     monkeypatch.setattr(repair, "command", lambda *a, **kw: pytest.fail("native command after budget denial"))
     monkeypatch.setattr(repair.subprocess, "Popen", lambda *a, **kw: pytest.fail("coding call after budget denial"))
-    result = repair.run_job(cfg, board, path)
+    before = path.read_bytes()
+    with pytest.raises(ValueError, match="authorization must use the original configured board"):
+        repair.run_job(cfg, board, path)
+    assert path.read_bytes() == before
+    # The actual configured board independently exercises the unchanged cap.
+    result = repair.run_job(cfg, cfg["boards"][0], path)
     assert result["status"] == "escalated"
     assert result["reason"] == ("repair_budget_exhausted" if type(attempts) is int and attempts >= 3
                                 else "repair_budget_unknown")
@@ -4506,3 +4511,159 @@ def test_retired_reconciliation_operator_hold_precedes_any_process_probe(tmp_pat
         runner=lambda *a, **kw: pytest.fail("process probe crossed operator hold"),
         retired_job_sha256=binding)
     assert result[0]["reason"] == "operator_hold" and path.read_bytes() == before
+
+
+@pytest.mark.parametrize("unit", [None, "", "foreign", "foreign.timer", "--all.service",
+    "../foreign.service", "a/b.service", "a*.service", "a%u.service", "a service.service", "a\n.service", 3])
+def test_configured_unit_invalid_names_refuse_before_reclaim_launch_or_worker_commands(tmp_path, monkeypatch, unit):
+    cfg = config(tmp_path)
+    cfg["repair_worker"]["job_unit"] = unit
+    path = tmp_path / "repairs/spar/job.json"
+    write_json(path, {"status": "queued", "attempts": 1, "next_attempt_at": 9000})
+    before = path.read_bytes()
+    monkeypatch.setattr(repair, "load_config", lambda *a: cfg)
+    monkeypatch.setattr(repair, "command", lambda *a, **kw: pytest.fail("invalid unit cannot invoke commands"))
+    monkeypatch.setattr(repair.subprocess, "Popen", lambda *a, **kw: pytest.fail("invalid unit cannot launch a process"))
+    for operation in [lambda: repair.should_reclaim_repair_unit(cfg),
+        lambda: repair.run_job(cfg, cfg["boards"][0], path),
+        lambda: repair.main(["run", "--config", str(tmp_path / "config.json"), "--once"])]:
+        with pytest.raises(ValueError, match="job_unit must be a literal service unit"):
+            operation()
+        assert path.read_bytes() == before
+    assert not (tmp_path / "repair-worker.lock").exists()
+
+
+# Operational resource dispositions never become a new coding attempt merely
+# because a later incident has a different symptom or because a timer fires.
+def test_operational_terminal_survives_enqueue_and_both_selection_paths(tmp_path):
+    cfg=config(tmp_path);cfg['boards']=cfg['boards'][:1];cfg['boards'][0]['max_repair_attempts']=3
+    incident=tmp_path/'incident.json';write_json(incident,{'board_id':'spar','signature':'one'})
+    enqueue(cfg,incident);path=tmp_path/'repairs/spar/job.json';job=read_json(path)
+    job.update(status='validation_needs_new_authorization',attempts=1,
+        candidate_operational_reason='ledger_busy_profile_not_authorized',next_attempt_at=0)
+    write_json(path,job);before=path.read_bytes()
+    write_json(incident,{'board_id':'spar','signature':'different-symptom'})
+    assert enqueue(cfg,incident)['status']=='validation_needs_new_authorization'
+    assert path.read_bytes()==before
+    assert next_job(cfg,time.time())is None
+    assert repair.next_pending_candidate(cfg,time.time())is None
+    assert repair.queue_status(cfg,time.time())['operational'][0]['retry_authorized']is False
+
+
+def _operational_budget_ticket(tmp_path,index=1):
+    metadata=tmp_path/'candidate-metadata';metadata.mkdir(exist_ok=True)
+    row={'schema':'agent-supervisor/spent-validation-ledger-busy-slot@1','index':index,'attempt_number':1,
+        'attempt_token':'a'*32,'authorization_epoch_sha256':'b'*64,'expires_at':2000.,'freeze_sha256':'c'*64,
+        'source_commitment':'d'*64,'request_attempt_id':'e'*32,'invocation':str(metadata/('original-validate-ledger-busy-%02d'%index)),
+        'prior_operational_ref':{'path':str(tmp_path/'prior.json'),'bytes':0,'sha256':'f'*64},'spent_at':1000.}
+    p=metadata/('ledger-busy-slot-%02d.json'%index);raw=(json.dumps(row,sort_keys=True)+'\n').encode();p.write_bytes(raw);p.chmod(0o400)
+    import hashlib
+    pin={'path':str(p),'bytes':len(raw),'sha256':hashlib.sha256(raw).hexdigest()}
+    job={'attempts':1,'status':'queued','candidate_runtime':{'candidate_metadata':str(metadata)},
+        'validation_ledger_busy_invocations':[dict(row,spent_slot_ref=pin)]}
+    return job,p
+
+
+def test_operational_fresh_generations_spend_existing_global_budget_and_partial_mirror_never_refunds(tmp_path):
+    job,p=_operational_budget_ticket(tmp_path)
+    assert repair._repair_budget_spent(job)==2
+    assert repair._escalate_repair_budget(job,2,1001.)is True
+    assert job['attempts']==1 and job['escalation_reason']=='repair_budget_exhausted'
+    job['validation_ledger_busy_invocations']=[]
+    assert repair._repair_budget_spent(job)is None
+    assert repair._escalate_repair_budget(job,3,1002.)is True
+    assert job['escalation_reason']=='repair_budget_unknown'and p.exists()
+
+
+@pytest.mark.parametrize('metadata',[None,[],False])
+def test_operational_budget_malformed_runtime_metadata_fails_closed(metadata):
+    assert repair._repair_budget_spent({'attempts':1,'candidate_runtime':metadata})is None
+
+
+def test_operational_budget_preserves_legacy_absent_field_and_old_attempt_counter():
+    assert repair._repair_budget_spent({'attempts':2})==2
+    job={'attempts':2,'status':'queued'}
+    assert repair._escalate_repair_budget(job,3,1000.)is False
+    assert job['attempts']==2
+
+
+def test_operational_ticket_nonfinite_saved_metadata_is_unknown_not_an_exception(tmp_path):
+    job,p=_operational_budget_ticket(tmp_path)
+    job['validation_ledger_busy_invocations'][0]['spent_at']=float('nan')
+    assert repair._repair_budget_spent(job)is None
+    assert repair._escalate_repair_budget(job,3,1001.)is True
+    assert job['escalation_reason']=='repair_budget_unknown'
+
+
+def _saved_operational_cooldown_job(tmp_path):
+    import hashlib
+    def put_data(path,value):
+        path.parent.mkdir(parents=True,exist_ok=True);raw=(json.dumps(value,sort_keys=True)+'\n').encode()
+        path.write_bytes(raw);path.chmod(0o400)
+        return {'path':str(path),'bytes':len(raw),'sha256':hashlib.sha256(raw).hexdigest()}
+    cfg=config(tmp_path);cfg['boards']=cfg['boards'][:1];board=cfg['boards'][0];board['max_repair_attempts']=3
+    cfg['repair_worker']['candidate_runtime']={'validation_ledger_busy_retry':{'authorization_epoch_sha256':'d'*64,'expires_at':2000.},
+        'validation_owner':{'timeout_seconds':300}}
+    material=dict(schema='agent-supervisor/closed-operational-ledger-busy@1',reason='pregrant_ledger_busy',binding={'fictional':'same'},
+        freeze_sha256='b'*64,source_commitment='c'*64,source_closed=True,native_closed=True,storage_status='not_entered',
+        record_created=False,native_grant_created=False,productive_child_created=False,semantic_negative=False,retry_authorized=False,
+        storage_release_authorized=False,**{k:put_data(tmp_path/(k+'.json'),{'fictional':k})for k in('policy','plan','request','parent_source_closeout')})
+    proof=put_data(tmp_path/'operational.json',material)
+    response=dict(schema='agent-supervisor/verified-operational-ledger-busy@1',operational=proof,disposition=material,
+        read_only=True,retry_authorized=False,storage_release_authorized=False)
+    observer=put_data(tmp_path/'observer.json',{'stdout':json.dumps(response)})
+    stage=put_data(tmp_path/'stage.json',{'schema':'agent-supervisor/repair-candidate-runtime@1','stage':'validation_pending',
+        'reason':'ledger_busy_cooldown','board_id':'spar','attempt_token':'a'*32,'attempts':1,
+        'operational_disposition':{'operational':proof,'observer':observer,'epoch_sha256':'d'*64,'expires_at':2000.}})
+    job={'status':'validation_pending','board_id':'spar','repair_unit_token':'a'*32,'attempts':1,
+        'repair_authorization_sha256':'d'*64,'candidate_runtime':{'receipt':stage}}
+    path=tmp_path/'repairs/spar/job.json';write_json(path,job)
+    return cfg,path
+
+
+@pytest.mark.parametrize('already_terminal',[False,True])
+def test_expired_saved_operational_wait_is_visible_to_all_public_schedulers_without_current_authority(tmp_path,monkeypatch,already_terminal):
+    cfg,path=_saved_operational_cooldown_job(tmp_path)
+    if already_terminal:
+        job=read_json(path);job.update(status='validation_needs_new_authorization',candidate_operational_reason='ledger_busy_profile_not_authorized');write_json(path,job)
+    before=path.read_bytes()
+    import ipfs_accelerate_py.agent_supervisor.rescue.repair_authorization as authority
+    epoch=SimpleNamespace(commitment='d'*64,directory=tmp_path/'repairs/spar',value={'not_before_observed_at':100.,'expires_at':2000.,'max_attempts':3})
+    monkeypatch.setattr(authority,'parse_authorization_epoch',lambda *a,**k:epoch)
+    def deny(*a,**k):raise AssertionError('saved terminal metadata requested live authorization or a process')
+    monkeypatch.setattr(repair,'require_current_authorization',deny)
+    monkeypatch.setattr(repair,'command',deny)
+    status=repair.queue_status(cfg,2001.)
+    assert status['status']=='needs_new_authorization'and status['operational'][0]['retry_authorized']is False
+    assert repair.next_pending_candidate(cfg,2001.)is None
+    assert repair.next_job(cfg,2001.)is None
+    assert repair.reconcile_queued_jobs(cfg,2001.,runner=deny)==[]
+    monkeypatch.setattr(repair.time,'time',lambda:2001.)
+    assert repair.should_reclaim_repair_unit(cfg)is False
+    assert path.read_bytes()==before
+
+
+
+@pytest.mark.parametrize('already_terminal',[False,True])
+def test_public_worker_once_surfaces_expired_operational_DATA_without_commands_or_reclaim(tmp_path,monkeypatch,already_terminal):
+    cfg,path=_saved_operational_cooldown_job(tmp_path)
+    if already_terminal:
+        job=read_json(path);job.update(status='validation_needs_new_authorization',candidate_operational_reason='ledger_busy_profile_not_authorized');write_json(path,job)
+    before=path.read_bytes()
+    import ipfs_accelerate_py.agent_supervisor.rescue.repair_authorization as authority
+    from ipfs_accelerate_py.agent_supervisor.rescue import repair_candidate_runtime as runtime
+    epoch=SimpleNamespace(commitment='d'*64,directory=tmp_path/'repairs/spar',
+        value={'not_before_observed_at':100.,'expires_at':2000.,'max_attempts':3})
+    monkeypatch.setattr(authority,'parse_authorization_epoch',lambda *a,**k:epoch)
+    monkeypatch.setattr(repair,'load_config',lambda *a:cfg)
+    monkeypatch.setattr(repair.time,'time',lambda:2001.)
+    monkeypatch.setattr(repair.signal,'signal',lambda *a:None)
+    monkeypatch.setattr(repair.SystemdHeartbeat,'from_environment',lambda:SimpleNamespace(notify_due=lambda **kw:None))
+    def deny(*a,**kw):raise AssertionError('expired DATA attempted a live owner/auth/command/process')
+    monkeypatch.setattr(repair,'require_current_authorization',deny)
+    monkeypatch.setattr(repair,'command',deny);monkeypatch.setattr(repair.subprocess,'Popen',deny)
+    monkeypatch.setattr(runtime.CandidateRuntime,'__init__',deny)
+    assert repair.main(['run','--config',str(tmp_path/'config.json'),'--once'])==0
+    status=read_json(tmp_path/'repair-worker.json')
+    assert status['status']=='needs_new_authorization'and status['operational'][0]['retry_authorized']is False
+    assert path.read_bytes()==before

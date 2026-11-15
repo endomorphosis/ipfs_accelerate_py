@@ -1,0 +1,16 @@
+{
+  "exit_code": 0,
+  "frozen_inputs_unchanged": true,
+  "seconds": 34.71633289800957,
+  "stderr": {
+    "bytes": 4500,
+    "path": "/home/barberb/lift_coding/artifacts/pack-view-census-20261015/live/bundle.stderr",
+    "sha256": "6cca09b216bc3b1a1beaabc966b5e0948fb0805e23932645e12049b4a11d7134"
+  },
+  "stdout": {
+    "bytes": 103,
+    "path": "/home/barberb/lift_coding/artifacts/pack-view-census-20261015/live/bundle.stdout",
+    "sha256": "763ad5ef14d7477f3899568b31f5d47f252f58a913ac53864ee016f4e24b50c4"
+  },
+  "step": "bundle"
+}

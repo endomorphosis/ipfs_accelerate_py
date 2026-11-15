@@ -1,0 +1,9 @@
+{
+  "argv": null,
+  "cwd": "/home/barberb/lift_coding/.worktrees/supervisor-doctor-live-fixes-20261014",
+  "free_bytes": 281966223360,
+  "recipe_sha256": "f0b29c924bb03d3b1f78804297897627f943ea59c57f29041903f26905429165",
+  "runner_sha256": "c3772f2981374b08fe574f7991c56b003556efd845e527fd1386c25109c86603",
+  "started_at": "2026-10-14T20:03:47.742798+00:00",
+  "step": "verify"
+}

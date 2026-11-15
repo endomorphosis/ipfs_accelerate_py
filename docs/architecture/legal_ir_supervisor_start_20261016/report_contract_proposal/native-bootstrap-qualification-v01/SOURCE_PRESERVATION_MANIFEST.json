@@ -1,0 +1,511 @@
+{
+  "schema": "historical-bootstrap-source-preservation/v1",
+  "source_commit": "8e02f9bed9f2a84a5a5245f90b0775ae1e806260",
+  "source_subject": "docs: document Legal IR native Git bootstrap qualification",
+  "source_paths": 67,
+  "bytes": 2335015,
+  "python_ast_parse_paths": 23,
+  "credential_pattern_findings": [],
+  "checks": {
+    "regular_git_blobs_only": true,
+    "symlink_or_gitlink_paths": 0,
+    "captured_binary_artifacts": 0,
+    "helpers_imported_or_executed": false,
+    "native_or_runtime_qualification": false
+  },
+  "provenance_note": "Exact archived bytes; engineering/evidence statements are historical and have not been newly qualified. Runtime installation remains disabled. No archived helper, fixture or test was imported or executed.",
+  "files": [
+    {
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/native-bootstrap-qualification-v01/PHASE_PLAN.json",
+      "git_blob": "7ef32843a9b142a03276b650b3f350d51ed1ef15",
+      "sha256": "52193eb4a2d400f8c83cdabc071adaf9dee65119011b8b64b63c39f8fa0d0a8c",
+      "bytes": 1106,
+      "git_mode": "100644"
+    },
+    {
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/native-bootstrap-qualification-v01/READINESS.md",
+      "git_blob": "3b46bd8b7755fe4c0264eeac63c8854dd96c4f6f",
+      "sha256": "66e8eb0f6968d24895a1c8d68d9472fbcaf231f1d0f86fa51278ff8c4c24a33f",
+      "bytes": 10558,
+      "git_mode": "100644"
+    },
+    {
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/native-bootstrap-qualification-v01/TASKS.json",
+      "git_blob": "b5ec3ea633ae0457223f759dea3544bf2963ca13",
+      "sha256": "64461640f34db121f7ed30b4774d6031b2290bf9b3029cc0b52422ffafd87177",
+      "bytes": 24140,
+      "git_mode": "100644"
+    },
+    {
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/native-bootstrap-qualification-v01/bootstrap-hook-controls-root-observation-r01.json",
+      "git_blob": "09472b5f72e6e7b8ecbbd26055fed3ad1a89c438",
+      "sha256": "d24f5f2eb23a6a83548cd09fb74f83844973a700e49987da8049c7a531da7c6e",
+      "bytes": 1370,
+      "git_mode": "100644"
+    },
+    {
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/native-bootstrap-qualification-v01/bootstrap-hooks-v01/ASSEMBLY.json",
+      "git_blob": "30d1aba0403f6e960b391677db56c0348c13ea04",
+      "sha256": "d381e25e9c1a955b709ef16f4ae18e588f03b219ece70bce467d5ffd4e9aaf5d",
+      "bytes": 2677,
+      "git_mode": "100644"
+    },
+    {
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/native-bootstrap-qualification-v01/bootstrap-hooks-v01/CALL_ORDER.json",
+      "git_blob": "a160cf66b805963db25fcaf5e64e320aea7ef2c4",
+      "sha256": "09b65a4110d8af09f7ba70e3a38e8b26e33680326bcc5a6258fc373edaede69a",
+      "bytes": 3799,
+      "git_mode": "100644"
+    },
+    {
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/native-bootstrap-qualification-v01/bootstrap-hooks-v01/RESOURCE_PLAN.json",
+      "git_blob": "6490e9869799841e724fb6fd571b5330a4b1c6fa",
+      "sha256": "a9405af3b89f9cc215e7d5c421a01c7f255fec6d7fb33ab06b515be5c35cddd6",
+      "bytes": 1834,
+      "git_mode": "100644"
+    },
+    {
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/native-bootstrap-qualification-v01/bootstrap-hooks-v01/SOURCE_MANIFEST.json",
+      "git_blob": "4df19aed6a21747648d4f144230e6fa75972c91b",
+      "sha256": "6bdb840982836f23bf05005750a8476f4f42308626b2ac53047358ac2af4ed2a",
+      "bytes": 19149,
+      "git_mode": "100644"
+    },
+    {
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/native-bootstrap-qualification-v01/bootstrap-hooks-v01/build_patch.py",
+      "git_blob": "080523e80647da9be880c014b9b1994ce8e7f461",
+      "sha256": "1e9c94d1f037f4a1fd4aa79450956f3c772936d1081a0094241dd7027e667e3a",
+      "bytes": 8325,
+      "python_ast_parse": true,
+      "git_mode": "100644"
+    },
+    {
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/native-bootstrap-qualification-v01/bootstrap-hooks-v01/qualify_controls.py",
+      "git_blob": "149e2612bff5d733c39f1de7ae001a593cacae07",
+      "sha256": "f556c1d2d4b57daa3c099a82a8a151997505a870fa4dd9c84fff66438e599010",
+      "bytes": 9025,
+      "python_ast_parse": true,
+      "git_mode": "100644"
+    },
+    {
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/native-bootstrap-qualification-v01/bootstrap-hooks-v01/request-r01.json",
+      "git_blob": "1e8f7a64f7fa0b6a24f660dafea83405566fdaaf",
+      "sha256": "31f7e7d600e8dd1c4ffeed488875903a2d8dbb871009477687ec2a931729d695",
+      "bytes": 21229,
+      "git_mode": "100644"
+    },
+    {
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/native-bootstrap-qualification-v01/bootstrap-hooks-v01/test_source_controls.py",
+      "git_blob": "8fbed3112ead392dfd0aca9507ff45ecabe747f2",
+      "sha256": "0a1c706109e5cd7953b0180e92e106678a397373156fdb989e2fc24eee7916c3",
+      "bytes": 9098,
+      "python_ast_parse": true,
+      "git_mode": "100644"
+    },
+    {
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/native-bootstrap-qualification-v01/entry-gate-v02/PIN_CHANGE.json",
+      "git_blob": "97d6266c0b671657ec18fc4c1686a82bc6672573",
+      "sha256": "3671a0864210ec36b7d3629e4e01d5cf00064a6a1ce6483cfe46724c9c40dd26",
+      "bytes": 948,
+      "git_mode": "100644"
+    },
+    {
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/native-bootstrap-qualification-v01/entry-gate-v02/SOURCE_MANIFEST.json",
+      "git_blob": "ab61ad1e4052f3a76bb523eed4daecadd1950b44",
+      "sha256": "d1ddaa3034f9c26cac34e87f26155b9cf7a10691c72bd58dfdf577ed82d8b3f0",
+      "bytes": 811,
+      "git_mode": "100644"
+    },
+    {
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/native-bootstrap-qualification-v01/entry-gate-v02/proposed/ipfs_accelerate_py/agent_supervisor/todo_daemon/report_only_disposition_gate.py",
+      "git_blob": "f0fd18b507ffc877e73f90d606767a70fea963f1",
+      "sha256": "63bedb42176a195e5c9ab7c78079ef3498bccef34058462b1a07b41cbc3ab74f",
+      "bytes": 2194,
+      "python_ast_parse": true,
+      "git_mode": "100644"
+    },
+    {
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/native-bootstrap-qualification-v01/evidence/COPY_MANIFEST-r01.json",
+      "git_blob": "bb6ad48f10f371ababaec69fdfc36bacfe9b9bf9",
+      "sha256": "974669d085ffb2b9549faf360ff1ad2daeec5c53e5da87068eb3e7ea281fbbde",
+      "bytes": 4598,
+      "git_mode": "100644"
+    },
+    {
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/native-bootstrap-qualification-v01/evidence/COPY_MANIFEST-r02.json",
+      "git_blob": "83fc60deda31dac5d3cabdc7aed8a26d692952e2",
+      "sha256": "b60c659251fe074c2fc5e53f949482fc386f041b9a8dcca8bdc06099a6b33bf9",
+      "bytes": 5508,
+      "git_mode": "100644"
+    },
+    {
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/native-bootstrap-qualification-v01/evidence/bootstrap-hook-controls/bootstrap-hook-source-controls.json",
+      "git_blob": "244e8e43162039898c325b18ef9b2e06f703616b",
+      "sha256": "f11b63da5d378923d86c82253da2f58b7fc36ae5d10b277406523102d1b81f6b",
+      "bytes": 1501,
+      "git_mode": "100644"
+    },
+    {
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/native-bootstrap-qualification-v01/evidence/bootstrap-hook-controls/receipt.json",
+      "git_blob": "6176793ae997417548b46d5c9af3c4d3b6f66e86",
+      "sha256": "388658d02b1ceef5457907604e1c760dc66dd198cccebf254498319c22eb6b4e",
+      "bytes": 639,
+      "git_mode": "100644"
+    },
+    {
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/native-bootstrap-qualification-v01/evidence/native-admin-controls/native-admin-source-controls.json",
+      "git_blob": "980909866d0648f53d79ab58a88fa3013057c4cd",
+      "sha256": "bd41ce8b7445b407cbbf85fb96f3ee3e76f161819f14b3c29f2646ef03998e36",
+      "bytes": 1529,
+      "git_mode": "100644"
+    },
+    {
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/native-bootstrap-qualification-v01/evidence/native-admin-controls/receipt.json",
+      "git_blob": "1a5538a0f89aa112032a812a951a5f7ec39eb6ba",
+      "sha256": "3dfc4e11f2c8441d0d4e856c1506973b47d032a52004a529ce416f0e6f0b5309",
+      "bytes": 638,
+      "git_mode": "100644"
+    },
+    {
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/native-bootstrap-qualification-v01/evidence/preparation/GIT_SEED_MANIFEST.json",
+      "git_blob": "b28a50d6679cf059bc614163f0ce4c59f0a3b275",
+      "sha256": "54ca6d9159afb41bcdaa41cf5b069aea79798e256318c551f4fabf53c6467449",
+      "bytes": 2758,
+      "git_mode": "100644"
+    },
+    {
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/native-bootstrap-qualification-v01/evidence/preparation/capsule__SOURCE_MANIFEST.json",
+      "git_blob": "a3bb862d9ba44e2d9247cad739e53222eae9c028",
+      "sha256": "4cb5b370274eaa81efe6f80af2fd66c1ebcb3b31032b4ec30047e96f4a10d715",
+      "bytes": 565774,
+      "git_mode": "100644"
+    },
+    {
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/native-bootstrap-qualification-v01/evidence/preparation/full-host-preparation.json",
+      "git_blob": "43383c419183c3a6d1e19401be2feca6b09ae17a",
+      "sha256": "39b535519084ded94598ede3efc13bd29507a80b001db3f9d05c93923e56ae6f",
+      "bytes": 1587,
+      "git_mode": "100644"
+    },
+    {
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/native-bootstrap-qualification-v01/evidence/preparation/receipt.json",
+      "git_blob": "2a4fe5a83135a3a92a838ce91dc637ca230344a3",
+      "sha256": "3e0047df41daca6de5278925169a2f86b03892e222024df4e8b63a55635e14dc",
+      "bytes": 639,
+      "git_mode": "100644"
+    },
+    {
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/native-bootstrap-qualification-v01/evidence/same-pid-host-final-stdout.json",
+      "git_blob": "26ec9176d323ef134ffe47a9c4c99b8c7e3ead79",
+      "sha256": "6aca53033e1664b38370d96bc0689d692cc0f768d26fbdfd780a715f4fe63a94",
+      "bytes": 22214,
+      "git_mode": "100644"
+    },
+    {
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/native-bootstrap-qualification-v01/evidence/same-pid-host-pre-finalization-result.json",
+      "git_blob": "23d91bb86f4514edd5dbbcbb9405c591fa4d4fac",
+      "sha256": "15686fff3ab05792a92d17507b787aa6f4634136a0c50ced4e1c78cf049f6c8f",
+      "bytes": 16409,
+      "git_mode": "100644"
+    },
+    {
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/native-bootstrap-qualification-v01/full-host-fixture-v01/RESOURCE_PLAN.json",
+      "git_blob": "9a0f27771d9de114ef8acee0d50aeb7971c12c5e",
+      "sha256": "2e61bcc13b8a403c2ba6bc9f798cdbeee5b1f148d8c5fd4732cad7b2fb3e47d3",
+      "bytes": 2150,
+      "git_mode": "100644"
+    },
+    {
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/native-bootstrap-qualification-v01/full-host-fixture-v01/SDK_LIFETIME_CONTRACT.json",
+      "git_blob": "3d60b36d2a690ab6343a898b87f2e32829774c0f",
+      "sha256": "d11bc76277380097b9a5bc2fe391814b32c54f39b481ad9d35a4f9dbf4c75681",
+      "bytes": 11474,
+      "git_mode": "100644"
+    },
+    {
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/native-bootstrap-qualification-v01/full-host-fixture-v01/SOURCE_MANIFEST.json",
+      "git_blob": "417b0620447a217af57b1ab68e0fb5dc59ba9f7f",
+      "sha256": "811afb33c988ad1a04b746b319d72d246420853112c599db930aafd9f06b3cba",
+      "bytes": 20212,
+      "git_mode": "100644"
+    },
+    {
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/native-bootstrap-qualification-v01/full-host-fixture-v01/cap_two_case.py",
+      "git_blob": "6d7b9b18fa7e2656e58151cb58e8c44acf4fc530",
+      "sha256": "dffc8d3da108f627271b244df2b86954293e451b15b74801d91138ee7f2b4508",
+      "bytes": 14380,
+      "python_ast_parse": true,
+      "git_mode": "100644"
+    },
+    {
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/native-bootstrap-qualification-v01/full-host-fixture-v01/fixture_io.py",
+      "git_blob": "ea535fae2c6cb6b42050eb58083d81e7fb10a801",
+      "sha256": "db7687ae71db8bd25e95738baad1e43969c7f41fd7827b9d33cd9fc951aa758b",
+      "bytes": 3443,
+      "python_ast_parse": true,
+      "git_mode": "100644"
+    },
+    {
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/native-bootstrap-qualification-v01/full-host-fixture-v01/prepare-request-r01.json",
+      "git_blob": "e1c9b949034dc13804517ee1491763d06e8ba336",
+      "sha256": "b814cdf97de8748fa1f59932ccd6b9cd8dbe0d26e1d4e89bad72c50b2561c042",
+      "bytes": 21470,
+      "git_mode": "100644"
+    },
+    {
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/native-bootstrap-qualification-v01/full-host-fixture-v01/prepare-spec-r01.json",
+      "git_blob": "64d26680861405e2a5d7e8e4aac19c262e9cde51",
+      "sha256": "8f74c4e1003db5e92ed9db63a7b0840056ed6eb3e7c7b7b979359346ed873a99",
+      "bytes": 3381,
+      "git_mode": "100644"
+    },
+    {
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/native-bootstrap-qualification-v01/full-host-fixture-v01/prepare_capsule_and_seed.py",
+      "git_blob": "6d0ed14cf19fc646d190f866cace0467adf1d5e8",
+      "sha256": "41a33ce362b25af215267df215b22cd484e0ae1ae82dd2bc136e36710bf4bc3c",
+      "bytes": 16244,
+      "python_ast_parse": true,
+      "git_mode": "100644"
+    },
+    {
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/native-bootstrap-qualification-v01/full-host-fixture-v01/run_same_pid_owner.py",
+      "git_blob": "1cf8d95133c81fa34e028f95f83490ae0e8aa93e",
+      "sha256": "1d69ae8019b41f42ca626332bf10352a4c84e8e31ce20decc0d1c49a9160c6f4",
+      "bytes": 30128,
+      "python_ast_parse": true,
+      "git_mode": "100644"
+    },
+    {
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/native-bootstrap-qualification-v01/full-host-fixture-v01/same-pid-request.template.json",
+      "git_blob": "2eb1fbde60b49bf5921bfc33d65bd51dcad7e6bb",
+      "sha256": "176d30c60f22067dc1d5dd911e160eceedbc77becb4adc8f3800650f6f3a6795",
+      "bytes": 1370,
+      "git_mode": "100644"
+    },
+    {
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/native-bootstrap-qualification-v01/full-host-fixture-v02/SOURCE_MANIFEST.json",
+      "git_blob": "8da097b04163050ab8b64264d48356651e3f1c34",
+      "sha256": "69120e5a91ad1c9932e5236c9420ecb1591cda0e9a32139f7e8aab584eb21b68",
+      "bytes": 21104,
+      "git_mode": "100644"
+    },
+    {
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/native-bootstrap-qualification-v01/full-host-fixture-v02/cap_two_case.py",
+      "git_blob": "112d80b544bc027ce6e474693f41840eb25e9442",
+      "sha256": "7e8b5717555bfd1758aa8e401019e3ce0ff6f48a89c97d166ddf8420b50f0fd9",
+      "bytes": 15318,
+      "python_ast_parse": true,
+      "git_mode": "100644"
+    },
+    {
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/native-bootstrap-qualification-v01/full-host-fixture-v02/diagnostics.py",
+      "git_blob": "7f606c4832d85ce525c95ab0d20d7650e32d52c4",
+      "sha256": "48fc882e8bc41cd79f030c1b49bc755afbece8c2124b2985ed0d2a7176c99eda",
+      "bytes": 15628,
+      "python_ast_parse": true,
+      "git_mode": "100644"
+    },
+    {
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/native-bootstrap-qualification-v01/full-host-fixture-v02/fixture_io.py",
+      "git_blob": "ea535fae2c6cb6b42050eb58083d81e7fb10a801",
+      "sha256": "db7687ae71db8bd25e95738baad1e43969c7f41fd7827b9d33cd9fc951aa758b",
+      "bytes": 3443,
+      "python_ast_parse": true,
+      "git_mode": "100644"
+    },
+    {
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/native-bootstrap-qualification-v01/full-host-fixture-v02/pre_admission.py",
+      "git_blob": "151ef6d4498f750507923f8d2d60bb5096654cf7",
+      "sha256": "cc4c5a8ff140876f421c535920bc27cbd4ed849c81cf0b5acd321e934e7f4a64",
+      "bytes": 7240,
+      "python_ast_parse": true,
+      "git_mode": "100644"
+    },
+    {
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/native-bootstrap-qualification-v01/full-host-fixture-v02/prepare_capsule_and_seed.py",
+      "git_blob": "6d0ed14cf19fc646d190f866cace0467adf1d5e8",
+      "sha256": "41a33ce362b25af215267df215b22cd484e0ae1ae82dd2bc136e36710bf4bc3c",
+      "bytes": 16244,
+      "python_ast_parse": true,
+      "git_mode": "100644"
+    },
+    {
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/native-bootstrap-qualification-v01/full-host-fixture-v02/run_same_pid_owner.py",
+      "git_blob": "af03f46615ac7ec5d2b27d9c06119ca11dfc0332",
+      "sha256": "d24ef46f7a568345de59549b4e8215079676cd1b7199bda02a9751bcc77793af",
+      "bytes": 31896,
+      "python_ast_parse": true,
+      "git_mode": "100644"
+    },
+    {
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/native-bootstrap-qualification-v01/full-host-fixture-v02/same-pid-request-r01.json",
+      "git_blob": "948766279665568ad4f766855f5addeaf9100833",
+      "sha256": "9f7414d0132e167352e9e2e7fbb66cbb221b88eb81ac67fb4842b0215af4ae98",
+      "bytes": 927122,
+      "git_mode": "100644"
+    },
+    {
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/native-bootstrap-qualification-v01/full-host-root-observation-r01.json",
+      "git_blob": "0af9f280a1d79c8385f82451990d42ef9c83bf46",
+      "sha256": "d13191ad610313c49874f305fb6877a77cc407faf6090ea00a4bdeb6174a20c7",
+      "bytes": 3453,
+      "git_mode": "100644"
+    },
+    {
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/native-bootstrap-qualification-v01/native-admin-controls-root-observation-r01.json",
+      "git_blob": "b52ac3cd2caf4ca51e4bf0fcbb35ee3439e86d8c",
+      "sha256": "12b558739e1faa56ce9953979db34f7c04224e5a803056b20cf659385e7e8a57",
+      "bytes": 1407,
+      "git_mode": "100644"
+    },
+    {
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/native-bootstrap-qualification-v01/native-admin-v01/CONTRACT.json",
+      "git_blob": "0c434fdb228adf5c0ef71adf277f324bb4cdd99a",
+      "sha256": "abc370d52f5d981f4e8da44a3402af7a28f8e59298e5ada7f003d99a8e11b74e",
+      "bytes": 1997,
+      "git_mode": "100644"
+    },
+    {
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/native-bootstrap-qualification-v01/native-admin-v01/RESOURCE_PLAN.json",
+      "git_blob": "a24f54439fb832943c8e88e42878253d4970d757",
+      "sha256": "b0efddeb95d0313ff86c7904d760c54f1b3ae2e4398550ccd3e2d3114c966e4e",
+      "bytes": 1534,
+      "git_mode": "100644"
+    },
+    {
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/native-bootstrap-qualification-v01/native-admin-v01/SOURCE_MANIFEST.json",
+      "git_blob": "40204d98e6c98d0e099a2f62c79e57e90e92b4ca",
+      "sha256": "69c6f08db4dfeed2cbddda13b1106c3ae52b99eed17988b828a8ecef04384693",
+      "bytes": 6016,
+      "git_mode": "100644"
+    },
+    {
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/native-bootstrap-qualification-v01/native-admin-v01/proposed/ipfs_accelerate_py/agent_supervisor/runtime/native_admin_execution.py",
+      "git_blob": "3232f9d02327c4aa81476a1a018bcfcb6194a003",
+      "sha256": "12d96d89b1dfafffa1ca198510284c2c340741bb60774ec01c5011ef576697d3",
+      "bytes": 38649,
+      "python_ast_parse": true,
+      "git_mode": "100644"
+    },
+    {
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/native-bootstrap-qualification-v01/native-admin-v01/qualify_controls.py",
+      "git_blob": "392c50cc689c0624764b863c916191d1851d3eed",
+      "sha256": "8b9e6135fea368757da16f73e982a9ff188ca3e9b99eafbe1eaea3d567361b53",
+      "bytes": 9658,
+      "python_ast_parse": true,
+      "git_mode": "100644"
+    },
+    {
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/native-bootstrap-qualification-v01/native-admin-v01/request-r01.json",
+      "git_blob": "525957af28b74533d8650b701c3b8b1ca978af75",
+      "sha256": "989e24c3ff5a675e87e1ca2a591b8fec02cdc197f918c8a58ee8caf7ccf9b0de",
+      "bytes": 7552,
+      "git_mode": "100644"
+    },
+    {
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/native-bootstrap-qualification-v01/native-admin-v01/test_native_admin_execution.py",
+      "git_blob": "bdab6447a597c5776e731d9fbf2b2aacc2e13a78",
+      "sha256": "415da499b952c873880ec706a7598ae164139bad26542c9d7d91f59c17a48104",
+      "bytes": 8060,
+      "python_ast_parse": true,
+      "git_mode": "100644"
+    },
+    {
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/native-bootstrap-qualification-v01/native-host-v06/PIN_CHANGE.json",
+      "git_blob": "14b0774bc5eaa70d349bd962e66401394db642dd",
+      "sha256": "a6d6ab7e61d7c9601e297e97a95ed80211aea2dfcf9308cd15bca7d7fe1f4b13",
+      "bytes": 940,
+      "git_mode": "100644"
+    },
+    {
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/native-bootstrap-qualification-v01/native-host-v06/SOURCE_MANIFEST.json",
+      "git_blob": "2f6a7e35c970ab665c76892bba076213bac573ae",
+      "sha256": "3ce3006f50c50b874dc656e14451ecc846fdd1ee3c9101ac272e000474b39589",
+      "bytes": 803,
+      "git_mode": "100644"
+    },
+    {
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/native-bootstrap-qualification-v01/native-host-v06/proposed/ipfs_accelerate_py/agent_supervisor/todo_daemon/report_only_native_host.py",
+      "git_blob": "7875d0fbb8649b0a30387d3fe77e1ad4ff5ee0a7",
+      "sha256": "1fb433c29462fc65c15a2ea6be74cfc4c0f816c04d9a4ff95f3fc88a3e47ac0c",
+      "bytes": 33273,
+      "python_ast_parse": true,
+      "git_mode": "100644"
+    },
+    {
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/native-bootstrap-qualification-v01/preparation-root-observation-r01.json",
+      "git_blob": "df050a004f369895bf72f713effc2ee4b48fe794",
+      "sha256": "772011f4ab4065459314d8af319f9bd6a06473573361145623de0263203dc3c5",
+      "bytes": 2371,
+      "git_mode": "100644"
+    },
+    {
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/native-bootstrap-qualification-v01/publication-v01/CONTRACT.json",
+      "git_blob": "7c620a92adb1440dc8f59c55d07746bb387e5b2c",
+      "sha256": "623d2f71615730dc18f84ac5a1e9eab3f714abc310bf89ad61ccc41db2eb666b",
+      "bytes": 3301,
+      "git_mode": "100644"
+    },
+    {
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/native-bootstrap-qualification-v01/publication-v01/EXISTING_REPORT_INVENTORY.json",
+      "git_blob": "e0093554d81427ae2dd35f43ac4fc64268ba940b",
+      "sha256": "9c2b5efafefe339cbef10cf16ce91a7ef82f766266fe962c837929cf72767889",
+      "bytes": 255815,
+      "git_mode": "100644"
+    },
+    {
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/native-bootstrap-qualification-v01/publication-v01/SELECTION.json",
+      "git_blob": "eda61536c5c69fe4bcea5a8c01039dc0bf0d8b64",
+      "sha256": "4d6477b97bf92f9e07b14b2b9319fefda4c5a133582d679255ebb2d7d853cfc3",
+      "bytes": 1968,
+      "git_mode": "100644"
+    },
+    {
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/native-bootstrap-qualification-v01/publication-v01/SOURCE_MANIFEST.json",
+      "git_blob": "4de662c0a9c1ce0f02537d8f4bc22aa463c3d27c",
+      "sha256": "21deccef419d4eb038eed2bcf9635bdfd3d69752b5b099e5049b5e0040bf45d8",
+      "bytes": 8715,
+      "git_mode": "100644"
+    },
+    {
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/native-bootstrap-qualification-v01/publication-v01/build_manifest.py",
+      "git_blob": "c5bb97d377be3bc27ac4e006f1337188b6c0a69a",
+      "sha256": "e9130a9e7eb798d31d5a8ad4f6c01b37b695d1db11423746f71e36133a1b27f7",
+      "bytes": 6257,
+      "python_ast_parse": true,
+      "git_mode": "100644"
+    },
+    {
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/native-bootstrap-qualification-v01/publication-v01/build_packet.py",
+      "git_blob": "eaf50cd5d3d596d910d1ce94f508e3f9e13e726c",
+      "sha256": "3b071cae6afd3e8077caa8268bd224216c5e2042754a6b44b5c3dc51addc65e2",
+      "bytes": 5112,
+      "python_ast_parse": true,
+      "git_mode": "100644"
+    },
+    {
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/native-bootstrap-qualification-v01/publication-v01/build_request.py",
+      "git_blob": "1064fe6905de37493a0fb8ad46804e15501bc5f6",
+      "sha256": "4a4241266721679ee62762ec39472747c66f57c034009e5fcc1381024c393ff5",
+      "bytes": 8087,
+      "python_ast_parse": true,
+      "git_mode": "100644"
+    },
+    {
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/native-bootstrap-qualification-v01/publication-v01/parent_attachment_gate.py",
+      "git_blob": "e7ee72d7ef890ba0ab9a67e9183f2540d300fa1f",
+      "sha256": "18fe92a023468a1d81f147681640cbbec8b67fba3dc745a64b2af536576f9cf6",
+      "bytes": 9951,
+      "python_ast_parse": true,
+      "git_mode": "100644"
+    },
+    {
+      "path": "docs/architecture/legal_ir_supervisor_start_20261016/report_contract_proposal/native-bootstrap-qualification-v01/publication-v01/publish_docs.py",
+      "git_blob": "202b1d3d1cc0dccfa8140afc19557a4bb7a1b633",
+      "sha256": "5f940da21b99ae0f4f85130b832926d46c7f793ee16ae3082d37fa2b8ec5a53c",
+      "bytes": 17792,
+      "python_ast_parse": true,
+      "git_mode": "100644"
+    }
+  ]
+}

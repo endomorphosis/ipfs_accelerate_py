@@ -1,0 +1,343 @@
+{
+  "all_archive_members_match": true,
+  "archive": {
+    "bytes": 1411521556,
+    "path": "/home/barberb/lift_coding/artifacts/doctor-public-validation-20261014/runtime-01/runtime.tar.gz",
+    "sha256": "508265e5637e4e5b5fdf45ab77771982508ff8605765a6e1193658dc9aa1270c"
+  },
+  "correction_start": {
+    "bytes": 912,
+    "path": "/home/barberb/lift_coding/artifacts/doctor-public-validation-20261014/verify-correction-start.json",
+    "sha256": "dbee1d6b210769964f2ddfbf75564bcf7a2709fc9d3d84f00e39680bec10660e"
+  },
+  "current_doctor_policy_sources_match": true,
+  "excluded_host_benchmark_test_files": [
+    "benchmarks/agent_supervisor/container_coding/test_audit_codebase_full_successor.py",
+    "benchmarks/agent_supervisor/container_coding/test_audit_codebase_signed_successor.py",
+    "benchmarks/agent_supervisor/container_coding/test_audit_codebase_signed_successor_archive.py",
+    "benchmarks/agent_supervisor/container_coding/test_audit_codebase_source_delta.py",
+    "benchmarks/agent_supervisor/container_coding/test_audit_codebase_source_successor.py",
+    "benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py",
+    "benchmarks/agent_supervisor/container_coding/test_benchmark_controls.py",
+    "benchmarks/agent_supervisor/container_coding/test_benchmark_formalization_comparison.py",
+    "benchmarks/agent_supervisor/container_coding/test_benchmark_provider_profile.py",
+    "benchmarks/agent_supervisor/container_coding/test_benchmark_shared_source_policy.py",
+    "benchmarks/agent_supervisor/container_coding/test_cleanup_deadline.py",
+    "benchmarks/agent_supervisor/container_coding/test_coding600_resource_profile.py",
+    "benchmarks/agent_supervisor/container_coding/test_context_projection_trace_comparison.py",
+    "benchmarks/agent_supervisor/container_coding/test_doctor_dispatch_budget.py",
+    "benchmarks/agent_supervisor/container_coding/test_extended_resource_profile.py",
+    "benchmarks/agent_supervisor/container_coding/test_formalization_resource_profile.py",
+    "benchmarks/agent_supervisor/container_coding/test_formalization_worker_budget.py",
+    "benchmarks/agent_supervisor/container_coding/test_full_supervisor_candidate_round_guard.py",
+    "benchmarks/agent_supervisor/container_coding/test_full_supervisor_grok_readiness_setup.py",
+    "benchmarks/agent_supervisor/container_coding/test_full_supervisor_harbor_agent.py",
+    "benchmarks/agent_supervisor/container_coding/test_grok_coding_budget.py",
+    "benchmarks/agent_supervisor/container_coding/test_index_preflight.py",
+    "benchmarks/agent_supervisor/container_coding/test_inventory_resume_scan_fixture.py",
+    "benchmarks/agent_supervisor/container_coding/test_inventory_resume_setup_fixture.py",
+    "benchmarks/agent_supervisor/container_coding/test_learned_numerical_driver_selection.py",
+    "benchmarks/agent_supervisor/container_coding/test_learned_vector_preflight.py",
+    "benchmarks/agent_supervisor/container_coding/test_live.py",
+    "benchmarks/agent_supervisor/container_coding/test_local_planner_bridge.py",
+    "benchmarks/agent_supervisor/container_coding/test_memory20_resource_profile.py",
+    "benchmarks/agent_supervisor/container_coding/test_native_codex_baseline.py",
+    "benchmarks/agent_supervisor/container_coding/test_native_codex_bundle.py",
+    "benchmarks/agent_supervisor/container_coding/test_native_doctor_gate.py",
+    "benchmarks/agent_supervisor/container_coding/test_native_supervisor_diagnostics.py",
+    "benchmarks/agent_supervisor/container_coding/test_numerical_obligation_worker_wiring.py",
+    "benchmarks/agent_supervisor/container_coding/test_owner_candidate_refresh_lifecycle.py",
+    "benchmarks/agent_supervisor/container_coding/test_planner_resource_profile.py",
+    "benchmarks/agent_supervisor/container_coding/test_post_stop_refresh_budget.py",
+    "benchmarks/agent_supervisor/container_coding/test_qualify_codebase_signed_successor.py",
+    "benchmarks/agent_supervisor/container_coding/test_retry_control_canonicalization.py",
+    "benchmarks/agent_supervisor/container_coding/test_run.py",
+    "benchmarks/agent_supervisor/container_coding/test_semantic_working_set_worker_wiring.py",
+    "benchmarks/agent_supervisor/container_coding/test_setup_cache_comparison_controls.py",
+    "benchmarks/agent_supervisor/container_coding/test_source384_probe_lifetime.py",
+    "benchmarks/agent_supervisor/container_coding/test_source384_program_scope.py",
+    "benchmarks/agent_supervisor/container_coding/test_source384_warm_recovery.py",
+    "benchmarks/agent_supervisor/container_coding/test_source_edit_worker_wiring.py",
+    "benchmarks/agent_supervisor/container_coding/test_source_formalization_worker_deployment.py",
+    "benchmarks/agent_supervisor/container_coding/test_source_policy_observation_join.py",
+    "benchmarks/agent_supervisor/container_coding/test_source_successor_dispatch_fixture.py",
+    "benchmarks/agent_supervisor/container_coding/test_source_successor_full_scan_fixture.py",
+    "benchmarks/agent_supervisor/container_coding/test_source_view_trace_comparison.py",
+    "benchmarks/agent_supervisor/container_coding/test_source_view_worker_wiring.py",
+    "benchmarks/agent_supervisor/container_coding/test_supervision_docker.py",
+    "benchmarks/agent_supervisor/container_coding/test_task_formalization_bundle.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_adapter.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_admission_observation.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_autoencoder_context.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_candidate_context_observation.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_candidate_round_observation.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_capsule_budget_census.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_capsule_budget_context.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_capsule_budget_outer.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_capsule_budget_policy.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_capsule_budget_retrieval.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_capsule_selection_policy.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_checkpoint_context.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_coding_reply_audit.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_coding_reply_policy.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_context_audit.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_context_rebind.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_data_profiles.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_declared_contract_planning.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_declared_doctor_pipeline.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_declared_numerical_observation.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_deferred_data.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_deployment.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_doctor_coding_policy.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_doctor_prover_discovery.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_empty_context.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_empty_initial_replay.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_expanded_symbolic_repair.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_failure_diagnostics.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_formal_owner_census.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_formal_status_census.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_formalization_audit_integration.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_formalization_cache_profile.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_formula_assets.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_frozen_security.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_grok_deployment.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_grok_readiness.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_header_proof_admissions.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_header_transport.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_implementation_budget.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_import_lifetime.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_indexed_preparation.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_initial_context.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_initial_context_lifetime.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_initial_formula_boundary.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_instruction_delivery.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_intent_384_selection.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_intent_action_384_transport.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_intent_action_readiness.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_intent_autoencoder.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_intent_copy.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_intent_guarded_context.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_intent_projection_request.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_intent_projections.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_intent_requirement_planning.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_intent_roundtrip.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_intent_scope.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_intent_scope_transport.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_legacy_profile_context_reuse.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_live_census_cache_profile.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_live_census_driver.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_live_census_provenance.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_live_metadata_census.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_metadata_preflight.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_multitask_context.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_multitask_preparation.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_native_preflight.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_native_progress.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_native_start_preflight.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_nomination_staging.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_context.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_control_context.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_guarded_context.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_obligation_broker.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_obligation_integration.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_obligation_retrieval.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_observation.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_planning_selection.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_policy.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_preflight.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_refresh_accounting.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_retrieval_observation.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_selection_deployment.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_selection_integration.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_output_observation.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_output_queued_observation.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_owner_candidate_refresh_observation.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_package_alias_repair.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_planning_policy.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_profile_catalog.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_provider_selection.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_public_acceptance_profile.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_public_outputs.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_public_validation_policy.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_repository_preview.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_resource_diagnostics.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_retrieval_revision.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_rich_search_advice.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_rich_source_unit_advice.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_schedule_planning.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_security_assets.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_semantic_metadata_policy.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_semantic_transport_policy.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_semantic_working_set_policy.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_setup_cache_advice.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_source384_context.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_source384_qualification.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_source384_transport.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_source_edit_policy.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_source_request_observation.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_source_unit_advice.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_source_view_observation.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_source_view_policy.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_symbolic_capabilities.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_symbolic_efficiency.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_symbolic_repair_pipeline.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_task_bootstrap.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_task_profile.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_task_selection.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_torch_wheel.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_transfer_context.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_translation_audit.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_uv_layout.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_worker_capability.py",
+    "benchmarks/agent_supervisor/container_coding/test_vector_index_preflight.py"
+  ],
+  "exit_code": 0,
+  "file_count": 27547,
+  "manifest": {
+    "bytes": 6225496,
+    "path": "/home/barberb/lift_coding/artifacts/doctor-public-validation-20261014/runtime-01/manifest.json",
+    "sha256": "657c6dc0fd58f7a622bd4cec68a3df05c8fc5a865f9a31cfdba6bda1886470af"
+  },
+  "provider_calls": 0,
+  "repaired_production_files_match": {
+    "benchmarks/agent_supervisor/container_coding/terminal_context_audit.py": {
+      "archive_member": {
+        "bytes": 70472,
+        "mode": 420,
+        "path": "source/benchmarks/agent_supervisor/container_coding/terminal_context_audit.py",
+        "sha256": "cf1fb606552145698976a5b6cbfbe064f4c81367a39a1dce882b83491908bf24"
+      },
+      "host": {
+        "bytes": 70472,
+        "path": "/home/barberb/lift_coding/.worktrees/supervisor-public-validation-20261014/benchmarks/agent_supervisor/container_coding/terminal_context_audit.py",
+        "sha256": "cf1fb606552145698976a5b6cbfbe064f4c81367a39a1dce882b83491908bf24"
+      }
+    },
+    "ipfs_accelerate_py/agent_supervisor/runtime/candidate_execution.py": {
+      "archive_member": {
+        "bytes": 13419,
+        "mode": 420,
+        "path": "source/ipfs_accelerate_py/agent_supervisor/runtime/candidate_execution.py",
+        "sha256": "79516fb1ec46f3e2a833e319344af4a284b092d7a8916cd2c1dad59efa41e36b"
+      },
+      "host": {
+        "bytes": 13419,
+        "path": "/home/barberb/lift_coding/.worktrees/supervisor-public-validation-20261014/ipfs_accelerate_py/agent_supervisor/runtime/candidate_execution.py",
+        "sha256": "79516fb1ec46f3e2a833e319344af4a284b092d7a8916cd2c1dad59efa41e36b"
+      }
+    },
+    "ipfs_accelerate_py/agent_supervisor/runtime/candidate_public_validation.py": {
+      "archive_member": {
+        "bytes": 28903,
+        "mode": 420,
+        "path": "source/ipfs_accelerate_py/agent_supervisor/runtime/candidate_public_validation.py",
+        "sha256": "e8c5d72bded0b62c8463d4edd0101fa981c308df76347e5bd6e2139ce2e592f0"
+      },
+      "host": {
+        "bytes": 28903,
+        "path": "/home/barberb/lift_coding/.worktrees/supervisor-public-validation-20261014/ipfs_accelerate_py/agent_supervisor/runtime/candidate_public_validation.py",
+        "sha256": "e8c5d72bded0b62c8463d4edd0101fa981c308df76347e5bd6e2139ce2e592f0"
+      }
+    },
+    "ipfs_accelerate_py/agent_supervisor/runtime/candidate_round_lifecycle.py": {
+      "archive_member": {
+        "bytes": 14975,
+        "mode": 420,
+        "path": "source/ipfs_accelerate_py/agent_supervisor/runtime/candidate_round_lifecycle.py",
+        "sha256": "41d0f21cc5c173045cebaa9d046e850d339e5df77dd61afb12a150f45ec10661"
+      },
+      "host": {
+        "bytes": 14975,
+        "path": "/home/barberb/lift_coding/.worktrees/supervisor-public-validation-20261014/ipfs_accelerate_py/agent_supervisor/runtime/candidate_round_lifecycle.py",
+        "sha256": "41d0f21cc5c173045cebaa9d046e850d339e5df77dd61afb12a150f45ec10661"
+      }
+    },
+    "ipfs_accelerate_py/agent_supervisor/runtime/candidate_round_policy.py": {
+      "archive_member": {
+        "bytes": 10655,
+        "mode": 420,
+        "path": "source/ipfs_accelerate_py/agent_supervisor/runtime/candidate_round_policy.py",
+        "sha256": "3ec078f8621972a455d92732530f959029fcb1a74dd812a3665cf67081c17f4c"
+      },
+      "host": {
+        "bytes": 10655,
+        "path": "/home/barberb/lift_coding/.worktrees/supervisor-public-validation-20261014/ipfs_accelerate_py/agent_supervisor/runtime/candidate_round_policy.py",
+        "sha256": "3ec078f8621972a455d92732530f959029fcb1a74dd812a3665cf67081c17f4c"
+      }
+    },
+    "ipfs_accelerate_py/agent_supervisor/runtime/local_planning_admission.py": {
+      "archive_member": {
+        "bytes": 102563,
+        "mode": 420,
+        "path": "source/ipfs_accelerate_py/agent_supervisor/runtime/local_planning_admission.py",
+        "sha256": "52c39ea64ab1487f69eb4a6a735c88bcc512830073c4e1024914709fac79e429"
+      },
+      "host": {
+        "bytes": 102563,
+        "path": "/home/barberb/lift_coding/.worktrees/supervisor-public-validation-20261014/ipfs_accelerate_py/agent_supervisor/runtime/local_planning_admission.py",
+        "sha256": "52c39ea64ab1487f69eb4a6a735c88bcc512830073c4e1024914709fac79e429"
+      }
+    },
+    "ipfs_accelerate_py/agent_supervisor/runtime/terminal_source_partition.py": {
+      "archive_member": {
+        "bytes": 5834,
+        "mode": 420,
+        "path": "source/ipfs_accelerate_py/agent_supervisor/runtime/terminal_source_partition.py",
+        "sha256": "58b6cd38b8ec9752853f58460808e5d572b1b11451c9a302fe6a09de505a8116"
+      },
+      "host": {
+        "bytes": 5834,
+        "path": "/home/barberb/lift_coding/.worktrees/supervisor-public-validation-20261014/ipfs_accelerate_py/agent_supervisor/runtime/terminal_source_partition.py",
+        "sha256": "58b6cd38b8ec9752853f58460808e5d572b1b11451c9a302fe6a09de505a8116"
+      }
+    },
+    "ipfs_accelerate_py/agent_supervisor/runtime/terminal_task_profile.py": {
+      "archive_member": {
+        "bytes": 36492,
+        "mode": 420,
+        "path": "source/ipfs_accelerate_py/agent_supervisor/runtime/terminal_task_profile.py",
+        "sha256": "8cbfba2173b3bc1a60d158b9c6953788ef0e4d4bac7e48273647987d3a6bf53c"
+      },
+      "host": {
+        "bytes": 36492,
+        "path": "/home/barberb/lift_coding/.worktrees/supervisor-public-validation-20261014/ipfs_accelerate_py/agent_supervisor/runtime/terminal_task_profile.py",
+        "sha256": "8cbfba2173b3bc1a60d158b9c6953788ef0e4d4bac7e48273647987d3a6bf53c"
+      }
+    },
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/bridge_failure_diagnostics.py": {
+      "archive_member": {
+        "bytes": 17791,
+        "mode": 420,
+        "path": "source/ipfs_accelerate_py/agent_supervisor/todo_daemon/bridge_failure_diagnostics.py",
+        "sha256": "4e627295fd16a87138005f18e47b19e704938d912e9e77522cf60c325a0486aa"
+      },
+      "host": {
+        "bytes": 17791,
+        "path": "/home/barberb/lift_coding/.worktrees/supervisor-public-validation-20261014/ipfs_accelerate_py/agent_supervisor/todo_daemon/bridge_failure_diagnostics.py",
+        "sha256": "4e627295fd16a87138005f18e47b19e704938d912e9e77522cf60c325a0486aa"
+      }
+    },
+    "ipfs_accelerate_py/cli_runtime/grok_stream_capture.py": {
+      "archive_member": {
+        "bytes": 32751,
+        "mode": 420,
+        "path": "source/ipfs_accelerate_py/cli_runtime/grok_stream_capture.py",
+        "sha256": "606c63c97c402c2bfca065c82d5619957840cc8634e7320f159540664288493c"
+      },
+      "host": {
+        "bytes": 32751,
+        "path": "/home/barberb/lift_coding/.worktrees/supervisor-public-validation-20261014/ipfs_accelerate_py/cli_runtime/grok_stream_capture.py",
+        "sha256": "606c63c97c402c2bfca065c82d5619957840cc8634e7320f159540664288493c"
+      }
+    }
+  },
+  "seconds": 11.889521147008054,
+  "source_pins_unchanged": true,
+  "step": "verify-corrected",
+  "uncompressed_bytes": 4072689874,
+  "verifier": {
+    "bytes": 6040,
+    "path": "/home/barberb/lift_coding/artifacts/doctor-public-validation-20261014/verify-archive.py",
+    "sha256": "b6b25d85194fa2989490fbdb9bbdec1e330024e39c5b704100109e1ee653a139"
+  }
+}

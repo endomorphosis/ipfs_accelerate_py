@@ -1,0 +1,2028 @@
+{
+  "additive_reader_sha256": "317ba0223fcdc3aa8ef3452e37f127c89857708998af5740660c98643f01e270",
+  "baseline": {
+    "pilot": {
+      "artifact_bindings": [
+        {
+          "bytes": 3529,
+          "path": "/home/barberb/lift_coding/artifacts/declared-public-planning-20261015/live-trials/grok-declared-public-validation-01/config.json",
+          "sha256": "12b3f07e488df955d7e1626c1af8e5a22d8e6ad3bde7972b9be7b4442f2cbc3b"
+        },
+        {
+          "bytes": 12031,
+          "path": "/home/barberb/lift_coding/artifacts/declared-public-planning-20261015/live-trials/grok-declared-public-validation-01/jobs/supervisor-full-largest-eigenval/largest-eigenval__LJh3TxD/result.json",
+          "sha256": "25131fa0691fb38aab3cd70c2e0021a3369988352d8220cb4b8ae7831d7433de"
+        },
+        {
+          "bytes": 183369,
+          "path": "/home/barberb/lift_coding/artifacts/declared-public-planning-20261015/live-trials/grok-declared-public-validation-01/jobs/supervisor-full-largest-eigenval/largest-eigenval__LJh3TxD/agent/supervisor-result.json",
+          "sha256": "52388e504e1957ae0fe6d53fe27b64f1aa5e7d258f9e232a894be0879804fbd0"
+        }
+      ],
+      "controls": {
+        "candidate_rounds": 2,
+        "capsule_budget": "legacy",
+        "coding_reply_mode": "legacy",
+        "doctor_coding_policy": "doctor-coding-public-validation-two-attempts@1",
+        "grok_coding_max_turns": 8,
+        "numerical_formalization_profile": null,
+        "provider_profile": "grok-4.7-cli-1.0.46@1",
+        "resource_profile": "source384-5cpu-20gib-formalization@1",
+        "semantic_metadata_view": "legacy",
+        "semantic_transport_schema": "supervisor-semantic-router-input@1",
+        "semantic_working_set": "legacy",
+        "source_edit_mode": "disabled",
+        "source_view_profile": "identity@1"
+      },
+      "directory": "/home/barberb/lift_coding/artifacts/declared-public-planning-20261015/live-trials/grok-declared-public-validation-01",
+      "status": "observed",
+      "trials": [
+        {
+          "all_phase_usage": {
+            "all_native_contracts_complete": false,
+            "billing_total_verified": false,
+            "complete_native_totals": {
+              "cache_write_input_tokens": null,
+              "cached_input_tokens": null,
+              "input_tokens": null,
+              "output_tokens": null,
+              "reasoning_output_tokens": null,
+              "total_tokens": null
+            },
+            "missing_categories": {
+              "cache_write_input_tokens": 2,
+              "cached_input_tokens": 2,
+              "input_tokens": 2,
+              "output_tokens": 2,
+              "reasoning_output_tokens": 2,
+              "total_tokens": 2
+            },
+            "observed_subtotals": {
+              "cache_write_input_tokens": null,
+              "cached_input_tokens": null,
+              "input_tokens": null,
+              "output_tokens": null,
+              "reasoning_output_tokens": null,
+              "total_tokens": null
+            },
+            "outer_router_calls": 2,
+            "reasoning_is_separate_not_added_to_total": true,
+            "receipts": 2,
+            "retained_aggregate_completeness_agrees": false,
+            "unreceipted_attempt_reported": false
+          },
+          "baseline_source_audit": {
+            "all_coding_sessions_observed": false,
+            "candidate_context_counts": {
+              "delivered_bytes": 0,
+              "delivered_pages": 0,
+              "prepared_bytes": 0,
+              "prepared_pages": 0
+            },
+            "candidate_sessions_excluded": 1,
+            "counts": {
+              "accepted_requests": 1,
+              "delivered_pages": 1,
+              "delivered_response_bytes": 2397,
+              "delivered_responses": 1,
+              "delivered_source_bytes": 0,
+              "prepared_pages": 1,
+              "prepared_source_bytes": 0,
+              "request_hash_count": 1,
+              "response_bytes": 2397,
+              "response_hash_count": 1,
+              "sessions": 1,
+              "unique_request_hash_count": 1,
+              "unique_response_hash_count": 1
+            },
+            "prior_receipt_matches_reported": [
+              false
+            ],
+            "provider_tokens": null,
+            "reason": "matched_owner_session_accounting",
+            "schema": "terminal-source-view-observation@1",
+            "session_scope": "baseline_source_sessions_only",
+            "status": "observed",
+            "total_token_savings_measured": false
+          },
+          "candidate_source_audit": {
+            "candidate_context_counts": {
+              "delivered_bytes": 6383,
+              "delivered_pages": 1,
+              "prepared_bytes": 6383,
+              "prepared_pages": 1
+            },
+            "counts": {
+              "accepted_requests": 1,
+              "delivered_pages": 1,
+              "delivered_response_bytes": 8192,
+              "delivered_responses": 1,
+              "delivered_source_bytes": 0,
+              "prepared_pages": 1,
+              "prepared_source_bytes": 0,
+              "request_hash_count": 1,
+              "response_bytes": 8192,
+              "response_hash_count": 1,
+              "sessions": 1,
+              "unique_request_hash_count": 1,
+              "unique_response_hash_count": 1
+            },
+            "preflight_counts": {
+              "candidate_context_bytes": 6383,
+              "provider_input_bytes": 0,
+              "requests": 1,
+              "response_bytes": 8192
+            },
+            "prior_receipt_matches_reported": [
+              true
+            ],
+            "provider_tokens": null,
+            "reason": "matched_owner_candidate_session_accounting",
+            "schema": "terminal-candidate-round-observation@1",
+            "session_scope": "candidate_round_sessions_only",
+            "status": "observed",
+            "total_token_savings_measured": false
+          },
+          "continuation": {
+            "candidate_receipts": 1,
+            "continuation_supported_by_retained_report": true,
+            "in_container_accounting_agrees": true,
+            "independent_owner_replay_performed": false,
+            "native_accounting": {
+              "complete_usage_established": false,
+              "doctor_attempts_reserved": [
+                1,
+                2
+              ],
+              "doctor_coding_policy": "doctor-coding-public-validation-two-attempts@1",
+              "doctor_coding_policy_sha256": "daedc7bf9f9adeefa60ba84d1ca1c5ec41bb64b4c0f5dba62182dbe1807aa834",
+              "owner_lifecycle_sha256": "fd6c1a9e670170a2386a9ab01277dc544d3be5f40dc2831be6cfe9098a5bec93",
+              "potential_unreceipted_attempt": false,
+              "provider_internal_calls_bounded": false,
+              "reason": "each_started_child_has_distinct_router_receipt",
+              "rounds": [
+                {
+                  "possible_unreceipted_attempt": false,
+                  "process_started": true,
+                  "receipt_observed": true,
+                  "round_number": 1
+                },
+                {
+                  "possible_unreceipted_attempt": false,
+                  "process_started": true,
+                  "receipt_observed": true,
+                  "round_number": 2
+                }
+              ],
+              "schema": "terminal-candidate-attempt-accounting@1",
+              "status": "matched_round_receipts",
+              "total_cost_bounded": false,
+              "total_tokens_bounded": false
+            },
+            "two_coding_router_calls_joined": true
+          },
+          "duplicate_receipts_ignored": 0,
+          "input_audit": {
+            "all_observed_coding_inputs_verified": true,
+            "coding_receipts_seen": 2,
+            "prior_receipt_matches_reported": [],
+            "reason": "per_invocation_context_and_input_comparison",
+            "schema": "terminal-final-context-audit@1",
+            "status": "verified_all_observed_model_inputs",
+            "usable_coding_receipts": 2
+          },
+          "invocations": [
+            {
+              "candidate_preflight": {},
+              "failure_phase": "provider_invocation",
+              "input_representation": {},
+              "invocation_id": "b2fdac0c56ba42028d50c97e5b8862dc",
+              "model": "grok-4.7",
+              "model_prompt_bytes": 67380,
+              "native_cli": {
+                "exit_code": 1
+              },
+              "native_grok_progress": {
+                "progress": {
+                  "callback_errors": 0,
+                  "completion_authority": false,
+                  "discarded_text_bytes": 127,
+                  "duration_seconds": 129.5200176690705,
+                  "event_counts": {
+                    "auto_compact": 0,
+                    "available_commands": 12,
+                    "end": 1,
+                    "error": 0,
+                    "max_turns_reached": 1,
+                    "plan": 0,
+                    "text": 57,
+                    "thought": 469,
+                    "tool_call": 10,
+                    "tool_call_update": 38,
+                    "unknown": 0,
+                    "usage": 8
+                  },
+                  "event_origin_authenticated": false,
+                  "events_after_final": 1,
+                  "execution_authority": false,
+                  "final_envelope_observed": true,
+                  "final_event_seconds": 128.10518401302397,
+                  "final_event_type": "max_turns_reached",
+                  "final_reason_code": "max_turns",
+                  "first_event_seconds": 0.12726073001977056,
+                  "first_stderr_seconds": 129.5165562290931,
+                  "first_stdout_seconds": 0.12726073001977056,
+                  "frames": 596,
+                  "last_event_seconds": 128.1068607880734,
+                  "last_stderr_seconds": 129.5165562290931,
+                  "last_stdout_seconds": 128.1068607880734,
+                  "malformed_frames": 0,
+                  "non_object_frames": 0,
+                  "observation_only": true,
+                  "oversized_frames": 0,
+                  "process_exit_observed": true,
+                  "process_exit_seconds": 129.51976384106092,
+                  "proof_authority": false,
+                  "raw_provider_data_exported": false,
+                  "response_usable": false,
+                  "retained_text_bytes": 162,
+                  "returncode": 1,
+                  "schema": "native-grok-stream-progress@1",
+                  "stderr_bytes": 25,
+                  "stderr_eof": true,
+                  "stdout_bytes": 307154,
+                  "stdout_eof": true,
+                  "stream_complete": false,
+                  "stream_tainted": true,
+                  "text_bytes": 289,
+                  "text_scope": "last_usage_delimited_text_segment",
+                  "text_truncated": false,
+                  "timed_out": false,
+                  "timeout_phase": "none",
+                  "tool_name_counts": {
+                    "grep": 0,
+                    "list_dir": 0,
+                    "read_file": 3,
+                    "run_terminal_cmd": 0,
+                    "search_replace": 0,
+                    "todo_write": 0,
+                    "unknown": 7
+                  },
+                  "tool_status_counts": {
+                    "completed": 10,
+                    "failed": 0,
+                    "in_progress": 18,
+                    "pending": 10,
+                    "unknown": 10
+                  },
+                  "transport": "streaming-json",
+                  "unknown_events": 0,
+                  "usage_event_observation": {
+                    "billing_total_verified": false,
+                    "counter_semantics": "unverified",
+                    "observed_events": 8,
+                    "omitted_events": 0,
+                    "ordinals_are_turn_ids": false,
+                    "raw_provider_data_exported": false,
+                    "retained_events": 8,
+                    "schema": "native-grok-usage-events@1",
+                    "summation_permitted": false
+                  }
+                },
+                "status": "validated_retained_observation",
+                "terminal_rejection": {
+                  "completion_authority": false,
+                  "elapsed_seconds": 128.1068607880734,
+                  "event_type": "end",
+                  "field_shapes": {
+                    "cancellationCategory": "missing",
+                    "cost_is_partial": "missing",
+                    "is_error": "missing",
+                    "message": "missing",
+                    "modelUsage": "object",
+                    "num_turns": "integer",
+                    "requestId": "string",
+                    "sessionId": "string",
+                    "stopReason": "string",
+                    "stop_reason": "missing",
+                    "subtype": "missing",
+                    "text": "missing",
+                    "thought": "missing",
+                    "total_cost_usd": "number",
+                    "total_cost_usd_ticks": "integer",
+                    "type": "string",
+                    "usage": "object",
+                    "usage_is_incomplete": "missing"
+                  },
+                  "frame_ordinal": 596,
+                  "incoming_reason_code": "cancelled",
+                  "incoming_stop_reason": "cancelled",
+                  "observation_only": true,
+                  "prior_field_shapes": {
+                    "cancellationCategory": "missing",
+                    "cost_is_partial": "missing",
+                    "is_error": "missing",
+                    "message": "missing",
+                    "modelUsage": "missing",
+                    "num_turns": "missing",
+                    "requestId": "missing",
+                    "sessionId": "missing",
+                    "stopReason": "missing",
+                    "stop_reason": "missing",
+                    "subtype": "missing",
+                    "text": "missing",
+                    "thought": "missing",
+                    "total_cost_usd": "missing",
+                    "total_cost_usd_ticks": "missing",
+                    "type": "string",
+                    "usage": "missing",
+                    "usage_is_incomplete": "missing"
+                  },
+                  "prior_reason_code": "max_turns",
+                  "prior_terminal_type": "max_turns_reached",
+                  "raw_provider_data_exported": false,
+                  "reason": "end_reason_mismatch",
+                  "rejected_fields": [],
+                  "schema": "native-grok-terminal-rejection@1",
+                  "unexpected_fields": [],
+                  "unknown_field_count": 0
+                },
+                "usage_event_values_exported": false
+              },
+              "native_prompt_bytes": 67378,
+              "native_usage": {
+                "arithmetic_valid": null,
+                "counters": {
+                  "cache_write_input_tokens": null,
+                  "cached_input_tokens": null,
+                  "input_tokens": null,
+                  "output_tokens": null,
+                  "reasoning_output_tokens": null,
+                  "total_tokens": null
+                },
+                "retained_native_fields": {},
+                "usage_complete_under_native_contract": null
+              },
+              "phase": "coding",
+              "prompt_bytes": 67378,
+              "provider": "grok_cli",
+              "requested_output_tokens": 4096,
+              "router_calls": 1,
+              "router_prompt_bytes": 66490,
+              "status": "failed",
+              "timeout_seconds": 1800
+            },
+            {
+              "candidate_preflight": {
+                "artifact": "summary",
+                "child_custody_checked": true,
+                "producer_freshness_checked": true,
+                "provider_input_bytes": 0,
+                "requests": 1,
+                "response_bytes": 8192,
+                "schema": "supervisor-candidate-round-preflight@1",
+                "source_freshness_checked": true
+              },
+              "failure_phase": "provider_invocation",
+              "input_representation": {},
+              "invocation_id": "b0fb8e1d62ef4c8eb2c55cdcd324ef03",
+              "model": "grok-4.7",
+              "model_prompt_bytes": 91841,
+              "native_cli": {},
+              "native_grok_progress": {
+                "status": "unavailable"
+              },
+              "native_prompt_bytes": 67378,
+              "native_usage": {
+                "arithmetic_valid": null,
+                "counters": {
+                  "cache_write_input_tokens": null,
+                  "cached_input_tokens": null,
+                  "input_tokens": null,
+                  "output_tokens": null,
+                  "reasoning_output_tokens": null,
+                  "total_tokens": null
+                },
+                "retained_native_fields": {},
+                "usage_complete_under_native_contract": null
+              },
+              "phase": "coding",
+              "prompt_bytes": 88669,
+              "provider": "grok_cli",
+              "requested_output_tokens": 4096,
+              "router_calls": 1,
+              "router_prompt_bytes": 89988,
+              "status": "failed",
+              "timeout_seconds": 1466
+            }
+          ],
+          "native_failure_observations": {
+            "bridge": {
+              "completion_authority": false,
+              "diagnostic": {
+                "callback": {
+                  "native_exit": {
+                    "lifecycle_finalized": true,
+                    "present": true,
+                    "process_group_absent": true,
+                    "reaped": true,
+                    "returncode": 1,
+                    "subreaper_children_absent": true
+                  },
+                  "provider_effect_state": "failed_provider_exited",
+                  "schema": "database-native-provider-failure@1",
+                  "state": "failed_outcome_settled"
+                },
+                "chain_truncated": false,
+                "child_reported_router_failure": {
+                  "attempt_attribution_verified": false,
+                  "completion_authority": false,
+                  "diagnostics": [
+                    {
+                      "diagnostic": {
+                        "automatic_retry_admitted": false,
+                        "chain_truncated": false,
+                        "completion_authority": false,
+                        "exceptions": [
+                          {
+                            "exception_type": "ValueError",
+                            "frames": [
+                              {
+                                "file": "router_implementation_runner.py",
+                                "line": 1398
+                              },
+                              {
+                                "file": "router_implementation_runner.py",
+                                "line": 1234
+                              }
+                            ]
+                          }
+                        ],
+                        "phase": "provider_invocation",
+                        "provider_dispatch_observed": null,
+                        "schema": "router-implementation-failure-diagnostic@1",
+                        "settlement_authority": false
+                      },
+                      "error_type": "ValueError",
+                      "schema": "router-implementation-error@2"
+                    },
+                    {
+                      "diagnostic": {
+                        "automatic_retry_admitted": false,
+                        "chain_truncated": false,
+                        "completion_authority": false,
+                        "exceptions": [
+                          {
+                            "exception_type": "other",
+                            "frames": [
+                              {
+                                "file": "router_implementation_runner.py",
+                                "line": 1398
+                              },
+                              {
+                                "file": "router_implementation_runner.py",
+                                "line": 1234
+                              }
+                            ]
+                          }
+                        ],
+                        "phase": "provider_invocation",
+                        "provider_dispatch_observed": null,
+                        "schema": "router-implementation-failure-diagnostic@1",
+                        "settlement_authority": false
+                      },
+                      "error_type": "other",
+                      "schema": "router-implementation-error@2"
+                    }
+                  ],
+                  "observation_only": true,
+                  "observed_record_count": 2,
+                  "provider_dispatch_observed": null,
+                  "retry_authority": false,
+                  "schema": "router-child-failure-observations@1",
+                  "scope": "bounded_native_log_tail",
+                  "settlement_authority": false,
+                  "status": "observed_multiple_unattributed"
+                },
+                "completion_authority": false,
+                "exceptions": [
+                  {
+                    "exception_type": "DatabasePortalBridgeError",
+                    "frames": [
+                      {
+                        "file": "implementation_daemon.py",
+                        "line": 76848
+                      },
+                      {
+                        "file": "implementation_daemon.py",
+                        "line": 75534
+                      },
+                      {
+                        "file": "implementation_daemon.py",
+                        "line": 74258
+                      },
+                      {
+                        "file": "implementation_daemon.py",
+                        "line": 74543
+                      },
+                      {
+                        "file": "implementation_daemon.py",
+                        "line": 72191
+                      },
+                      {
+                        "file": "implementation_daemon.py",
+                        "line": 72180
+                      },
+                      {
+                        "file": "implementation_daemon.py",
+                        "line": 74543
+                      },
+                      {
+                        "file": "database_portal_bridge.py",
+                        "line": 11516
+                      }
+                    ]
+                  }
+                ],
+                "native_provider_custody_observation": {
+                  "checks": [
+                    {
+                      "reason_code": "eligible",
+                      "stage": "issuance",
+                      "status": "passed"
+                    },
+                    {
+                      "reason_code": "verified",
+                      "stage": "native_exit",
+                      "status": "passed"
+                    },
+                    {
+                      "reason_code": "verified",
+                      "stage": "bridge_join",
+                      "status": "passed"
+                    },
+                    {
+                      "reason_code": "verified",
+                      "stage": "capability_take",
+                      "status": "passed"
+                    }
+                  ],
+                  "completion_authority": false,
+                  "observation_only": true,
+                  "retry_authority": false,
+                  "schema": "database-native-provider-custody-observation@1",
+                  "settlement_authority": false
+                },
+                "phase": "terminal_failure",
+                "reason_code": "portal_provider_failed",
+                "retry_authority": false,
+                "schema": "database-bridge-failure-diagnostic@2",
+                "settlement_authority": false
+              },
+              "matched_record_count": 1,
+              "observation_only": true,
+              "provider_dispatch_observed": null,
+              "retry_authority": false,
+              "scope": "exact_admitted_task_and_attempt",
+              "settlement_authority": false,
+              "status": "observed"
+            },
+            "completion_authority": false,
+            "observation_only": true,
+            "planner_child": {
+              "completion_authority": false,
+              "diagnostic": null,
+              "matched_record_count": 0,
+              "observation_only": true,
+              "provider_dispatch_observed": null,
+              "retry_authority": false,
+              "scope": "planner_child_stderr",
+              "settlement_authority": false,
+              "status": "missing"
+            },
+            "retry_authority": false,
+            "schema": "terminal-native-failure-observations@1",
+            "settlement_authority": false,
+            "status": "validated_retained_observation"
+          },
+          "official_reward": 0.0,
+          "phase_seconds": {
+            "context_seconds": 3.9073665980249643,
+            "doctor_seconds": 1.8304058220237494,
+            "initial_context_seconds": 14.996175828040577,
+            "planning_seconds": 4.666124962968752,
+            "prepare_seconds": 0.6725182050140575
+          },
+          "public_validation": {
+            "completion_authority": false,
+            "continuation_authority": false,
+            "execution_authority": false,
+            "independent_owner_replay_performed": false,
+            "observation_only": true,
+            "owner_failure_reported": false,
+            "owner_returncode": 1,
+            "owner_validation_outcome": "inconclusive",
+            "proof_authority": false,
+            "raw_sources_or_private_owner_artifacts_exported": false,
+            "rounds": [
+              {
+                "actual_returncode": 1,
+                "checks": [
+                  {
+                    "measurements": [],
+                    "reason": "obligations_satisfied",
+                    "status": "passed",
+                    "validation_key": "public-structural-smoke"
+                  },
+                  {
+                    "measurements": [],
+                    "reason": "obligations_satisfied",
+                    "status": "passed",
+                    "validation_key": "public-eigenpair-behavior"
+                  },
+                  {
+                    "measurements": [
+                      {
+                        "batch": 0,
+                        "candidate_median_seconds": 7.071997970342636e-06,
+                        "reference_median_seconds": 7.0239766500890255e-06,
+                        "size": 2
+                      },
+                      {
+                        "batch": 1,
+                        "candidate_median_seconds": 7.13602639734745e-06,
+                        "reference_median_seconds": 7.104012183845043e-06,
+                        "size": 2
+                      },
+                      {
+                        "batch": 2,
+                        "candidate_median_seconds": 7.120543159544468e-06,
+                        "reference_median_seconds": 7.071997970342636e-06,
+                        "size": 2
+                      },
+                      {
+                        "batch": 0,
+                        "candidate_median_seconds": 8.80850711837411e-06,
+                        "reference_median_seconds": 8.807925041764975e-06,
+                        "size": 4
+                      },
+                      {
+                        "batch": 1,
+                        "candidate_median_seconds": 8.78400169312954e-06,
+                        "reference_median_seconds": 8.75245314091444e-06,
+                        "size": 4
+                      },
+                      {
+                        "batch": 2,
+                        "candidate_median_seconds": 8.736038580536842e-06,
+                        "reference_median_seconds": 8.71199881657958e-06,
+                        "size": 4
+                      },
+                      {
+                        "batch": 0,
+                        "candidate_median_seconds": 1.1080468539148569e-05,
+                        "reference_median_seconds": 1.0976509656757116e-05,
+                        "size": 6
+                      },
+                      {
+                        "batch": 1,
+                        "candidate_median_seconds": 1.0975985787808895e-05,
+                        "reference_median_seconds": 1.0928022675216198e-05,
+                        "size": 6
+                      },
+                      {
+                        "batch": 2,
+                        "candidate_median_seconds": 1.08800595626235e-05,
+                        "reference_median_seconds": 1.0896008461713791e-05,
+                        "size": 6
+                      },
+                      {
+                        "batch": 0,
+                        "candidate_median_seconds": 1.3704528100788593e-05,
+                        "reference_median_seconds": 1.3567972928285599e-05,
+                        "size": 8
+                      },
+                      {
+                        "batch": 1,
+                        "candidate_median_seconds": 1.3776007108390331e-05,
+                        "reference_median_seconds": 1.3648008462041616e-05,
+                        "size": 8
+                      },
+                      {
+                        "batch": 2,
+                        "candidate_median_seconds": 1.3696495443582535e-05,
+                        "reference_median_seconds": 1.368852099403739e-05,
+                        "size": 8
+                      },
+                      {
+                        "batch": 0,
+                        "candidate_median_seconds": 1.7151993233710527e-05,
+                        "reference_median_seconds": 1.7248501535505056e-05,
+                        "size": 10
+                      },
+                      {
+                        "batch": 1,
+                        "candidate_median_seconds": 1.7368001863360405e-05,
+                        "reference_median_seconds": 1.7392972949892282e-05,
+                        "size": 10
+                      },
+                      {
+                        "batch": 2,
+                        "candidate_median_seconds": 1.7336453311145306e-05,
+                        "reference_median_seconds": 1.7248501535505056e-05,
+                        "size": 10
+                      }
+                    ],
+                    "reason": "timing_unstable",
+                    "status": "inconclusive",
+                    "validation_key": "public-eigenvalue-performance"
+                  }
+                ],
+                "contract_sha256": "5ccd41cd6de812ceeffa1c8b8edcccc37b447e608de8840d693c000db75e98e7",
+                "descriptor_sha256": "39d4a232caa96f2b8db244b21a4dcbd02c4cdf37685ab57252782277bc3a107c",
+                "failed_obligations": [],
+                "observation_sha256": "c81c964e06879def2b684e7620e8c0da67910c30197f049325e8d59c4abff61d",
+                "round_number": 1,
+                "session_id": "f523946fb474447892cfdf2e481f234c",
+                "status": "inconclusive",
+                "workspace_generation": "983ec5b3226cc0344f59823e910c4df4defe5c22a803512f40d561f8fa28964d"
+              },
+              {
+                "actual_returncode": 1,
+                "checks": [
+                  {
+                    "measurements": [],
+                    "reason": "obligations_satisfied",
+                    "status": "passed",
+                    "validation_key": "public-structural-smoke"
+                  },
+                  {
+                    "measurements": [],
+                    "reason": "obligations_satisfied",
+                    "status": "passed",
+                    "validation_key": "public-eigenpair-behavior"
+                  },
+                  {
+                    "measurements": [
+                      {
+                        "batch": 0,
+                        "candidate_median_seconds": 7.096037734299898e-06,
+                        "reference_median_seconds": 7.064023520797491e-06,
+                        "size": 2
+                      },
+                      {
+                        "batch": 1,
+                        "candidate_median_seconds": 7.304479368031025e-06,
+                        "reference_median_seconds": 7.295981049537659e-06,
+                        "size": 2
+                      },
+                      {
+                        "batch": 2,
+                        "candidate_median_seconds": 7.144000846892595e-06,
+                        "reference_median_seconds": 7.088063284754753e-06,
+                        "size": 2
+                      },
+                      {
+                        "batch": 0,
+                        "candidate_median_seconds": 8.800067007541656e-06,
+                        "reference_median_seconds": 8.728471584618092e-06,
+                        "size": 4
+                      },
+                      {
+                        "batch": 1,
+                        "candidate_median_seconds": 8.760020136833191e-06,
+                        "reference_median_seconds": 8.751987479627132e-06,
+                        "size": 4
+                      },
+                      {
+                        "batch": 2,
+                        "candidate_median_seconds": 8.760485798120499e-06,
+                        "reference_median_seconds": 8.704024367034435e-06,
+                        "size": 4
+                      },
+                      {
+                        "batch": 0,
+                        "candidate_median_seconds": 1.1112017091363668e-05,
+                        "reference_median_seconds": 1.102406531572342e-05,
+                        "size": 6
+                      },
+                      {
+                        "batch": 1,
+                        "candidate_median_seconds": 1.0992051102221012e-05,
+                        "reference_median_seconds": 1.0936055332422256e-05,
+                        "size": 6
+                      },
+                      {
+                        "batch": 2,
+                        "candidate_median_seconds": 1.1008000001311302e-05,
+                        "reference_median_seconds": 1.1023948900401592e-05,
+                        "size": 6
+                      },
+                      {
+                        "batch": 0,
+                        "candidate_median_seconds": 1.3824028428643942e-05,
+                        "reference_median_seconds": 1.3776065316051245e-05,
+                        "size": 8
+                      },
+                      {
+                        "batch": 1,
+                        "candidate_median_seconds": 1.3920478522777557e-05,
+                        "reference_median_seconds": 1.379998866468668e-05,
+                        "size": 8
+                      },
+                      {
+                        "batch": 2,
+                        "candidate_median_seconds": 1.393596176058054e-05,
+                        "reference_median_seconds": 1.3840501196682453e-05,
+                        "size": 8
+                      },
+                      {
+                        "batch": 0,
+                        "candidate_median_seconds": 1.7471960745751858e-05,
+                        "reference_median_seconds": 1.7471960745751858e-05,
+                        "size": 10
+                      },
+                      {
+                        "batch": 1,
+                        "candidate_median_seconds": 1.7520971596240997e-05,
+                        "reference_median_seconds": 1.748005161061883e-05,
+                        "size": 10
+                      },
+                      {
+                        "batch": 2,
+                        "candidate_median_seconds": 1.743203029036522e-05,
+                        "reference_median_seconds": 1.726398477330804e-05,
+                        "size": 10
+                      }
+                    ],
+                    "reason": "timing_unstable",
+                    "status": "inconclusive",
+                    "validation_key": "public-eigenvalue-performance"
+                  }
+                ],
+                "contract_sha256": "5ccd41cd6de812ceeffa1c8b8edcccc37b447e608de8840d693c000db75e98e7",
+                "descriptor_sha256": "1623d4fe0b6aca17c5db3c378f3bdb5a541a4532a93d4bf0ef02587d3daa3d43",
+                "failed_obligations": [],
+                "observation_sha256": "fe26a56ac023bdf4ee81b94c34eaa2fb3b9174815581f8ecf3f2cec770dff04d",
+                "round_number": 2,
+                "session_id": "114b7667a2614a0094293cb14cd3ae37",
+                "status": "inconclusive",
+                "workspace_generation": "983ec5b3226cc0344f59823e910c4df4defe5c22a803512f40d561f8fa28964d"
+              }
+            ],
+            "schema": "owner-candidate-rounds-observation@2",
+            "status": "validated_retained_observation"
+          },
+          "retained_aggregate_usage": {
+            "all_invocations_receipted": true,
+            "billing_total_verified": false,
+            "cache_included_in_input": null,
+            "cache_write_input_tokens": null,
+            "cached_input_tokens": null,
+            "harbor_usage_exportable": false,
+            "input_tokens": null,
+            "native_scoped_usage_complete_observed": null,
+            "observed_complete_sessions": false,
+            "output_tokens": null,
+            "token_count_scope": null,
+            "total_tokens": null,
+            "usage_complete_observed": null
+          },
+          "seconds": 397.5991736740107,
+          "status": "retained_report_read",
+          "task_completed_reported": false,
+          "trial": "largest-eigenval__LJh3TxD",
+          "usage_by_phase": {
+            "coding": {
+              "all_native_contracts_complete": false,
+              "billing_total_verified": false,
+              "complete_native_totals": {
+                "cache_write_input_tokens": null,
+                "cached_input_tokens": null,
+                "input_tokens": null,
+                "output_tokens": null,
+                "reasoning_output_tokens": null,
+                "total_tokens": null
+              },
+              "missing_categories": {
+                "cache_write_input_tokens": 2,
+                "cached_input_tokens": 2,
+                "input_tokens": 2,
+                "output_tokens": 2,
+                "reasoning_output_tokens": 2,
+                "total_tokens": 2
+              },
+              "observed_subtotals": {
+                "cache_write_input_tokens": null,
+                "cached_input_tokens": null,
+                "input_tokens": null,
+                "output_tokens": null,
+                "reasoning_output_tokens": null,
+                "total_tokens": null
+              },
+              "outer_router_calls": 2,
+              "reasoning_is_separate_not_added_to_total": true,
+              "receipts": 2,
+              "retained_aggregate_completeness_agrees": false,
+              "unreceipted_attempt_reported": false
+            }
+          },
+          "verifier_result_retained": true
+        }
+      ]
+    },
+    "prior": {
+      "artifact_bindings": [
+        {
+          "bytes": 3466,
+          "path": "/home/barberb/lift_coding/artifacts/planner-acceptance-20261015/live-trials/grok-public-validation-01/config.json",
+          "sha256": "b73a58f081e6680dad47770f30784a600fbfcf60715c1befc853c52ede155e9b"
+        },
+        {
+          "bytes": 11959,
+          "path": "/home/barberb/lift_coding/artifacts/planner-acceptance-20261015/live-trials/grok-public-validation-01/jobs/supervisor-full-largest-eigenval/largest-eigenval__gnfcWvo/result.json",
+          "sha256": "e0b4f6a506a6fb0536a8e9e1e7832e4f7363df5d0b8623e12a169fb2e0e0558e"
+        },
+        {
+          "bytes": 194320,
+          "path": "/home/barberb/lift_coding/artifacts/planner-acceptance-20261015/live-trials/grok-public-validation-01/jobs/supervisor-full-largest-eigenval/largest-eigenval__gnfcWvo/agent/supervisor-result.json",
+          "sha256": "4c720f9365f5fe6707f1eb686765c3b9eae7ec1a8bf14319fa0b48289da34c77"
+        }
+      ],
+      "controls": {
+        "candidate_rounds": 2,
+        "capsule_budget": "legacy",
+        "coding_reply_mode": "legacy",
+        "doctor_coding_policy": "doctor-coding-public-validation-two-attempts@1",
+        "grok_coding_max_turns": 8,
+        "numerical_formalization_profile": null,
+        "provider_profile": "grok-4.7-cli-1.0.46@1",
+        "resource_profile": "source384-5cpu-20gib-formalization@1",
+        "semantic_metadata_view": "legacy",
+        "semantic_transport_schema": "supervisor-semantic-router-input@1",
+        "semantic_working_set": "legacy",
+        "source_edit_mode": "disabled",
+        "source_view_profile": "identity@1"
+      },
+      "directory": "/home/barberb/lift_coding/artifacts/planner-acceptance-20261015/live-trials/grok-public-validation-01",
+      "status": "observed",
+      "trials": [
+        {
+          "all_phase_usage": {
+            "all_native_contracts_complete": false,
+            "billing_total_verified": false,
+            "complete_native_totals": {
+              "cache_write_input_tokens": null,
+              "cached_input_tokens": null,
+              "input_tokens": null,
+              "output_tokens": null,
+              "reasoning_output_tokens": null,
+              "total_tokens": null
+            },
+            "missing_categories": {
+              "cache_write_input_tokens": 2,
+              "cached_input_tokens": 2,
+              "input_tokens": 2,
+              "output_tokens": 2,
+              "reasoning_output_tokens": 2,
+              "total_tokens": 2
+            },
+            "observed_subtotals": {
+              "cache_write_input_tokens": 0,
+              "cached_input_tokens": 1280,
+              "input_tokens": 15386,
+              "output_tokens": 10311,
+              "reasoning_output_tokens": 7763,
+              "total_tokens": 26977
+            },
+            "outer_router_calls": 3,
+            "reasoning_is_separate_not_added_to_total": true,
+            "receipts": 3,
+            "retained_aggregate_completeness_agrees": false,
+            "unreceipted_attempt_reported": false
+          },
+          "baseline_source_audit": {
+            "all_coding_sessions_observed": false,
+            "candidate_context_counts": {
+              "delivered_bytes": 0,
+              "delivered_pages": 0,
+              "prepared_bytes": 0,
+              "prepared_pages": 0
+            },
+            "candidate_sessions_excluded": 1,
+            "counts": {
+              "accepted_requests": 0,
+              "delivered_pages": 0,
+              "delivered_response_bytes": 0,
+              "delivered_responses": 0,
+              "delivered_source_bytes": 0,
+              "prepared_pages": 0,
+              "prepared_source_bytes": 0,
+              "request_hash_count": 0,
+              "response_bytes": 0,
+              "response_hash_count": 0,
+              "sessions": 1,
+              "unique_request_hash_count": 0,
+              "unique_response_hash_count": 0
+            },
+            "prior_receipt_matches_reported": [
+              false
+            ],
+            "provider_tokens": null,
+            "reason": "matched_owner_session_accounting",
+            "schema": "terminal-source-view-observation@1",
+            "session_scope": "baseline_source_sessions_only",
+            "status": "observed",
+            "total_token_savings_measured": false
+          },
+          "candidate_source_audit": {
+            "candidate_context_counts": {
+              "delivered_bytes": 6383,
+              "delivered_pages": 1,
+              "prepared_bytes": 6383,
+              "prepared_pages": 1
+            },
+            "counts": {
+              "accepted_requests": 1,
+              "delivered_pages": 1,
+              "delivered_response_bytes": 8192,
+              "delivered_responses": 1,
+              "delivered_source_bytes": 0,
+              "prepared_pages": 1,
+              "prepared_source_bytes": 0,
+              "request_hash_count": 1,
+              "response_bytes": 8192,
+              "response_hash_count": 1,
+              "sessions": 1,
+              "unique_request_hash_count": 1,
+              "unique_response_hash_count": 1
+            },
+            "preflight_counts": {
+              "candidate_context_bytes": 6383,
+              "provider_input_bytes": 0,
+              "requests": 1,
+              "response_bytes": 8192
+            },
+            "prior_receipt_matches_reported": [
+              true
+            ],
+            "provider_tokens": null,
+            "reason": "matched_owner_candidate_session_accounting",
+            "schema": "terminal-candidate-round-observation@1",
+            "session_scope": "candidate_round_sessions_only",
+            "status": "observed",
+            "total_token_savings_measured": false
+          },
+          "continuation": {
+            "candidate_receipts": 1,
+            "continuation_supported_by_retained_report": true,
+            "in_container_accounting_agrees": true,
+            "independent_owner_replay_performed": false,
+            "native_accounting": {
+              "complete_usage_established": false,
+              "doctor_attempts_reserved": [
+                1,
+                2
+              ],
+              "doctor_coding_policy": "doctor-coding-public-validation-two-attempts@1",
+              "doctor_coding_policy_sha256": "b438802a5b127553a0c0c7ff394a659865f3ba105cad5d70d81f82c7bf9c2e8e",
+              "owner_lifecycle_sha256": "3ddd9a167e2b1c48ac1c74b0af62c69bf1862d4e2c60fef000c7dd5b581680e3",
+              "potential_unreceipted_attempt": false,
+              "provider_internal_calls_bounded": false,
+              "reason": "each_started_child_has_distinct_router_receipt",
+              "rounds": [
+                {
+                  "possible_unreceipted_attempt": false,
+                  "process_started": true,
+                  "receipt_observed": true,
+                  "round_number": 1
+                },
+                {
+                  "possible_unreceipted_attempt": false,
+                  "process_started": true,
+                  "receipt_observed": true,
+                  "round_number": 2
+                }
+              ],
+              "schema": "terminal-candidate-attempt-accounting@1",
+              "status": "matched_round_receipts",
+              "total_cost_bounded": false,
+              "total_tokens_bounded": false
+            },
+            "two_coding_router_calls_joined": true
+          },
+          "duplicate_receipts_ignored": 0,
+          "input_audit": {
+            "all_observed_coding_inputs_verified": true,
+            "coding_receipts_seen": 2,
+            "prior_receipt_matches_reported": [],
+            "reason": "per_invocation_context_and_input_comparison",
+            "schema": "terminal-final-context-audit@1",
+            "status": "verified_all_observed_model_inputs",
+            "usable_coding_receipts": 2
+          },
+          "invocations": [
+            {
+              "candidate_preflight": {},
+              "input_representation": {},
+              "invocation_id": "be0f1020f7bd455cb3aa0c0c6bc6c594",
+              "model": "grok-4.7",
+              "model_prompt_bytes": 29903,
+              "native_cli": {
+                "exit_code": 0,
+                "num_turns": 1,
+                "stop_reason": "end_turn"
+              },
+              "native_grok_progress": {
+                "status": "unavailable"
+              },
+              "native_prompt_bytes": 29903,
+              "native_usage": {
+                "arithmetic_valid": true,
+                "counters": {
+                  "cache_write_input_tokens": 0,
+                  "cached_input_tokens": 1280,
+                  "input_tokens": 15386,
+                  "output_tokens": 10311,
+                  "reasoning_output_tokens": 7763,
+                  "total_tokens": 26977
+                },
+                "retained_native_fields": {
+                  "billing_total_verified": false,
+                  "cache_included_in_input": false,
+                  "observed_final_usage_records": 1,
+                  "schema": "native-grok-final-usage@1",
+                  "task_complete_observed": true,
+                  "totals_scope": "native_final_envelope",
+                  "usage_available": true,
+                  "usage_complete_observed": null,
+                  "usage_observation_sha256": "f942abb55e79a1f5047050665a42cd86d7f7110e5d46aee7ec3ddba2d52b465d"
+                },
+                "usage_complete_under_native_contract": null
+              },
+              "phase": "planning",
+              "prompt_bytes": 29903,
+              "provider": "grok_cli",
+              "requested_output_tokens": 4096,
+              "router_calls": 1,
+              "router_prompt_bytes": 29903,
+              "status": "provider_returned",
+              "timeout_seconds": 600
+            },
+            {
+              "candidate_preflight": {},
+              "failure_phase": "provider_invocation",
+              "input_representation": {},
+              "invocation_id": "d218b51443f848d9ac10e8590e2f0791",
+              "model": "grok-4.7",
+              "model_prompt_bytes": 68080,
+              "native_cli": {
+                "exit_code": 1
+              },
+              "native_grok_progress": {
+                "progress": {
+                  "callback_errors": 0,
+                  "completion_authority": false,
+                  "discarded_text_bytes": 0,
+                  "duration_seconds": 142.62036803690717,
+                  "event_counts": {
+                    "auto_compact": 0,
+                    "available_commands": 10,
+                    "end": 1,
+                    "error": 0,
+                    "max_turns_reached": 1,
+                    "plan": 0,
+                    "text": 30,
+                    "thought": 344,
+                    "tool_call": 10,
+                    "tool_call_update": 38,
+                    "unknown": 0,
+                    "usage": 8
+                  },
+                  "event_origin_authenticated": false,
+                  "events_after_final": 1,
+                  "execution_authority": false,
+                  "final_envelope_observed": true,
+                  "final_event_seconds": 141.19157740892842,
+                  "final_event_type": "max_turns_reached",
+                  "final_reason_code": "max_turns",
+                  "first_event_seconds": 0.1733851379249245,
+                  "first_stderr_seconds": 142.61714419093914,
+                  "first_stdout_seconds": 0.1733851379249245,
+                  "frames": 442,
+                  "last_event_seconds": 141.19420588493813,
+                  "last_stderr_seconds": 142.61714419093914,
+                  "last_stdout_seconds": 141.19420588493813,
+                  "malformed_frames": 0,
+                  "non_object_frames": 0,
+                  "observation_only": true,
+                  "oversized_frames": 0,
+                  "process_exit_observed": true,
+                  "process_exit_seconds": 142.62011759995949,
+                  "proof_authority": false,
+                  "raw_provider_data_exported": false,
+                  "response_usable": false,
+                  "retained_text_bytes": 167,
+                  "returncode": 1,
+                  "schema": "native-grok-stream-progress@1",
+                  "stderr_bytes": 25,
+                  "stderr_eof": true,
+                  "stdout_bytes": 241836,
+                  "stdout_eof": true,
+                  "stream_complete": false,
+                  "stream_tainted": true,
+                  "text_bytes": 167,
+                  "text_scope": "last_usage_delimited_text_segment",
+                  "text_truncated": false,
+                  "timed_out": false,
+                  "timeout_phase": "none",
+                  "tool_name_counts": {
+                    "grep": 0,
+                    "list_dir": 1,
+                    "read_file": 2,
+                    "run_terminal_cmd": 0,
+                    "search_replace": 0,
+                    "todo_write": 0,
+                    "unknown": 7
+                  },
+                  "tool_status_counts": {
+                    "completed": 10,
+                    "failed": 0,
+                    "in_progress": 18,
+                    "pending": 10,
+                    "unknown": 10
+                  },
+                  "transport": "streaming-json",
+                  "unknown_events": 0,
+                  "usage_event_observation": {
+                    "billing_total_verified": false,
+                    "counter_semantics": "unverified",
+                    "observed_events": 8,
+                    "omitted_events": 0,
+                    "ordinals_are_turn_ids": false,
+                    "raw_provider_data_exported": false,
+                    "retained_events": 8,
+                    "schema": "native-grok-usage-events@1",
+                    "summation_permitted": false
+                  }
+                },
+                "status": "validated_retained_observation",
+                "terminal_rejection": {
+                  "completion_authority": false,
+                  "elapsed_seconds": 141.19420588493813,
+                  "event_type": "end",
+                  "field_shapes": {
+                    "cancellationCategory": "missing",
+                    "cost_is_partial": "missing",
+                    "is_error": "missing",
+                    "message": "missing",
+                    "modelUsage": "object",
+                    "num_turns": "integer",
+                    "requestId": "string",
+                    "sessionId": "string",
+                    "stopReason": "string",
+                    "stop_reason": "missing",
+                    "subtype": "missing",
+                    "text": "missing",
+                    "thought": "missing",
+                    "total_cost_usd": "number",
+                    "total_cost_usd_ticks": "integer",
+                    "type": "string",
+                    "usage": "object",
+                    "usage_is_incomplete": "missing"
+                  },
+                  "frame_ordinal": 442,
+                  "incoming_reason_code": "cancelled",
+                  "incoming_stop_reason": "cancelled",
+                  "observation_only": true,
+                  "prior_field_shapes": {
+                    "cancellationCategory": "missing",
+                    "cost_is_partial": "missing",
+                    "is_error": "missing",
+                    "message": "missing",
+                    "modelUsage": "missing",
+                    "num_turns": "missing",
+                    "requestId": "missing",
+                    "sessionId": "missing",
+                    "stopReason": "missing",
+                    "stop_reason": "missing",
+                    "subtype": "missing",
+                    "text": "missing",
+                    "thought": "missing",
+                    "total_cost_usd": "missing",
+                    "total_cost_usd_ticks": "missing",
+                    "type": "string",
+                    "usage": "missing",
+                    "usage_is_incomplete": "missing"
+                  },
+                  "prior_reason_code": "max_turns",
+                  "prior_terminal_type": "max_turns_reached",
+                  "raw_provider_data_exported": false,
+                  "reason": "end_reason_mismatch",
+                  "rejected_fields": [],
+                  "schema": "native-grok-terminal-rejection@1",
+                  "unexpected_fields": [],
+                  "unknown_field_count": 0
+                },
+                "usage_event_values_exported": false
+              },
+              "native_prompt_bytes": 68078,
+              "native_usage": {
+                "arithmetic_valid": null,
+                "counters": {
+                  "cache_write_input_tokens": null,
+                  "cached_input_tokens": null,
+                  "input_tokens": null,
+                  "output_tokens": null,
+                  "reasoning_output_tokens": null,
+                  "total_tokens": null
+                },
+                "retained_native_fields": {},
+                "usage_complete_under_native_contract": null
+              },
+              "phase": "coding",
+              "prompt_bytes": 68078,
+              "provider": "grok_cli",
+              "requested_output_tokens": 4096,
+              "router_calls": 1,
+              "router_prompt_bytes": 67190,
+              "status": "failed",
+              "timeout_seconds": 1800
+            },
+            {
+              "candidate_preflight": {
+                "artifact": "summary",
+                "child_custody_checked": true,
+                "producer_freshness_checked": true,
+                "provider_input_bytes": 0,
+                "requests": 1,
+                "response_bytes": 8192,
+                "schema": "supervisor-candidate-round-preflight@1",
+                "source_freshness_checked": true
+              },
+              "failure_phase": "provider_invocation",
+              "input_representation": {},
+              "invocation_id": "51033f0337784372891b04ab1289c12a",
+              "model": "grok-4.7",
+              "model_prompt_bytes": 92540,
+              "native_cli": {},
+              "native_grok_progress": {
+                "status": "unavailable"
+              },
+              "native_prompt_bytes": 68078,
+              "native_usage": {
+                "arithmetic_valid": null,
+                "counters": {
+                  "cache_write_input_tokens": null,
+                  "cached_input_tokens": null,
+                  "input_tokens": null,
+                  "output_tokens": null,
+                  "reasoning_output_tokens": null,
+                  "total_tokens": null
+                },
+                "retained_native_fields": {},
+                "usage_complete_under_native_contract": null
+              },
+              "phase": "coding",
+              "prompt_bytes": 89368,
+              "provider": "grok_cli",
+              "requested_output_tokens": 4096,
+              "router_calls": 1,
+              "router_prompt_bytes": 90687,
+              "status": "failed",
+              "timeout_seconds": 1455
+            }
+          ],
+          "native_failure_observations": {
+            "bridge": {
+              "completion_authority": false,
+              "diagnostic": {
+                "callback": {
+                  "native_exit": {
+                    "lifecycle_finalized": true,
+                    "present": true,
+                    "process_group_absent": true,
+                    "reaped": true,
+                    "returncode": 1,
+                    "subreaper_children_absent": true
+                  },
+                  "provider_effect_state": "failed_provider_exited",
+                  "schema": "database-native-provider-failure@1",
+                  "state": "failed_outcome_settled"
+                },
+                "chain_truncated": false,
+                "child_reported_router_failure": {
+                  "attempt_attribution_verified": false,
+                  "completion_authority": false,
+                  "diagnostics": [
+                    {
+                      "diagnostic": {
+                        "automatic_retry_admitted": false,
+                        "chain_truncated": false,
+                        "completion_authority": false,
+                        "exceptions": [
+                          {
+                            "exception_type": "ValueError",
+                            "frames": [
+                              {
+                                "file": "router_implementation_runner.py",
+                                "line": 1398
+                              },
+                              {
+                                "file": "router_implementation_runner.py",
+                                "line": 1234
+                              }
+                            ]
+                          }
+                        ],
+                        "phase": "provider_invocation",
+                        "provider_dispatch_observed": null,
+                        "schema": "router-implementation-failure-diagnostic@1",
+                        "settlement_authority": false
+                      },
+                      "error_type": "ValueError",
+                      "schema": "router-implementation-error@2"
+                    },
+                    {
+                      "diagnostic": {
+                        "automatic_retry_admitted": false,
+                        "chain_truncated": false,
+                        "completion_authority": false,
+                        "exceptions": [
+                          {
+                            "exception_type": "other",
+                            "frames": [
+                              {
+                                "file": "router_implementation_runner.py",
+                                "line": 1398
+                              },
+                              {
+                                "file": "router_implementation_runner.py",
+                                "line": 1234
+                              }
+                            ]
+                          }
+                        ],
+                        "phase": "provider_invocation",
+                        "provider_dispatch_observed": null,
+                        "schema": "router-implementation-failure-diagnostic@1",
+                        "settlement_authority": false
+                      },
+                      "error_type": "other",
+                      "schema": "router-implementation-error@2"
+                    }
+                  ],
+                  "observation_only": true,
+                  "observed_record_count": 2,
+                  "provider_dispatch_observed": null,
+                  "retry_authority": false,
+                  "schema": "router-child-failure-observations@1",
+                  "scope": "bounded_native_log_tail",
+                  "settlement_authority": false,
+                  "status": "observed_multiple_unattributed"
+                },
+                "completion_authority": false,
+                "exceptions": [
+                  {
+                    "exception_type": "DatabasePortalBridgeError",
+                    "frames": [
+                      {
+                        "file": "implementation_daemon.py",
+                        "line": 76848
+                      },
+                      {
+                        "file": "implementation_daemon.py",
+                        "line": 75534
+                      },
+                      {
+                        "file": "implementation_daemon.py",
+                        "line": 74258
+                      },
+                      {
+                        "file": "implementation_daemon.py",
+                        "line": 74543
+                      },
+                      {
+                        "file": "implementation_daemon.py",
+                        "line": 72191
+                      },
+                      {
+                        "file": "implementation_daemon.py",
+                        "line": 72180
+                      },
+                      {
+                        "file": "implementation_daemon.py",
+                        "line": 74543
+                      },
+                      {
+                        "file": "database_portal_bridge.py",
+                        "line": 11516
+                      }
+                    ]
+                  }
+                ],
+                "native_provider_custody_observation": {
+                  "checks": [
+                    {
+                      "reason_code": "eligible",
+                      "stage": "issuance",
+                      "status": "passed"
+                    },
+                    {
+                      "reason_code": "verified",
+                      "stage": "native_exit",
+                      "status": "passed"
+                    },
+                    {
+                      "reason_code": "verified",
+                      "stage": "bridge_join",
+                      "status": "passed"
+                    },
+                    {
+                      "reason_code": "verified",
+                      "stage": "capability_take",
+                      "status": "passed"
+                    }
+                  ],
+                  "completion_authority": false,
+                  "observation_only": true,
+                  "retry_authority": false,
+                  "schema": "database-native-provider-custody-observation@1",
+                  "settlement_authority": false
+                },
+                "phase": "terminal_failure",
+                "reason_code": "portal_provider_failed",
+                "retry_authority": false,
+                "schema": "database-bridge-failure-diagnostic@2",
+                "settlement_authority": false
+              },
+              "matched_record_count": 1,
+              "observation_only": true,
+              "provider_dispatch_observed": null,
+              "retry_authority": false,
+              "scope": "exact_admitted_task_and_attempt",
+              "settlement_authority": false,
+              "status": "observed"
+            },
+            "completion_authority": false,
+            "observation_only": true,
+            "planner_child": {
+              "completion_authority": false,
+              "diagnostic": null,
+              "matched_record_count": 0,
+              "observation_only": true,
+              "provider_dispatch_observed": null,
+              "retry_authority": false,
+              "scope": "planner_child_stderr",
+              "settlement_authority": false,
+              "status": "missing"
+            },
+            "retry_authority": false,
+            "schema": "terminal-native-failure-observations@1",
+            "settlement_authority": false,
+            "status": "validated_retained_observation"
+          },
+          "official_reward": 0.0,
+          "phase_seconds": {
+            "context_seconds": 3.750896341050975,
+            "doctor_seconds": 1.656441789935343,
+            "initial_context_seconds": 14.474489137995988,
+            "planning_seconds": 120.5755973389605,
+            "prepare_seconds": 0.7854075770592317
+          },
+          "public_validation": {
+            "completion_authority": false,
+            "continuation_authority": false,
+            "execution_authority": false,
+            "independent_owner_replay_performed": false,
+            "observation_only": true,
+            "owner_failure_reported": false,
+            "owner_returncode": 1,
+            "owner_validation_outcome": "inconclusive",
+            "proof_authority": false,
+            "raw_sources_or_private_owner_artifacts_exported": false,
+            "rounds": [
+              {
+                "actual_returncode": 1,
+                "checks": [
+                  {
+                    "measurements": [],
+                    "reason": "obligations_satisfied",
+                    "status": "passed",
+                    "validation_key": "public-structural-smoke"
+                  },
+                  {
+                    "measurements": [],
+                    "reason": "obligations_satisfied",
+                    "status": "passed",
+                    "validation_key": "public-eigenpair-behavior"
+                  },
+                  {
+                    "measurements": [
+                      {
+                        "batch": 0,
+                        "candidate_median_seconds": 7.088994607329369e-06,
+                        "reference_median_seconds": 7.087946869432926e-06,
+                        "size": 2
+                      },
+                      {
+                        "batch": 1,
+                        "candidate_median_seconds": 7.25605059415102e-06,
+                        "reference_median_seconds": 7.240509148687124e-06,
+                        "size": 2
+                      },
+                      {
+                        "batch": 2,
+                        "candidate_median_seconds": 7.233000360429287e-06,
+                        "reference_median_seconds": 7.183989509940147e-06,
+                        "size": 2
+                      },
+                      {
+                        "batch": 0,
+                        "candidate_median_seconds": 8.90402588993311e-06,
+                        "reference_median_seconds": 8.863979019224644e-06,
+                        "size": 4
+                      },
+                      {
+                        "batch": 1,
+                        "candidate_median_seconds": 8.87247733771801e-06,
+                        "reference_median_seconds": 8.864561095833778e-06,
+                        "size": 4
+                      },
+                      {
+                        "batch": 2,
+                        "candidate_median_seconds": 8.816481567919254e-06,
+                        "reference_median_seconds": 8.768518455326557e-06,
+                        "size": 4
+                      },
+                      {
+                        "batch": 0,
+                        "candidate_median_seconds": 1.1135998647660017e-05,
+                        "reference_median_seconds": 1.1120457202196121e-05,
+                        "size": 6
+                      },
+                      {
+                        "batch": 1,
+                        "candidate_median_seconds": 1.1103926226496696e-05,
+                        "reference_median_seconds": 1.104001421481371e-05,
+                        "size": 6
+                      },
+                      {
+                        "batch": 2,
+                        "candidate_median_seconds": 1.1159980203956366e-05,
+                        "reference_median_seconds": 1.1104042641818523e-05,
+                        "size": 6
+                      },
+                      {
+                        "batch": 0,
+                        "candidate_median_seconds": 1.3873039279133081e-05,
+                        "reference_median_seconds": 1.3871991541236639e-05,
+                        "size": 8
+                      },
+                      {
+                        "batch": 1,
+                        "candidate_median_seconds": 1.3984506949782372e-05,
+                        "reference_median_seconds": 1.384800998494029e-05,
+                        "size": 8
+                      },
+                      {
+                        "batch": 2,
+                        "candidate_median_seconds": 1.3911980204284191e-05,
+                        "reference_median_seconds": 1.3871991541236639e-05,
+                        "size": 8
+                      },
+                      {
+                        "batch": 0,
+                        "candidate_median_seconds": 1.7407990526407957e-05,
+                        "reference_median_seconds": 1.75045570358634e-05,
+                        "size": 10
+                      },
+                      {
+                        "batch": 1,
+                        "candidate_median_seconds": 1.7479993402957916e-05,
+                        "reference_median_seconds": 1.748796785250306e-05,
+                        "size": 10
+                      },
+                      {
+                        "batch": 2,
+                        "candidate_median_seconds": 1.742399763315916e-05,
+                        "reference_median_seconds": 1.7272483091801405e-05,
+                        "size": 10
+                      }
+                    ],
+                    "reason": "timing_unstable",
+                    "status": "inconclusive",
+                    "validation_key": "public-eigenvalue-performance"
+                  }
+                ],
+                "contract_sha256": "f3ae25aab50258e30f320ee4752018d3ba5d1fb37ecea7e6fea96f2131713ae4",
+                "descriptor_sha256": "30980142217849a06107155f0b1fcf29eeb09e6accbbd0ba5c2453c83f4db614",
+                "failed_obligations": [],
+                "observation_sha256": "98074f5df4a808c4498ca879b4e6a3bda9034447d1178e2c7d023d6432528236",
+                "round_number": 1,
+                "session_id": "1167dda226684384b153c39f8984a3cc",
+                "status": "inconclusive",
+                "workspace_generation": "702e0f091b92fd39af9b0f4f86bdfc7558da74b653fe6bba8bd552e66b72396c"
+              },
+              {
+                "actual_returncode": 1,
+                "checks": [
+                  {
+                    "measurements": [],
+                    "reason": "obligations_satisfied",
+                    "status": "passed",
+                    "validation_key": "public-structural-smoke"
+                  },
+                  {
+                    "measurements": [],
+                    "reason": "obligations_satisfied",
+                    "status": "passed",
+                    "validation_key": "public-eigenpair-behavior"
+                  },
+                  {
+                    "measurements": [
+                      {
+                        "batch": 0,
+                        "candidate_median_seconds": 7.119961082935333e-06,
+                        "reference_median_seconds": 7.088063284754753e-06,
+                        "size": 2
+                      },
+                      {
+                        "batch": 1,
+                        "candidate_median_seconds": 7.208494935184717e-06,
+                        "reference_median_seconds": 7.208494935184717e-06,
+                        "size": 2
+                      },
+                      {
+                        "batch": 2,
+                        "candidate_median_seconds": 7.17648072168231e-06,
+                        "reference_median_seconds": 7.152091711759567e-06,
+                        "size": 2
+                      },
+                      {
+                        "batch": 0,
+                        "candidate_median_seconds": 8.888484444469213e-06,
+                        "reference_median_seconds": 8.807925041764975e-06,
+                        "size": 4
+                      },
+                      {
+                        "batch": 1,
+                        "candidate_median_seconds": 8.888018783181906e-06,
+                        "reference_median_seconds": 8.84057953953743e-06,
+                        "size": 4
+                      },
+                      {
+                        "batch": 2,
+                        "candidate_median_seconds": 8.816481567919254e-06,
+                        "reference_median_seconds": 8.76805279403925e-06,
+                        "size": 4
+                      },
+                      {
+                        "batch": 0,
+                        "candidate_median_seconds": 1.1144496966153383e-05,
+                        "reference_median_seconds": 1.1095951776951551e-05,
+                        "size": 6
+                      },
+                      {
+                        "batch": 1,
+                        "candidate_median_seconds": 1.1008989531546831e-05,
+                        "reference_median_seconds": 1.0975985787808895e-05,
+                        "size": 6
+                      },
+                      {
+                        "batch": 2,
+                        "candidate_median_seconds": 1.1047988664358854e-05,
+                        "reference_median_seconds": 1.1064519640058279e-05,
+                        "size": 6
+                      },
+                      {
+                        "batch": 0,
+                        "candidate_median_seconds": 1.3800454325973988e-05,
+                        "reference_median_seconds": 1.3720011338591576e-05,
+                        "size": 8
+                      },
+                      {
+                        "batch": 1,
+                        "candidate_median_seconds": 1.386395888403058e-05,
+                        "reference_median_seconds": 1.3728451449424028e-05,
+                        "size": 8
+                      },
+                      {
+                        "batch": 2,
+                        "candidate_median_seconds": 1.3832992408424616e-05,
+                        "reference_median_seconds": 1.3784447219222784e-05,
+                        "size": 8
+                      },
+                      {
+                        "batch": 0,
+                        "candidate_median_seconds": 1.7368467524647713e-05,
+                        "reference_median_seconds": 1.730397343635559e-05,
+                        "size": 10
+                      },
+                      {
+                        "batch": 1,
+                        "candidate_median_seconds": 1.738453283905983e-05,
+                        "reference_median_seconds": 1.7431972082704306e-05,
+                        "size": 10
+                      },
+                      {
+                        "batch": 2,
+                        "candidate_median_seconds": 1.7456477507948875e-05,
+                        "reference_median_seconds": 1.7296522855758667e-05,
+                        "size": 10
+                      }
+                    ],
+                    "reason": "timing_unstable",
+                    "status": "inconclusive",
+                    "validation_key": "public-eigenvalue-performance"
+                  }
+                ],
+                "contract_sha256": "f3ae25aab50258e30f320ee4752018d3ba5d1fb37ecea7e6fea96f2131713ae4",
+                "descriptor_sha256": "03ea39486cc953f7d4f018f1cb452d293a642803fbbaf8061cf831c20080d69a",
+                "failed_obligations": [],
+                "observation_sha256": "fa006705c0dbbbcfd54f9a0932eabe374ec6d59244407031d3c970ae3d0192b4",
+                "round_number": 2,
+                "session_id": "9855e0a22a0042c1b8dfc64a2c5ddf4b",
+                "status": "inconclusive",
+                "workspace_generation": "702e0f091b92fd39af9b0f4f86bdfc7558da74b653fe6bba8bd552e66b72396c"
+              }
+            ],
+            "schema": "owner-candidate-rounds-observation@2",
+            "status": "validated_retained_observation"
+          },
+          "retained_aggregate_usage": {
+            "all_invocations_receipted": true,
+            "billing_total_verified": false,
+            "cache_included_in_input": null,
+            "cache_write_input_tokens": null,
+            "cached_input_tokens": null,
+            "harbor_usage_exportable": false,
+            "input_tokens": null,
+            "native_scoped_usage_complete_observed": null,
+            "observed_complete_sessions": false,
+            "output_tokens": null,
+            "token_count_scope": null,
+            "total_tokens": null,
+            "usage_complete_observed": null
+          },
+          "seconds": 521.3229553110432,
+          "status": "retained_report_read",
+          "task_completed_reported": false,
+          "trial": "largest-eigenval__gnfcWvo",
+          "usage_by_phase": {
+            "coding": {
+              "all_native_contracts_complete": false,
+              "billing_total_verified": false,
+              "complete_native_totals": {
+                "cache_write_input_tokens": null,
+                "cached_input_tokens": null,
+                "input_tokens": null,
+                "output_tokens": null,
+                "reasoning_output_tokens": null,
+                "total_tokens": null
+              },
+              "missing_categories": {
+                "cache_write_input_tokens": 2,
+                "cached_input_tokens": 2,
+                "input_tokens": 2,
+                "output_tokens": 2,
+                "reasoning_output_tokens": 2,
+                "total_tokens": 2
+              },
+              "observed_subtotals": {
+                "cache_write_input_tokens": null,
+                "cached_input_tokens": null,
+                "input_tokens": null,
+                "output_tokens": null,
+                "reasoning_output_tokens": null,
+                "total_tokens": null
+              },
+              "outer_router_calls": 2,
+              "reasoning_is_separate_not_added_to_total": true,
+              "receipts": 2,
+              "retained_aggregate_completeness_agrees": false,
+              "unreceipted_attempt_reported": false
+            },
+            "planning": {
+              "all_native_contracts_complete": false,
+              "billing_total_verified": false,
+              "complete_native_totals": {
+                "cache_write_input_tokens": null,
+                "cached_input_tokens": null,
+                "input_tokens": null,
+                "output_tokens": null,
+                "reasoning_output_tokens": null,
+                "total_tokens": null
+              },
+              "missing_categories": {
+                "cache_write_input_tokens": 0,
+                "cached_input_tokens": 0,
+                "input_tokens": 0,
+                "output_tokens": 0,
+                "reasoning_output_tokens": 0,
+                "total_tokens": 0
+              },
+              "observed_subtotals": {
+                "cache_write_input_tokens": 0,
+                "cached_input_tokens": 1280,
+                "input_tokens": 15386,
+                "output_tokens": 10311,
+                "reasoning_output_tokens": 7763,
+                "total_tokens": 26977
+              },
+              "outer_router_calls": 1,
+              "reasoning_is_separate_not_added_to_total": true,
+              "receipts": 1,
+              "retained_aggregate_completeness_agrees": false,
+              "unreceipted_attempt_reported": false
+            }
+          },
+          "verifier_result_retained": true
+        }
+      ]
+    }
+  },
+  "baseline_reader_sha256": "df230edb68d7eb582a388902a07a7a085426b6e089c64a6ad5e4baac25803ce3",
+  "baseline_reporting_freeze_sha256": "3c2ebcb8b3a380319271740eb11a70615beedb962c0982bbd446f69cfcf6eb2d",
+  "causal_savings_claimed": false,
+  "differing_planning_control": {
+    "planning_mode": {
+      "pilot": "declared-contract@1",
+      "prior": "model"
+    }
+  },
+  "independent_owner_replay_performed": false,
+  "limitations": [
+    "Declared planning copies a signed task structure; it does not infer intent or prove source semantics.",
+    "Retained reports support a declared-route observation, not independently replayed admission or a billing total.",
+    "Baseline usage, missingness, official reward and audit projections are unchanged."
+  ],
+  "planning": {
+    "pilot": {
+      "planning_mode": "declared-contract@1",
+      "trials": [
+        {
+          "planning": {
+            "completion_authority": false,
+            "declared_route_supported_by_retained_report": true,
+            "execution_authority": false,
+            "formal_plan_consistent_reported": true,
+            "goals": 2,
+            "independent_admission_replay_performed": false,
+            "instruction_interpreted": false,
+            "interpretation_scope": "exact_signed_task_structure_only",
+            "model_calls_reported": 0,
+            "observation_only": true,
+            "pending_requirements": 9,
+            "planning_native_receipts": 0,
+            "planning_tokens_saved": null,
+            "proof_authority": false,
+            "provider_calls_reported": 0,
+            "qualified": true,
+            "receipt_bytes": 938,
+            "receipt_schema": "supervisor-declared-contract-planning@1",
+            "receipt_sha256": "e63efb2bb1bbc28cb0d7718ad7b6ffd04736b8b9e0e127c17981ed53fc94e848",
+            "semantic_alignment_verified": false,
+            "source_obligations_discharged": 0,
+            "source_semantics_verified": false,
+            "status": "validated_retained_declared_plan",
+            "tasks": 1,
+            "total_token_savings_established": false
+          },
+          "trial": "largest-eigenval__LJh3TxD"
+        }
+      ]
+    },
+    "prior": {
+      "planning_mode": "model",
+      "trials": [
+        {
+          "planning": {
+            "completion_authority": false,
+            "declared_route_supported_by_retained_report": false,
+            "execution_authority": false,
+            "independent_admission_replay_performed": false,
+            "observation_only": true,
+            "planning_tokens_saved": null,
+            "proof_authority": false,
+            "reason": "model_planning_selected",
+            "status": "not_selected",
+            "total_token_savings_established": false
+          },
+          "trial": "largest-eigenval__gnfcWvo"
+        }
+      ]
+    }
+  },
+  "provider_calls_by_reader": 0,
+  "raw_prompts_or_provider_text_exported": false,
+  "recipe_bindings": [
+    {
+      "bytes": 148754,
+      "path": "/home/barberb/lift_coding/artifacts/declared-public-planning-20261015/recipe.json",
+      "sha256": "dade6510154c874a959309a2679f617f78aee75b281ce3632e0e256b1decd297"
+    }
+  ],
+  "schema": "planning-ablation-additive-readout@1",
+  "total_token_savings_established": false
+}

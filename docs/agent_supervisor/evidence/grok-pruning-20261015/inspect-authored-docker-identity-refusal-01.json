@@ -1,0 +1,11 @@
+{
+  "container_created": false,
+  "limits_changed": false,
+  "minimum_free_bytes": 34359738368,
+  "native_invoked": false,
+  "observed_free_bytes": 14860103680,
+  "provider_calls": 0,
+  "reason": "disk_floor",
+  "schema": "grok-authored-inspect-preflight-refusal@1",
+  "script_sha256": "01d0a5c84f4e580eb26b87a9b85894958db5af3021af62f42cda3f54295e5f23"
+}

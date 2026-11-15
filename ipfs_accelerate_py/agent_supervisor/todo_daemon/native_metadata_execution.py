@@ -26,7 +26,8 @@ from ..task_sources.execution_packet_admission import (
 from ..task_sources.intent_repository import IntentRepository
 from ..runtime.resource_scheduler import ResourceLeaseBudget
 from ..validation.validation_commands import build_validation_commands
-from ..validation.validation_scheduler import ValidationScheduler
+from ..validation.validation_scheduler import ValidationScheduler, PreparedValidationDisposition
+from .native_metadata_parent_resources import make_prepared_validation_admission
 from .task_execution_policy import (
     ExecutionMode, ExecutionStatus, LocalOperationType, TaskContextMetadata,
     TaskExecutionPolicy, TaskExecutionRequest, TypedLocalOperation,
@@ -131,6 +132,39 @@ def _current(source, authority, cid, *, phase="dispatch", revision=None):
     return task, accepted, packet, declared
 
 
+
+def _scheduler_context(task, accepted, packet):
+    """Use the already-admitted metadata contract, not code-edit discovery."""
+    from ..control.profile_authority import load_local_profile
+    reference = _plain(task.body)["execution_packet_policy"]["owner"]
+    profile = load_local_profile(repository_cid=reference["repository_cid"],
+        profile_dir=Path(reference["profile_dir"]),
+        lifecycle_dir=Path(reference["lifecycle_dir"]), mirror=False)
+    # NativeExecutionPacketAuthority already checked this exact signed profile
+    # against the current repository HEAD. Recheck its immutable native IDs;
+    # never invent a commit or reinterpret the pre-admission CHECK as execution.
+    _need(profile.profile_id == reference["profile_id"]
+          and profile.content_id == reference["content_id"]
+          and profile.identity_did == reference["identity_did"]
+          and profile.repository_cid == reference["repository_cid"]
+          and profile.allows("read") and profile.allows("test"),
+          "metadata_execution_scheduler_profile_changed")
+    head = profile.baseline_commit
+    _need(type(head) is str and len(head) in (40, 64)
+          and all(char in "0123456789abcdef" for char in head),
+          "metadata_execution_scheduler_profile_commit_invalid")
+    # The authenticated contract digest includes completed dependency receipts;
+    # source/input descriptors remain explicit report context. Code edits are
+    # forbidden and both declared commands always require full validation.
+    dependencies = {"schema": "native-metadata-scheduler-context/v1",
+        "contract_digest": accepted["contract_digest"],
+        "authority_spec_cid": accepted["authority_spec_cid"],
+        "source_descriptors": _plain(packet["source_descriptors"]),
+        "inputs": _plain(packet["inputs"])}
+    return {"target_commit": head, "changed_files": (),
+            "dependency_state": dependencies}
+
+
 def _durable_json(path, value):
     raw = (json.dumps(_plain(value), sort_keys=True, separators=(",", ":"), allow_nan=False) + "\n").encode()
     fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
@@ -146,6 +180,41 @@ def _durable_json(path, value):
         finally:
             os.close(directory)
     return {"path": str(path), "bytes": len(raw), "sha256": hashlib.sha256(raw).hexdigest()}
+
+
+def _existing_journal(path):
+    """Hash a claim journal the in-progress attempt already published."""
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+    try:
+        info = os.fstat(fd)
+        _need(stat.S_ISREG(info.st_mode) and info.st_nlink == 1
+              and info.st_uid == os.geteuid() and 0 < info.st_size <= 65536,
+              "metadata_execution_resume_journal_changed")
+        raw = os.read(fd, 65537)
+        _need(len(raw) == info.st_size, "metadata_execution_resume_journal_changed")
+    finally:
+        os.close(fd)
+    _need(not any(candidate.is_symlink() for candidate in (path, *path.parents)),
+          "metadata_execution_resume_journal_changed")
+    return {"path": str(path), "bytes": len(raw), "sha256": hashlib.sha256(raw).hexdigest()}
+
+
+class _ResumeClaim:
+    """Claim identity already stored on the control task. It has no live lease."""
+
+    def __init__(self, receipt, task_cid):
+        self.claim_id = receipt["claim_id"]
+        self.task_cid = task_cid
+        self.owner_session_id = receipt["owner_session_id"]
+        self.fencing_token = receipt["fencing_token"]
+        self.fence_epoch = receipt["fence_epoch"]
+        self.attempt_id = receipt["attempt_id"]
+        self.attempt_number = receipt["attempt_number"]
+        self.lease_id = receipt["lease_id"]
+        self._receipt = receipt
+
+    def to_dict(self):
+        return dict(self._receipt)
 
 
 def _outputs(packet):
@@ -248,15 +317,47 @@ def execute_native_metadata_validation(daemon, *, task_cid, expected_revision):
     _need(type(source) is DatabaseTaskSource and type(source.intent) is IntentRepository,
           "metadata_execution_original_intent_owner_required")
     authority = NativeExecutionPacketAuthority(source.intent)
-    task, accepted, packet, declared = _current(
-        source, authority, task_cid, phase="claim", revision=expected_revision)
-    _need(task.status == "ready", "metadata_execution_task_not_ready")
+    existing = source.get(task_cid)
+    stored_receipt = _plain(existing.body).get("completion_receipt") if existing is not None else None
+    resuming = (
+        existing is not None
+        and existing.status == "in_progress"
+        and existing.revision == expected_revision + 1
+        and type(stored_receipt) is dict
+        and stored_receipt.get("operation") == "database_claim"
+        and stored_receipt.get("owner_session_id") == daemon.owner_session_id
+        and stored_receipt.get("attempt_number") == 1
+        and type(stored_receipt.get("attempt_id")) is str
+        and stored_receipt["attempt_id"]
+    )
+    if resuming:
+        task, accepted, packet, declared = _current(
+            source, authority, task_cid, phase="dispatch", revision=expected_revision + 1)
+    else:
+        task, accepted, packet, declared = _current(
+            source, authority, task_cid, phase="claim", revision=expected_revision)
+        _need(task.status == "ready", "metadata_execution_task_not_ready")
     _need(not daemon.execution_slice_task_ids
           or daemon.execution_slice_task_ids == frozenset({task.task_alias}),
           "metadata_execution_alias_slice_changed")
+    scheduler_context = _scheduler_context(task, accepted, packet)
     prior = source.intent.current_evidence_for_task(task_cid)
-    _need(not any(r["evidence_kind"] == _EXECUTION_EVIDENCE for r in prior),
-          "metadata_execution_prior_attempt_requires_operator_acceptance")
+    execution_rows = [row for row in prior if row["evidence_kind"] == _EXECUTION_EVIDENCE]
+    if resuming:
+        _need(execution_rows, "metadata_execution_resume_evidence_missing")
+        for row in execution_rows:
+            body = _plain(row["body"])
+            execution = body.get("execution")
+            _need(body.get("state") in {"claim_intended", "started"},
+                  "metadata_execution_resume_evidence_changed")
+            if execution is not None:
+                _need(execution.get("passed") is False and execution.get("commands") == []
+                      and execution.get("outputs") == [] and execution.get("claim_released") is False,
+                      "metadata_execution_resume_command_already_recorded")
+        _need(all(not (Path(packet["cwd"]) / relative).exists() for relative in packet["outputs"]),
+              "metadata_execution_resume_output_exists")
+    else:
+        _need(not execution_rows, "metadata_execution_prior_attempt_requires_operator_acceptance")
     dispatch_control = getattr(daemon, "_native_dispatch_control", None)
     if dispatch_control is not None:
         _need(dispatch_control.before_claim().get("new_dispatch_permitted") is True,
@@ -276,171 +377,238 @@ def execute_native_metadata_validation(daemon, *, task_cid, expected_revision):
     # claim is attempted for this task on a later invocation, even after a
     # new contract is signed.
     journal_key = content_identity({"task_cid": task_cid})
-    journal = _claim_intent_root(daemon.database_path) / (
+    journal_root = Path(daemon.database_path).with_name("." + Path(daemon.database_path).name + ".native-metadata-execution")
+    journal = journal_root / (
         hashlib.sha256(journal_key.encode()).hexdigest() + ".claim-intent.json")
     intent_value = {"schema": "native-metadata-claim-intent/v1", "task_cid": task_cid,
                     "contract": accepted, "expected_revision": expected_revision,
                     "owner_session_id": daemon.owner_session_id,
                     "claim_call_attempted": False, "execution_started": False,
                     "completion_authority": False}
-    intent_ref = _durable_json(journal, intent_value)
-    source.intent.record_evidence(task_cid=task_cid, evidence_kind=_EXECUTION_EVIDENCE,
-        digest=content_identity(intent_value), body={"state": "claim_intended",
-            "contract_digest": accepted["contract_digest"], "claim_intent": intent_ref})
-    # The existing native packet check authenticated all completed dependency
-    # receipts. Preserve the coordinator's established projection convention.
-    daemon.coordinator.register_task(task_cid=task_cid, task_id=task.task_alias,
-        dependency_task_cids=(), body={"task_alias": task.task_alias,
-                                     "execution_packet_required": True})
-    task, current, packet, declared = _current(
-        source, authority, task_cid, phase="claim", revision=expected_revision)
-    _need(current == accepted, "metadata_execution_acceptance_changed_before_claim")
     deadline = time.monotonic() + packet["budgets"]["deadline_seconds"]
-    _need(not daemon.coordinator.lease_events(scope_key=claim_scope, limit=1),
-          "metadata_execution_prior_native_claim_forbids_retry")
-    call_ref = _durable_json(journal.with_suffix(".claim-call.json"),
-        {**intent_value, "claim_call_attempted": True})
+    milliseconds = packet["budgets"]["deadline_seconds"] * 1000
+    fixed_budget = ResourceLeaseBudget(max_parallel=1,
+        max_processes=packet["budgets"]["max_children"], wall_time_ms=milliseconds,
+        cpu_time_ms=milliseconds * packet["budgets"]["cpu_threads"],
+        memory_bytes=packet["budgets"]["memory_mib"] * 1024 * 1024,
+        disk_bytes=packet["budgets"]["storage_bytes"])
+    database = Path(daemon.database_path)
+    paths = (database, database.with_name(database.name + ".wal"),
+        database.with_name("." + database.name + ".intent.lock"),
+        database.with_name("." + database.name + ".lock"),
+        Path(daemon.coordination_path), root,
+        journal, journal.with_suffix(".claim-call.json"),
+        journal.with_suffix(".claim-outcome-unknown.json"),
+        *(Path(packet["cwd"]) / relative for relative in packet["outputs"]))
+    prepared = make_prepared_validation_admission(task_cid=task_cid,
+        contract_digest=accepted["contract_digest"], workspace_path=Path(packet["cwd"]),
+        commands=tuple(shlex.join(argv) for argv in declared), budget=fixed_budget,
+        deadline_monotonic=deadline,
+        demand={"cpu_slots": packet["budgets"]["cpu_threads"],
+            "memory_mb": packet["budgets"]["memory_mib"],
+            "child_process_slots": packet["budgets"]["max_children"],
+            "storage_bytes": packet["budgets"]["storage_bytes"]},
+        writable_paths=paths)
+    prepared.prepare()
+    disposition = PreparedValidationDisposition.NOT_STARTED
     try:
-        claim = daemon.coordinator.claim_task(task_cid=task_cid,
-            owner_session_id=daemon.owner_session_id,
-            lease_ms=packet["budgets"]["deadline_seconds"] * 1000,
-            execution_packet_authority=authority)
-    except BaseException as error:
-        # The call may have committed before a lost response. Do not claim
-        # again or guess a lease identity; the exclusive call intent survives
-        # even if writing this optional diagnostic also fails.
-        _durable_json(journal.with_suffix(".claim-outcome-unknown.json"),
-            {**intent_value, "claim_call_attempted": True,
-             "claim_outcome_unknown": True, "error_type": type(error).__name__})
-        raise
-    lease = daemon.coordinator.get_lease(claim.lease_id)
-    _need(lease is not None, "metadata_execution_claim_lease_missing")
-    # No provider/effect phase or execution-sidecar attempt is fabricated.
-    result = {"schema": RESULT_SCHEMA, "task_cid": task_cid,
-        "claim": claim.to_dict(), "contract": accepted, "claim_intent": intent_ref,
-        "claim_call": call_ref, "provider_dispatched": False,
-        "completion_authority": False, "automatic_retry_admitted": False,
-        "passed": False, "commands": [], "outputs": [], "claim_released": False}
-    in_flight = False
-    control_uncertain = False
-    claimed_task = None
-    receipt_path = root / ("native-metadata-" + hashlib.sha256(
-        claim.attempt_id.encode()).hexdigest() + ".json")
-    try:
-        _need(claim.attempt_number == 1, "metadata_execution_retry_forbidden")
-        receipt = daemon._database_claim_receipt(claim)
-        control_uncertain = True
-        try:
-            source.compare_and_set_status(task_cid, expected_revision, "in_progress", receipt=receipt)
-        except Exception:
-            # A CAS may have committed before losing its response. Never issue
-            # a second CAS: require one fresh exact receipt/revision readback.
-            pass
-        claimed_task = source.get(task_cid)
-        _need(claimed_task is not None and claimed_task.status == "in_progress"
-              and claimed_task.revision == expected_revision + 1
-              and _plain(claimed_task.body).get("completion_receipt") == receipt,
-              "metadata_execution_claim_response_not_proven")
+        prepared.assert_binding(task_cid=task_cid, contract_digest=accepted["contract_digest"])
+        deadline = prepared.deadline_monotonic
+        lease = None
+        if resuming:
+            # The control receipt and journals are the claim. A new attempt
+            # database cannot see the old lease, so do not claim or fence again.
+            call_journal = journal.with_suffix(".claim-call.json")
+            unknown_journal = journal.with_suffix(".claim-outcome-unknown.json")
+            _need(journal.is_file() and call_journal.is_file() and not unknown_journal.exists(),
+                  "metadata_execution_resume_journal_changed")
+            _need(set(stored_receipt) == {"operation", "claim_id", "attempt_id", "lease_id",
+                  "attempt_number", "owner_session_id", "fencing_token", "fence_epoch"}
+                  and type(stored_receipt["claim_id"]) is str and stored_receipt["claim_id"]
+                  and type(stored_receipt["lease_id"]) is str and stored_receipt["lease_id"]
+                  and type(stored_receipt["fencing_token"]) is int and stored_receipt["fencing_token"] > 0
+                  and type(stored_receipt["fence_epoch"]) is int and stored_receipt["fence_epoch"] > 0,
+                  "metadata_execution_resume_receipt_changed")
+            intent_ref = _existing_journal(journal)
+            call_ref = _existing_journal(call_journal)
+            claim = _ResumeClaim(stored_receipt, task_cid)
+        else:
+            _claim_intent_root(daemon.database_path)
+            intent_ref = _durable_json(journal, intent_value)
+            source.intent.record_evidence(task_cid=task_cid, evidence_kind=_EXECUTION_EVIDENCE,
+                digest=content_identity(intent_value), body={"state": "claim_intended",
+                    "contract_digest": accepted["contract_digest"], "claim_intent": intent_ref})
+            # The existing native packet check authenticated all completed dependency
+            # receipts. Preserve the coordinator's established projection convention.
+            daemon.coordinator.register_task(task_cid=task_cid, task_id=task.task_alias,
+                dependency_task_cids=(), body={"task_alias": task.task_alias,
+                                             "execution_packet_required": True})
+            task, current, packet, declared = _current(
+                source, authority, task_cid, phase="claim", revision=expected_revision)
+            _need(current == accepted, "metadata_execution_acceptance_changed_before_claim")
+            _need(not daemon.coordinator.lease_events(scope_key=claim_scope, limit=1),
+                  "metadata_execution_prior_native_claim_forbids_retry")
+            call_ref = _durable_json(journal.with_suffix(".claim-call.json"),
+                {**intent_value, "claim_call_attempted": True})
+            disposition = PreparedValidationDisposition.UNKNOWN
+            try:
+                claim = daemon.coordinator.claim_task(task_cid=task_cid,
+                    owner_session_id=daemon.owner_session_id,
+                    lease_ms=packet["budgets"]["deadline_seconds"] * 1000,
+                    execution_packet_authority=authority)
+            except BaseException as error:
+                # The call may have committed before a lost response. Do not claim
+                # again or guess a lease identity; the exclusive call intent survives
+                # even if writing this optional diagnostic also fails.
+                _durable_json(journal.with_suffix(".claim-outcome-unknown.json"),
+                    {**intent_value, "claim_call_attempted": True,
+                     "claim_outcome_unknown": True, "error_type": type(error).__name__})
+                raise
+            lease = daemon.coordinator.get_lease(claim.lease_id)
+            _need(lease is not None, "metadata_execution_claim_lease_missing")
+        # No provider/effect phase or execution-sidecar attempt is fabricated.
+        result = {"schema": RESULT_SCHEMA, "task_cid": task_cid,
+            "claim": claim.to_dict(), "contract": accepted, "claim_intent": intent_ref,
+            "claim_call": call_ref, "provider_dispatched": False,
+            "completion_authority": False, "automatic_retry_admitted": False,
+            "passed": False, "commands": [], "outputs": [], "claim_released": False}
+        in_flight = False
         control_uncertain = False
+        claimed_task = None
+        receipt_path = root / ("native-metadata-" + hashlib.sha256(
+            claim.attempt_id.encode()).hexdigest() + ".json")
+        try:
+            _need(claim.attempt_number == 1, "metadata_execution_retry_forbidden")
+            if resuming:
+                receipt = stored_receipt
+                claimed_task = task
+                _need(claimed_task is not None and claimed_task.status == "in_progress"
+                      and claimed_task.revision == expected_revision + 1
+                      and _plain(claimed_task.body).get("completion_receipt") == receipt,
+                      "metadata_execution_claim_response_not_proven")
+            else:
+                receipt = daemon._database_claim_receipt(claim)
+                control_uncertain = True
+                try:
+                    source.compare_and_set_status(task_cid, expected_revision, "in_progress", receipt=receipt)
+                except Exception:
+                    # A CAS may have committed before losing its response. Never issue
+                    # a second CAS: require one fresh exact receipt/revision readback.
+                    pass
+                claimed_task = source.get(task_cid)
+                _need(claimed_task is not None and claimed_task.status == "in_progress"
+                      and claimed_task.revision == expected_revision + 1
+                      and _plain(claimed_task.body).get("completion_receipt") == receipt,
+                      "metadata_execution_claim_response_not_proven")
+                control_uncertain = False
+                disposition = PreparedValidationDisposition.NOT_STARTED
+                source.intent.record_evidence(task_cid=task_cid, evidence_kind=_EXECUTION_EVIDENCE,
+                    digest=content_identity(result), body={"state": "started", "execution": result})
+            plan = {"task_cid": task_cid, "contract": accepted, "commands": declared}
+            plan_cid = content_identity(plan)
+
+            def authorize(arguments, context):
+                _need(dict(arguments) == {"validation_plan_cid": plan_cid}
+                      and _plain(context) == plan, "metadata_execution_typed_plan_changed")
+                return {"authorized": True, "validation_plan_cid": plan_cid}
+
+            authorization = TaskExecutionPolicy(local_operation_handlers={
+                LocalOperationType.DECLARED_VALIDATION_PLAN: authorize}).execute(
+                    TaskExecutionRequest(task_id=task.task_alias,
+                        mode=ExecutionMode.DETERMINISTIC_ONLY, context=plan,
+                        context_metadata=TaskContextMetadata(max_bytes=MAX_TASK_CONTEXT_BYTES,
+                                                            max_tokens=MAX_TASK_CONTEXT_TOKENS),
+                        local_operations=(TypedLocalOperation(LocalOperationType.DECLARED_VALIDATION_PLAN,
+                                                            {"validation_plan_cid": plan_cid}),)))
+            _need(authorization.status is ExecutionStatus.SUCCEEDED,
+                  "metadata_execution_typed_plan_not_authorized")
+            result["typed_authorization"] = _durable_json(
+                receipt_path.with_suffix(".authorization.json"), authorization.to_dict())
+            for argv in declared:
+                live, fresh, live_packet, live_declared = _current(
+                    source, authority, task_cid, revision=claimed_task.revision)
+                _need(live.status == "in_progress" and fresh == accepted
+                      and live_packet == packet and live_declared == declared
+                      and _plain(live.body).get("completion_receipt") == receipt,
+                      "metadata_execution_scope_changed")
+                if lease is not None:
+                    daemon.coordinator.protect_task_claim(claim)
+                remaining = deadline - time.monotonic()
+                _need(remaining > 0, "metadata_execution_deadline_expired")
+                commands = tuple(replace(c, cacheable=False, timeout_seconds=remaining)
+                                 for c in build_validation_commands([shlex.join(argv)]))
+                _need(len(commands) == 1, "metadata_execution_command_not_atomic")
+                scheduler = ValidationScheduler(max_workers=1, resource_budget=1,
+                    default_timeout_seconds=remaining,
+                    resource_lease_budget=prepared.budget,
+                    prepared_admission=prepared, prepared_task_cid=task_cid,
+                    prepared_contract_digest=accepted["contract_digest"])
+                in_flight = True
+                disposition = PreparedValidationDisposition.UNKNOWN
+                from .implementation_daemon import PortalImplementationDaemon
+                observed = scheduler.run(commands, workspace_path=Path(packet["cwd"]),
+                    require_full_validation=True, scope="native_metadata",
+                    runner=PortalImplementationDaemon._validation_command_runner,
+                    **scheduler_context)
+                # Even a returned/rejected scheduler result can carry unknown child
+                # custody. Only this original runner's verified subreaper receipt
+                # permits a release. Keep in_flight=True on every other path.
+                observed_ref = _durable_json(receipt_path.with_suffix(
+                    ".command-" + str(len(result["commands"])) + ".json"), observed)
+                stopped = _stopped_observation(observed, commands[0].command)
+                prepared.acknowledge_stopped(command=commands[0].command)
+                in_flight = False
+                disposition = PreparedValidationDisposition.STOPPED
+                summary = {"schema": "native-metadata-command-observation/v1",
+                    "ordinal": len(result["commands"]), "argv": argv,
+                    "passed": observed.get("passed") is True,
+                    "returncode": stopped["returncode"], "stopped": stopped,
+                    "raw_observation": observed_ref}
+                result["commands"].append(summary)
+                # The original native codec forbids floats. Raw scheduler timings
+                # stay in the fsynced artifact and native evidence binds its exact
+                # descriptor plus this deliberately float-free summary.
+                source.intent.record_validation_result(task_cid=task_cid,
+                    outcome="passed" if summary["passed"] else "failed",
+                    evidence_digest=content_identity(summary), argv=argv,
+                    body={"native_metadata_execution": {"contract": accepted,
+                        "claim": claim.to_dict(), "observation": summary,
+                        "completion_authority": False}})
+                _need(observed.get("attempted") is True and summary["passed"],
+                      "metadata_execution_declared_validation_failed")
+            _current(source, authority, task_cid, revision=claimed_task.revision)
+            if lease is not None:
+                daemon.coordinator.protect_task_claim(claim)
+            result["outputs"] = _outputs(packet)
+            result["passed"] = True
+        except Exception as error:
+            result.update(error_type=type(error).__name__, error=str(error)[:2000],
+                          outcome_unknown=in_flight or control_uncertain)
+            if in_flight or control_uncertain:
+                # No stop/reap witness was returned by the original scheduler.
+                # Keep native custody and the started evidence; never auto-rearm.
+                raise
+        # A returned original scheduler result proves the command boundary. Persist
+        # the candidate/failure before changing control or releasing its live fence.
+        result["state"] = "candidate_awaiting_manual_acceptance" if result["passed"] else "execution_failed"
+        result_ref = _durable_json(receipt_path, result)
         source.intent.record_evidence(task_cid=task_cid, evidence_kind=_EXECUTION_EVIDENCE,
-            digest=content_identity(result), body={"state": "started", "execution": result})
-        plan = {"task_cid": task_cid, "contract": accepted, "commands": declared}
-        plan_cid = content_identity(plan)
-
-        def authorize(arguments, context):
-            _need(dict(arguments) == {"validation_plan_cid": plan_cid}
-                  and _plain(context) == plan, "metadata_execution_typed_plan_changed")
-            return {"authorized": True, "validation_plan_cid": plan_cid}
-
-        authorization = TaskExecutionPolicy(local_operation_handlers={
-            LocalOperationType.DECLARED_VALIDATION_PLAN: authorize}).execute(
-                TaskExecutionRequest(task_id=task.task_alias,
-                    mode=ExecutionMode.DETERMINISTIC_ONLY, context=plan,
-                    context_metadata=TaskContextMetadata(max_bytes=MAX_TASK_CONTEXT_BYTES,
-                                                        max_tokens=MAX_TASK_CONTEXT_TOKENS),
-                    local_operations=(TypedLocalOperation(LocalOperationType.DECLARED_VALIDATION_PLAN,
-                                                        {"validation_plan_cid": plan_cid}),)))
-        _need(authorization.status is ExecutionStatus.SUCCEEDED,
-              "metadata_execution_typed_plan_not_authorized")
-        result["typed_authorization"] = _durable_json(
-            receipt_path.with_suffix(".authorization.json"), authorization.to_dict())
-        for argv in declared:
-            live, fresh, live_packet, live_declared = _current(
-                source, authority, task_cid, revision=claimed_task.revision)
-            _need(live.status == "in_progress" and fresh == accepted
-                  and live_packet == packet and live_declared == declared
-                  and _plain(live.body).get("completion_receipt") == receipt,
-                  "metadata_execution_scope_changed")
-            daemon.coordinator.protect_task_claim(claim)
-            remaining = deadline - time.monotonic()
-            _need(remaining > 0, "metadata_execution_deadline_expired")
-            commands = tuple(replace(c, cacheable=False, timeout_seconds=remaining)
-                             for c in build_validation_commands([shlex.join(argv)]))
-            _need(len(commands) == 1, "metadata_execution_command_not_atomic")
-            scheduler = ValidationScheduler(max_workers=1, resource_budget=1,
-                default_timeout_seconds=remaining,
-                resource_lease_budget=ResourceLeaseBudget(max_parallel=1,
-                    max_processes=packet["budgets"]["max_children"],
-                    wall_time_ms=max(1, int(remaining * 1000)),
-                    cpu_time_ms=max(1, int(remaining * 1000)) * packet["budgets"]["cpu_threads"],
-                    memory_bytes=packet["budgets"]["memory_mib"] * 1024 * 1024,
-                    disk_bytes=packet["budgets"]["storage_bytes"]))
-            in_flight = True
-            from .implementation_daemon import PortalImplementationDaemon
-            observed = scheduler.run(commands, workspace_path=Path(packet["cwd"]),
-                require_full_validation=True, scope="native_metadata",
-                runner=PortalImplementationDaemon._validation_command_runner)
-            # Even a returned/rejected scheduler result can carry unknown child
-            # custody. Only this original runner's verified subreaper receipt
-            # permits a release. Keep in_flight=True on every other path.
-            observed_ref = _durable_json(receipt_path.with_suffix(
-                ".command-" + str(len(result["commands"])) + ".json"), observed)
-            stopped = _stopped_observation(observed, commands[0].command)
-            in_flight = False
-            summary = {"schema": "native-metadata-command-observation/v1",
-                "ordinal": len(result["commands"]), "argv": argv,
-                "passed": observed.get("passed") is True,
-                "returncode": stopped["returncode"], "stopped": stopped,
-                "raw_observation": observed_ref}
-            result["commands"].append(summary)
-            # The original native codec forbids floats. Raw scheduler timings
-            # stay in the fsynced artifact and native evidence binds its exact
-            # descriptor plus this deliberately float-free summary.
-            source.intent.record_validation_result(task_cid=task_cid,
-                outcome="passed" if summary["passed"] else "failed",
-                evidence_digest=content_identity(summary), argv=argv,
-                body={"native_metadata_execution": {"contract": accepted,
-                    "claim": claim.to_dict(), "observation": summary,
-                    "completion_authority": False}})
-            _need(observed.get("attempted") is True and summary["passed"],
-                  "metadata_execution_declared_validation_failed")
-        _current(source, authority, task_cid, revision=claimed_task.revision)
-        daemon.coordinator.protect_task_claim(claim)
-        result["outputs"] = _outputs(packet)
-        result["passed"] = True
-    except Exception as error:
-        result.update(error_type=type(error).__name__, error=str(error)[:2000],
-                      outcome_unknown=in_flight or control_uncertain)
-        if in_flight or control_uncertain:
-            # No stop/reap witness was returned by the original scheduler.
-            # Keep native custody and the started evidence; never auto-rearm.
-            raise
-    # A returned original scheduler result proves the command boundary. Persist
-    # the candidate/failure before changing control or releasing its live fence.
-    result["state"] = "candidate_awaiting_manual_acceptance" if result["passed"] else "execution_failed"
-    result_ref = _durable_json(receipt_path, result)
-    source.intent.record_evidence(task_cid=task_cid, evidence_kind=_EXECUTION_EVIDENCE,
-        digest=content_identity(result), body={"state": result["state"], "execution": result,
-                                             "durable_result": result_ref})
-    if claimed_task is not None:
-        source.compare_and_set_status(task_cid, claimed_task.revision, "blocked",
-            receipt={"operation": "native_metadata_execution_awaiting_manual_acceptance",
-                     "claim": claim.to_dict(), "passed": result["passed"],
-                     "durable_result": result_ref, "completion_authority": False},
-            expected_control_receipt=receipt)
-    daemon.coordinator.release(lease, reason=result["state"],
-        expected_fencing_token=claim.fencing_token, expected_fence_epoch=claim.fence_epoch)
-    result["claim_released"] = True
-    result["durable_result"] = result_ref
-    result["release_closeout"] = _durable_json(receipt_path.with_suffix(".closeout.json"), result)
-    return result
+            digest=content_identity(result), body={"state": result["state"], "execution": result,
+                                                 "durable_result": result_ref})
+        if claimed_task is not None:
+            source.compare_and_set_status(task_cid, claimed_task.revision, "blocked",
+                receipt={"operation": "native_metadata_execution_awaiting_manual_acceptance",
+                         "claim": claim.to_dict(), "passed": result["passed"],
+                         "durable_result": result_ref, "completion_authority": False},
+                expected_control_receipt=receipt)
+        if lease is not None:
+            daemon.coordinator.release(lease, reason=result["state"],
+                expected_fencing_token=claim.fencing_token, expected_fence_epoch=claim.fence_epoch)
+            result["claim_released"] = True
+        result["durable_result"] = result_ref
+        result["release_closeout"] = _durable_json(receipt_path.with_suffix(".closeout.json"), result)
+        return result
+    finally:
+        # UNKNOWN retains real capacity. Returning a scheduler ticket never
+        # substitutes for the unchanged original stop/reap witness above.
+        prepared.close(disposition=disposition)

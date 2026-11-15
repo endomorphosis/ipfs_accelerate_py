@@ -1,0 +1,583 @@
+{
+  "billing_verified": false,
+  "census_reader_tests": 15,
+  "files": [
+    {
+      "origin": {
+        "bytes": 146453,
+        "path": "/home/barberb/lift_coding/artifacts/grok-cap-end-20261015/recipe.json",
+        "sha256": "f03e735a8efe568ffd89ad4eae10a8a829c6535ddd4f44466e3cf0cb089d27f2"
+      },
+      "path": "pilot/recipe.json"
+    },
+    {
+      "origin": {
+        "bytes": 12934,
+        "path": "/home/barberb/lift_coding/artifacts/grok-cap-end-20261015/run.py",
+        "sha256": "e1904a9213f1810fd3d721422fee1106a5b82bc51a783d1588838ccb50905951"
+      },
+      "path": "pilot/run.py"
+    },
+    {
+      "origin": {
+        "bytes": 2822,
+        "path": "/home/barberb/lift_coding/artifacts/grok-cap-end-20261015/freeze.py",
+        "sha256": "bad6e09be564300048116b736bdd093c384c58a5250ad3ef20dd25c6e620c169"
+      },
+      "path": "pilot/freeze.py"
+    },
+    {
+      "origin": {
+        "bytes": 1813,
+        "path": "/home/barberb/lift_coding/artifacts/grok-cap-end-20261015/source-freeze.json",
+        "sha256": "5519a4347703d9972f2aa1f8b38213e34d94f99a3272014f608268b183a2e49b"
+      },
+      "path": "pilot/source-freeze.json"
+    },
+    {
+      "origin": {
+        "bytes": 16407,
+        "path": "/home/barberb/lift_coding/artifacts/grok-cap-end-20261015/reporting-freeze-v2.json",
+        "sha256": "ce745ebfd0109fa952527f3eafd224425608cdddbbce535c274839fad84b505d"
+      },
+      "path": "pilot/reporting-freeze-v2.json"
+    },
+    {
+      "origin": {
+        "bytes": 398,
+        "path": "/home/barberb/lift_coding/artifacts/grok-cap-end-20261015/reporting-launcher-adaptation.json",
+        "sha256": "c24c79563d587bd3e65f33e1626ba1af017ef2b2da49a3ed0ef9c6fb0ece18df"
+      },
+      "path": "pilot/reporting-launcher-adaptation.json"
+    },
+    {
+      "origin": {
+        "bytes": 2704,
+        "path": "/home/barberb/lift_coding/artifacts/grok-cap-end-20261015/qualification.json",
+        "sha256": "18f461eb8fe2b2960fcc8d5adebdcd41a7b1b445f8e7105641266a54c63b59f6"
+      },
+      "path": "pilot/qualification.json"
+    },
+    {
+      "origin": {
+        "bytes": 5958,
+        "path": "/home/barberb/lift_coding/artifacts/grok-cap-end-20261015/independent-review.json",
+        "sha256": "9bed29acb03746b35870cf604b10db9a4120305bc992ac7f656b15de3c27c59d"
+      },
+      "path": "pilot/independent-review.json"
+    },
+    {
+      "origin": {
+        "bytes": 2365,
+        "path": "/home/barberb/lift_coding/artifacts/grok-cap-end-20261015/final-launch-review.json",
+        "sha256": "444d2f93da33557f9eadd8232db516cc8e8b2a29cd4a7e38007dd8c5926b181b"
+      },
+      "path": "pilot/final-launch-review.json"
+    },
+    {
+      "origin": {
+        "bytes": 518,
+        "path": "/home/barberb/lift_coding/artifacts/grok-cap-end-20261015/bundle-result.json",
+        "sha256": "d551847c1a0932f6aa353d71357a3dff9008cfa6bdd4c4fdbb725af903f78e9a"
+      },
+      "path": "pilot/bundle-result.json"
+    },
+    {
+      "origin": {
+        "bytes": 25016,
+        "path": "/home/barberb/lift_coding/artifacts/grok-cap-end-20261015/verify-result.json",
+        "sha256": "2558daf8d28b26ce5ff63c143b6eb70329205fef4745eac05e9b7f9f9b196fd0"
+      },
+      "path": "pilot/verify-result.json"
+    },
+    {
+      "origin": {
+        "bytes": 523,
+        "path": "/home/barberb/lift_coding/artifacts/grok-cap-end-20261015/prepare-result.json",
+        "sha256": "99bba6dab889848be6cee52115d40f21a05b830868e3edc2f6072b3ad579eb4b"
+      },
+      "path": "pilot/prepare-result.json"
+    },
+    {
+      "origin": {
+        "bytes": 520,
+        "path": "/home/barberb/lift_coding/artifacts/grok-cap-end-20261015/execute-result.json",
+        "sha256": "b84907f0346044ba8355e0aa776781774712483d201fc9b4c68b4172df23f383"
+      },
+      "path": "pilot/execute-result.json"
+    },
+    {
+      "origin": {
+        "bytes": 522,
+        "path": "/home/barberb/lift_coding/artifacts/grok-cap-end-20261015/collect-result.json",
+        "sha256": "7b37a62976df5c3ce9ef3822b80bd092010a03d8dd4c5168f882ea63614a60db"
+      },
+      "path": "pilot/collect-result.json"
+    },
+    {
+      "origin": {
+        "bytes": 292,
+        "path": "/home/barberb/lift_coding/artifacts/grok-cap-end-20261015/cleanup-observation.json",
+        "sha256": "336dd635d78c5d532d92d0ae1e0314507364705427e6b6e8a7be1409772bdb05"
+      },
+      "path": "pilot/cleanup-observation.json"
+    },
+    {
+      "origin": {
+        "bytes": 79813,
+        "path": "/home/barberb/lift_coding/artifacts/grok-cap-end-20261015/readout-final.json",
+        "sha256": "5e03e1499ba1ffd8cd42a313ae338af4d6ba8ebffbcb3bb5645aeca513777952"
+      },
+      "path": "pilot/readout-final.json"
+    },
+    {
+      "origin": {
+        "bytes": 18262,
+        "path": "/home/barberb/lift_coding/artifacts/grok-cap-end-20261015/readout-summary.json",
+        "sha256": "99aba095fa0e65df12ec4f9563ec2268f081ba3ebf286fa60af34c1e9664dbe3"
+      },
+      "path": "pilot/readout-summary.json"
+    },
+    {
+      "origin": {
+        "bytes": 1592,
+        "path": "/home/barberb/lift_coding/artifacts/grok-cap-end-20261015/summarize_readout.py",
+        "sha256": "d3fa427b658b965c60e6b8445b4335f8aae6ecac576cf9b1844936d094dd3ce2"
+      },
+      "path": "pilot/summarize_readout.py"
+    },
+    {
+      "origin": {
+        "bytes": 4735,
+        "path": "/home/barberb/lift_coding/artifacts/grok-cap-end-20261015/live-outcome-independent-review.json",
+        "sha256": "3bd31fe89d920993415ed9b9631b9a74dcd66ed9b2bff9e995f748e5cea1a67d"
+      },
+      "path": "pilot/live-outcome-independent-review.json"
+    },
+    {
+      "origin": {
+        "bytes": 2643,
+        "path": "/home/barberb/lift_coding/artifacts/grok-cap-end-20261015/evidence-packaging-plan.json",
+        "sha256": "e7168ac44f515dc9d0a4bb02e0e0c72d6566187bb04287b3f84b6f5af0cee014"
+      },
+      "path": "pilot/evidence-packaging-plan.json"
+    },
+    {
+      "origin": {
+        "bytes": 8387,
+        "path": "/home/barberb/lift_coding/artifacts/grok-cap-end-20261015/census-reader/declared-T-readout.json",
+        "sha256": "fe5227c6b5853a32a4d7a77ba8eebd6d860b7086c74d4e9f0f1282d85b4dccf0"
+      },
+      "path": "pilot/census-reader/declared-T-readout.json"
+    },
+    {
+      "origin": {
+        "bytes": 1663,
+        "path": "/home/barberb/lift_coding/artifacts/grok-cap-end-20261015/census-reader/files.json",
+        "sha256": "b71e16cc947ee297352c606a6f12e509628b4692d1d8d4b1b778e041fa83f081"
+      },
+      "path": "pilot/census-reader/files.json"
+    },
+    {
+      "origin": {
+        "bytes": 1822,
+        "path": "/home/barberb/lift_coding/artifacts/grok-cap-end-20261015/census-reader/qualification.json",
+        "sha256": "2362310a745bdde79028c46ae4e1db487f4745ac0359ca3c4fcea79326047b32"
+      },
+      "path": "pilot/census-reader/qualification.json"
+    },
+    {
+      "origin": {
+        "bytes": 1936,
+        "path": "/home/barberb/lift_coding/artifacts/grok-cap-end-20261015/census-reader/qualify_census.py",
+        "sha256": "10eb1c8676ee396eb1354e8360ceaf0745a810f6c62853c7ab9f75d06af6bc22"
+      },
+      "path": "pilot/census-reader/qualify_census.py"
+    },
+    {
+      "origin": {
+        "bytes": 9391,
+        "path": "/home/barberb/lift_coding/artifacts/grok-cap-end-20261015/census-reader/read_census.py",
+        "sha256": "7d37151a114661474fcb8edd6056bfe9c0c43b57016c1d206f73131948d2b1d0"
+      },
+      "path": "pilot/census-reader/read_census.py"
+    },
+    {
+      "origin": {
+        "bytes": 8387,
+        "path": "/home/barberb/lift_coding/artifacts/grok-cap-end-20261015/census-reader/repaired-X-readout.json",
+        "sha256": "876ef688e38877c39cd63879b468267c60de7206a7499cbbbcf6d791f18d01f2"
+      },
+      "path": "pilot/census-reader/repaired-X-readout.json"
+    },
+    {
+      "origin": {
+        "bytes": 3953,
+        "path": "/home/barberb/lift_coding/artifacts/grok-cap-end-20261015/census-reader/size-table.json",
+        "sha256": "d5daabfb06f594b71219c4953e903d32fecf358419b063605ae0b40faaa3e478"
+      },
+      "path": "pilot/census-reader/size-table.json"
+    },
+    {
+      "origin": {
+        "bytes": 7159,
+        "path": "/home/barberb/lift_coding/artifacts/grok-cap-end-20261015/census-reader/static-analysis.json",
+        "sha256": "d07f66f6fa5cea3ccfc347f33c371b5a6240ed08ee13173277faa6bb48fb5558"
+      },
+      "path": "pilot/census-reader/static-analysis.json"
+    },
+    {
+      "origin": {
+        "bytes": 10467,
+        "path": "/home/barberb/lift_coding/artifacts/grok-cap-end-20261015/census-reader/test_read_census.py",
+        "sha256": "8f6c085000991d0c6d94cad280fc8d1a9c5e929beafcd79d194435ec26c470c6"
+      },
+      "path": "pilot/census-reader/test_read_census.py"
+    },
+    {
+      "origin": {
+        "bytes": 1927,
+        "path": "/home/barberb/lift_coding/artifacts/grok-cap-end-20261015/census-reader/tests-final.log",
+        "sha256": "b5c61abedd825c148a4ea4f8eb8a25f61e681063a4b20d20cc63cac42be23970"
+      },
+      "path": "pilot/census-reader/tests-final.log"
+    },
+    {
+      "origin": {
+        "bytes": 8977,
+        "path": "/home/barberb/lift_coding/artifacts/grok-cap-end-20261015/reader-v2/copy-provenance.json",
+        "sha256": "9a925cf778454a1a9f5662ef31beaee68ab6bf7e5fb25bf1f2e23dd822f3bfc3"
+      },
+      "path": "pilot/reader-v2/copy-provenance.json"
+    },
+    {
+      "origin": {
+        "bytes": 1069,
+        "path": "/home/barberb/lift_coding/artifacts/grok-cap-end-20261015/reader-v2/custody-export-provenance.json",
+        "sha256": "7236b30182d1d921c39ce586f2a80744e1a08427a4ba09880c020eb6f8602f20"
+      },
+      "path": "pilot/reader-v2/custody-export-provenance.json"
+    },
+    {
+      "origin": {
+        "bytes": 7356,
+        "path": "/home/barberb/lift_coding/artifacts/grok-cap-end-20261015/reader-v2/diagnostic_bridge_contract.py",
+        "sha256": "ec13f500fab51e13dacc81bea07eabeca7d134807a7826e74d0186db26b59237"
+      },
+      "path": "pilot/reader-v2/diagnostic_bridge_contract.py"
+    },
+    {
+      "origin": {
+        "bytes": 3278,
+        "path": "/home/barberb/lift_coding/artifacts/grok-cap-end-20261015/reader-v2/diagnostic_custody_contract.py",
+        "sha256": "6c847721cf37d44ce622aceaf80d25077debaeaf9d43880c854d2a4b945d0736"
+      },
+      "path": "pilot/reader-v2/diagnostic_custody_contract.py"
+    },
+    {
+      "origin": {
+        "bytes": 3404,
+        "path": "/home/barberb/lift_coding/artifacts/grok-cap-end-20261015/reader-v2/diagnostic_doctor_dispatch_contract.py",
+        "sha256": "bda1de9250d39d276e76c72fad2f9d7e3171f1d4c83dfbc7ebc7d421a37e3e03"
+      },
+      "path": "pilot/reader-v2/diagnostic_doctor_dispatch_contract.py"
+    },
+    {
+      "origin": {
+        "bytes": 255,
+        "path": "/home/barberb/lift_coding/artifacts/grok-cap-end-20261015/reader-v2/diagnostic_doctor_policy_contract.py",
+        "sha256": "b1da173085700a43c283613faf4054016751efb171c1a3e82bc486d38143014b"
+      },
+      "path": "pilot/reader-v2/diagnostic_doctor_policy_contract.py"
+    },
+    {
+      "origin": {
+        "bytes": 11055,
+        "path": "/home/barberb/lift_coding/artifacts/grok-cap-end-20261015/reader-v2/diagnostic_grok_progress_contract.py",
+        "sha256": "3ba416938805c63c2d430fd6f816e2781918eb443f9809b5275246d1dfeaa762"
+      },
+      "path": "pilot/reader-v2/diagnostic_grok_progress_contract.py"
+    },
+    {
+      "origin": {
+        "bytes": 5303,
+        "path": "/home/barberb/lift_coding/artifacts/grok-cap-end-20261015/reader-v2/diagnostic_grok_usage_contract.py",
+        "sha256": "7e908afa1956dcaa83eb4844d649a01b6c24aa3c11b7f02b2dd38364a7ea2e91"
+      },
+      "path": "pilot/reader-v2/diagnostic_grok_usage_contract.py"
+    },
+    {
+      "origin": {
+        "bytes": 433,
+        "path": "/home/barberb/lift_coding/artifacts/grok-cap-end-20261015/reader-v2/diagnostic_json_contract.py",
+        "sha256": "15b97c3abd1030efc96dafcb2edd2c44351d25f987a77ab1085f57ff012500ce"
+      },
+      "path": "pilot/reader-v2/diagnostic_json_contract.py"
+    },
+    {
+      "origin": {
+        "bytes": 4304,
+        "path": "/home/barberb/lift_coding/artifacts/grok-cap-end-20261015/reader-v2/diagnostic_owner_rounds_contract.py",
+        "sha256": "7f6fb26d8d29f50723eba549223e3537deb4c25a39cbf1ec11186859e12c9e1c"
+      },
+      "path": "pilot/reader-v2/diagnostic_owner_rounds_contract.py"
+    },
+    {
+      "origin": {
+        "bytes": 4324,
+        "path": "/home/barberb/lift_coding/artifacts/grok-cap-end-20261015/reader-v2/diagnostic_public_check_contract.py",
+        "sha256": "2c62a6986e228ca76750feea9341894369a86ffc1e51f59536f3b6af4e2e2351"
+      },
+      "path": "pilot/reader-v2/diagnostic_public_check_contract.py"
+    },
+    {
+      "origin": {
+        "bytes": 4202,
+        "path": "/home/barberb/lift_coding/artifacts/grok-cap-end-20261015/reader-v2/diagnostic_public_validation_contract.py",
+        "sha256": "12be75bb7dbe039132ef4d97049bceeb11e5ac1d0cacff232f555f9120195118"
+      },
+      "path": "pilot/reader-v2/diagnostic_public_validation_contract.py"
+    },
+    {
+      "origin": {
+        "bytes": 1273,
+        "path": "/home/barberb/lift_coding/artifacts/grok-cap-end-20261015/reader-v2/diagnostic_residual_budget_contract.py",
+        "sha256": "e50660459094c196bce9b111858ef2419ae2c755fc2d7521dbcd9e5ae302826f"
+      },
+      "path": "pilot/reader-v2/diagnostic_residual_budget_contract.py"
+    },
+    {
+      "origin": {
+        "bytes": 4337,
+        "path": "/home/barberb/lift_coding/artifacts/grok-cap-end-20261015/reader-v2/diagnostic_runner_contract.py",
+        "sha256": "c1fca837796dfec38c2e05e7f40a4a79998159ff494f1d059b1440c9b8323ad3"
+      },
+      "path": "pilot/reader-v2/diagnostic_runner_contract.py"
+    },
+    {
+      "origin": {
+        "bytes": 236,
+        "path": "/home/barberb/lift_coding/artifacts/grok-cap-end-20261015/reader-v2/diagnostic_source_digest_contract.py",
+        "sha256": "42e4aaccd33868b7b75aaf36626e3f1c11228484a4b12400dea25e59f97620f3"
+      },
+      "path": "pilot/reader-v2/diagnostic_source_digest_contract.py"
+    },
+    {
+      "origin": {
+        "bytes": 1940,
+        "path": "/home/barberb/lift_coding/artifacts/grok-cap-end-20261015/reader-v2/export_custody_contract.py",
+        "sha256": "d805c2cde1264f6b8ed16f626733a6c25b93e44f591b14dac19af77fccd39aab"
+      },
+      "path": "pilot/reader-v2/export_custody_contract.py"
+    },
+    {
+      "origin": {
+        "bytes": 16625,
+        "path": "/home/barberb/lift_coding/artifacts/grok-cap-end-20261015/reader-v2/qualification.json",
+        "sha256": "94868ba337f764e425b05ec8eee7540d1005e2df91fd175becb7a5c6376274a1"
+      },
+      "path": "pilot/reader-v2/qualification.json"
+    },
+    {
+      "origin": {
+        "bytes": 2736,
+        "path": "/home/barberb/lift_coding/artifacts/grok-cap-end-20261015/reader-v2/qualified_reader_loader.py",
+        "sha256": "496590286eb428043b11453279aa35fa46cf523436bb86fa569633dd32d3f7f4"
+      },
+      "path": "pilot/reader-v2/qualified_reader_loader.py"
+    },
+    {
+      "origin": {
+        "bytes": 3614,
+        "path": "/home/barberb/lift_coding/artifacts/grok-cap-end-20261015/reader-v2/qualify_reader_v2.py",
+        "sha256": "d8c2c3e0409445611574e30919ed6047fdc76ca719a9827df0eeeb50878a7180"
+      },
+      "path": "pilot/reader-v2/qualify_reader_v2.py"
+    },
+    {
+      "origin": {
+        "bytes": 18711,
+        "path": "/home/barberb/lift_coding/artifacts/grok-cap-end-20261015/reader-v2/read_pilot.py",
+        "sha256": "df230edb68d7eb582a388902a07a7a085426b6e089c64a6ad5e4baac25803ce3"
+      },
+      "path": "pilot/reader-v2/read_pilot.py"
+    },
+    {
+      "origin": {
+        "bytes": 9357,
+        "path": "/home/barberb/lift_coding/artifacts/grok-cap-end-20261015/reader-v2/read_planning_ablation.py",
+        "sha256": "317ba0223fcdc3aa8ef3452e37f127c89857708998af5740660c98643f01e270"
+      },
+      "path": "pilot/reader-v2/read_planning_ablation.py"
+    },
+    {
+      "origin": {
+        "bytes": 3810,
+        "path": "/home/barberb/lift_coding/artifacts/grok-cap-end-20261015/reader-v2/reporting-freeze.json",
+        "sha256": "3c2ebcb8b3a380319271740eb11a70615beedb962c0982bbd446f69cfcf6eb2d"
+      },
+      "path": "pilot/reader-v2/reporting-freeze.json"
+    },
+    {
+      "origin": {
+        "bytes": 3123,
+        "path": "/home/barberb/lift_coding/artifacts/grok-cap-end-20261015/reader-v2/safe_diagnostics.py",
+        "sha256": "71364ee7757f901db953ec4a4858ad7112b807c99feeffeeab29319a903c5c86"
+      },
+      "path": "pilot/reader-v2/safe_diagnostics.py"
+    },
+    {
+      "origin": {
+        "bytes": 4566,
+        "path": "/home/barberb/lift_coding/artifacts/grok-cap-end-20261015/reader-v2/safe_public_validation.py",
+        "sha256": "ad1585978aa55b34e38108cd51ae4654b15a544c61f60f86b3a53d0bf3ac411d"
+      },
+      "path": "pilot/reader-v2/safe_public_validation.py"
+    },
+    {
+      "origin": {
+        "bytes": 8912,
+        "path": "/home/barberb/lift_coding/artifacts/grok-cap-end-20261015/reader-v2/test_planning_ablation_reader.py",
+        "sha256": "253c7d99b6510bd3ef579dfec0950edd874ce115e87930e33cb1782b34fe21a8"
+      },
+      "path": "pilot/reader-v2/test_planning_ablation_reader.py"
+    },
+    {
+      "origin": {
+        "bytes": 9931,
+        "path": "/home/barberb/lift_coding/artifacts/grok-cap-end-20261015/reader-v2/test_public_validation_reader.py",
+        "sha256": "2a71c7984ea73e31b60107587594e09479a6898cea3f3fe90d1cc08e2803f2b1"
+      },
+      "path": "pilot/reader-v2/test_public_validation_reader.py"
+    },
+    {
+      "origin": {
+        "bytes": 9478,
+        "path": "/home/barberb/lift_coding/artifacts/grok-cap-end-20261015/reader-v2/test_read_pilot.py",
+        "sha256": "295bbd6201c006d971d23f8142f5f4ce0fd64f1edf1846480fcb6133e6e97446"
+      },
+      "path": "pilot/reader-v2/test_read_pilot.py"
+    },
+    {
+      "origin": {
+        "bytes": 4685,
+        "path": "/home/barberb/lift_coding/artifacts/grok-cap-end-20261015/reader-v2/test_reader_import_closure.py",
+        "sha256": "2b7b628c39bde26f1e4e5c2597b2597ee0522601f444492d436eb57ae5477581"
+      },
+      "path": "pilot/reader-v2/test_reader_import_closure.py"
+    },
+    {
+      "origin": {
+        "bytes": 4680,
+        "path": "/home/barberb/lift_coding/artifacts/grok-cap-end-20261015/reader-v2/test_safe_diagnostics.py",
+        "sha256": "ce955e5bdf00fc77b30d2b168b7e59f8978cb6140e243d9dbb236d1e21a899da"
+      },
+      "path": "pilot/reader-v2/test_safe_diagnostics.py"
+    },
+    {
+      "origin": {
+        "bytes": 6139,
+        "path": "/home/barberb/lift_coding/artifacts/grok-cap-end-20261015/reader-v2/test_terminal_rejection_reader.py",
+        "sha256": "2fc9596ce0d6e587e910e919f63f5d5f60243ca2fe9ab78a6578bc0edff63849"
+      },
+      "path": "pilot/reader-v2/test_terminal_rejection_reader.py"
+    },
+    {
+      "origin": {
+        "bytes": 7392,
+        "path": "/home/barberb/lift_coding/artifacts/grok-cap-end-20261015/reader-v2/tests-final.log",
+        "sha256": "11ef34df2b61623e3e60181f58bd1d2a24779ebaa6b430e3953f8f67e5ad39a0"
+      },
+      "path": "pilot/reader-v2/tests-final.log"
+    },
+    {
+      "origin": {
+        "bytes": 85406,
+        "path": "/home/barberb/lift_coding/artifacts/declared-public-planning-20261015/readout-final-v2.json",
+        "sha256": "8380555f4ba20b03d8578810b5bf8e946a002e37937d161f0feb3653c0a1faa3"
+      },
+      "path": "declared/readout-final-v2.json"
+    },
+    {
+      "origin": {
+        "bytes": 4119,
+        "path": "/home/barberb/lift_coding/artifacts/declared-public-planning-20261015/live-comparison.json",
+        "sha256": "0188cab951c9b009ec7c85d4bb143cae81719e69037b30639e503b9894e996e9"
+      },
+      "path": "declared/live-comparison.json"
+    },
+    {
+      "origin": {
+        "bytes": 292,
+        "path": "/home/barberb/lift_coding/artifacts/declared-public-planning-20261015/cleanup-observation.json",
+        "sha256": "c56c13604e102bde7ba8028a6768ea91633772590a2f8340040b05866dafc6c0"
+      },
+      "path": "declared/cleanup-observation.json"
+    },
+    {
+      "origin": {
+        "bytes": 15339,
+        "path": "/home/barberb/lift_coding/artifacts/grok-cap-end-20261015/post-live-packaging-inventory.json",
+        "sha256": "4b0efb735573f6e08ea2651ff4fd3e0696435e4430bda7217499912911f58d22"
+      },
+      "path": "pilot/post-live-packaging-inventory.json"
+    },
+    {
+      "origin": {
+        "bytes": 2290,
+        "path": "/home/barberb/lift_coding/artifacts/grok-cap-end-20261015/live-outcome.json",
+        "sha256": "5c83d680aa8740b525f0bbd1d08db7828c8b891fbab9217bca646eac0c4cb6a1"
+      },
+      "path": "pilot/live-outcome.json"
+    },
+    {
+      "origin": {
+        "bytes": 148754,
+        "path": "/home/barberb/lift_coding/artifacts/declared-public-planning-20261015/recipe.json",
+        "sha256": "dade6510154c874a959309a2679f617f78aee75b281ce3632e0e256b1decd297"
+      },
+      "path": "declared/recipe.json"
+    },
+    {
+      "origin": {
+        "bytes": 1711,
+        "path": "/home/barberb/lift_coding/artifacts/declared-public-planning-20261015/source-freeze.json",
+        "sha256": "fb332d106f87dae8e8f6519b1f552e6767e35b3c740ef13fb4c9ca267bc43e6f"
+      },
+      "path": "declared/source-freeze.json"
+    },
+    {
+      "origin": {
+        "bytes": 544,
+        "path": "/home/barberb/lift_coding/artifacts/declared-public-planning-20261015/execute-result.json",
+        "sha256": "34dbf82959bd47f5452c0ab6274cf35fde0ddce85e4865bc6716a68843ffd5d1"
+      },
+      "path": "declared/execute-result.json"
+    },
+    {
+      "origin": {
+        "bytes": 546,
+        "path": "/home/barberb/lift_coding/artifacts/declared-public-planning-20261015/collect-result.json",
+        "sha256": "7a4d22e503317d49070402972fcf28564b998f48cc2d46a7e918ca64b7f0edeb"
+      },
+      "path": "declared/collect-result.json"
+    },
+    {
+      "origin": {
+        "bytes": 230,
+        "path": "/home/barberb/lift_coding/artifacts/declared-public-planning-20261015/reader-failure01.json",
+        "sha256": "d001bea16c15f5d651db825ed5e4730d43986efcf65fe9503ce59073bc66b057"
+      },
+      "path": "declared/reader-failure01.json"
+    }
+  ],
+  "observed_tokens": 310684,
+  "official_reward": 0.0,
+  "raw_provider_text_or_sources_exported": false,
+  "reader_tests": 43,
+  "runtime_commit": "9d6ef76c8e2bb6916b68cad3563c6ec530b32736",
+  "runtime_tests_previously_qualified": 415,
+  "schema": "grok-live-token-census-evidence@1",
+  "source_tree_edits_in_this_package": false,
+  "usage_completeness_established": false
+}

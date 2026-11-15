@@ -386,3 +386,51 @@ def test_summary_output_is_detached_content_free_and_keeps_unknown_boundaries():
     assert summary["proof_authority"] is summary["completion_authority"] is False
     assert summary["population_scope"] == "supplied_validated_audit_rows"
     assert summary["journal_closure_verified"] is False
+
+
+def _bound_range(*, start=1, end=1, total=3, content="same\n"):
+    arguments, payload = _bound(content=content, representation="original")
+    arguments.update(start_line=start, end_line=end)
+    payload.update(scope="line_range", start_line=start, end_line=end,
+                   total_lines=total, omitted_lines=total - (end - start + 1))
+    return arguments, payload
+
+
+def test_range_coordinates_bind_identity_without_changing_file_or_symbol_contracts():
+    first = reads.make_read_event(*_bound_range(), True)
+    second = reads.make_read_event(*_bound_range(start=2, end=2), True)
+    assert first is not None and second is not None
+    assert first["scope"] == second["scope"] == "line_range"
+    assert first["content_sha256"] == second["content_sha256"]
+    assert first["source_identity_sha256"] != second["source_identity_sha256"]
+    rows = [_row(event=first), _row(2, event=second), _row(3, event=first)]
+    summary = reads.summarize_read_observation(rows)
+    assert summary["complete"] is True
+    assert summary["first_identity_reads"] == 2
+    assert summary["same_generation_repeat_reads"] == 1
+    assert summary["content_bytes"] == 15
+    assert _validate(summary, rows) == summary
+
+
+@pytest.mark.parametrize("target,key,value", [
+    ("arguments", "start_line", True), ("arguments", "end_line", None),
+    ("arguments", "start_line", 0), ("arguments", "symbol_id", "symbol:f"),
+    ("payload", "scope", "file"), ("payload", "start_line", True),
+    ("payload", "end_line", 2), ("payload", "total_lines", 0),
+    ("payload", "omitted_lines", 0), ("payload", "representation", "compact"),
+    ("payload", "encoding", "base64"), ("payload", "content", ""),
+    ("payload", "content", "missing LF"), ("payload", "content", "one\ntwo\n"),
+    ("payload", "content", "\ud800"), ("payload", "content", "x" * 65536 + "\n"),
+])
+def test_malformed_ranges_remain_unbound_in_current_observation_schema(target, key, value):
+    arguments, payload = _bound_range()
+    (arguments if target == "arguments" else payload)[key] = value
+    assert reads.make_read_event(arguments, payload, True) is None
+
+
+def test_range_line_numbers_use_lf_and_allow_final_unterminated_utf8_line():
+    arguments, payload = _bound_range(start=3, end=3, total=3, content="Ω\r\u2028")
+    event = reads.make_read_event(arguments, payload, True)
+    assert event is not None and event["content_bytes"] == len(payload["content"].encode())
+    arguments, payload = _bound_range(start=1, end=4097, total=4097, content="x\n" * 4097)
+    assert reads.make_read_event(arguments, payload, True) is None

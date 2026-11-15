@@ -1,0 +1,475 @@
+{
+  "schema": "native-candidate-admission-qualification@1",
+  "recorded_utc": "2026-10-15T17:52:10.249496+00:00",
+  "branch": "codex/candidate-owner-continuation-20261015",
+  "accelerate_base": "3c4c477a86d5318a08fd1829bd97eb1b1a539178",
+  "datasets": "74f5d98c8ffff3c284cffddf430091b5fc4c6f8c",
+  "kit": "40c98c71b95be750509ffdb21e7e5494d91b4e79",
+  "dependency_note": "Datasets qualification uses the explicit sibling checkout; accelerate base gitlink points to d0d44b3e0f7c2ba804b0d9115f7a1efd2ad926c3.",
+  "resource_policy_sha256": "f07cb14289fcb6275e4497dcc36be0dcf8bfc3dc87531ff7a9537eb85fdcc661",
+  "policy_unchanged": true,
+  "root_only_runtime": true,
+  "agent_work": "static reads/AST/edits only",
+  "qualification_counts": {
+    "tests": 288,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "modules": 9
+  },
+  "qualified_modules": [
+    "api.test_current_source_admission_callback_fence",
+    "api.test_current_source_task_admission",
+    "api.test_current_source_worktree_allocation",
+    "api.test_native_candidate_round_admission",
+    "api.test_native_candidate_round_worker",
+    "benchmarks.agent_supervisor.container_coding.test_terminal_owner_worker_attempt_observation",
+    "test.api.test_owner_worker_attempt",
+    "test.api.test_owner_worker_attempt_e2e",
+    "test.api.test_router_owner_worker_attempt_identity"
+  ],
+  "qualifying_runs": [
+    "native-allocation-fence-v01",
+    "native-reader-regression-v01",
+    "native-census-regression-v01",
+    "native-candidate-gate-v03",
+    "native-candidate-worker-v04"
+  ],
+  "runs": [
+    {
+      "label": "native-allocation-fence-v01",
+      "qualifying": true,
+      "lease": {
+        "schema": "world-packet-replay-qualification-lease@1",
+        "label": "native-allocation-fence-v01",
+        "started_utc": "2026-10-15T17:28:54.674929+00:00",
+        "cpu_slots": 1,
+        "memory_mb": 2048,
+        "child_process_slots": 3,
+        "lease_released": true,
+        "policy_unchanged": true,
+        "returncode": 0,
+        "offline_validation": true,
+        "network_dependency_installation": false,
+        "ended_utc": "2026-10-15T17:31:08.338104+00:00"
+      },
+      "junit": {
+        "tests": 45,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "modules": [
+          "api.test_current_source_admission_callback_fence"
+        ],
+        "bytes": 8002,
+        "sha256": "102a2da38d5691cbfd3aae8de0edcf9ec5d4c7fac07ac5ee9c95a37edc5ce6ca"
+      },
+      "stdout.log": {
+        "bytes": 429279,
+        "sha256": "9b9d853922cd699b6f952c32b259ea103e5008f5474be123e47a0a53148e6931"
+      },
+      "stderr.log": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "label": "native-candidate-environment-v01",
+      "qualifying": false,
+      "lease": {
+        "schema": "world-packet-replay-qualification-lease@1",
+        "label": "native-candidate-environment-v01",
+        "started_utc": "2026-10-15T17:25:20.887904+00:00",
+        "cpu_slots": 1,
+        "memory_mb": 2048,
+        "child_process_slots": 3,
+        "lease_released": true,
+        "policy_unchanged": true,
+        "returncode": 0,
+        "offline_validation": true,
+        "network_dependency_installation": false,
+        "ended_utc": "2026-10-15T17:25:21.028359+00:00"
+      },
+      "stdout.log": {
+        "bytes": 419,
+        "sha256": "b7975c0879d316fb4b9ce0d804fc0562f8cb7eda756f3fa8771d2e4d4c2df4bd"
+      },
+      "stderr.log": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "label": "native-candidate-gate-v01",
+      "qualifying": false,
+      "lease": {
+        "schema": "world-packet-replay-qualification-lease@1",
+        "label": "native-candidate-gate-v01",
+        "started_utc": "2026-10-15T17:32:34.638462+00:00",
+        "cpu_slots": 1,
+        "memory_mb": 2048,
+        "child_process_slots": 3,
+        "lease_released": true,
+        "policy_unchanged": true,
+        "returncode": 0,
+        "offline_validation": true,
+        "network_dependency_installation": false,
+        "ended_utc": "2026-10-15T17:35:02.263499+00:00"
+      },
+      "junit": {
+        "tests": 26,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "modules": [
+          "api.test_native_candidate_round_admission"
+        ],
+        "bytes": 4391,
+        "sha256": "15492ddd2bf7a25ba7862962d966d30e5691fa464d6a7dc49d174879d42a82ca"
+      },
+      "stdout.log": {
+        "bytes": 252459,
+        "sha256": "c3ae22f6ef40bb27b4c52b66bad345e0eb7c83b6617e2b51c4f98963892081c6"
+      },
+      "stderr.log": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "label": "native-candidate-gate-v02",
+      "qualifying": false,
+      "lease": {
+        "schema": "world-packet-replay-qualification-lease@1",
+        "label": "native-candidate-gate-v02",
+        "started_utc": "2026-10-15T17:41:29.234886+00:00",
+        "cpu_slots": 1,
+        "memory_mb": 2048,
+        "child_process_slots": 3,
+        "lease_released": true,
+        "policy_unchanged": true,
+        "returncode": 0,
+        "offline_validation": true,
+        "network_dependency_installation": false,
+        "ended_utc": "2026-10-15T17:44:15.456904+00:00"
+      },
+      "junit": {
+        "tests": 29,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "modules": [
+          "api.test_native_candidate_round_admission"
+        ],
+        "bytes": 4893,
+        "sha256": "b1fccac10dee14de97fd1288e152bed56e7ec97b3a53f26f4e958e646e5de7ae"
+      },
+      "stdout.log": {
+        "bytes": 281498,
+        "sha256": "56fddddb40a4c6fb9722b35f4661690f794d9c7bab1b7836324f34fcd232a7c9"
+      },
+      "stderr.log": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "label": "native-candidate-gate-v03",
+      "qualifying": true,
+      "lease": {
+        "schema": "world-packet-replay-qualification-lease@1",
+        "label": "native-candidate-gate-v03",
+        "started_utc": "2026-10-15T17:48:59.555273+00:00",
+        "cpu_slots": 1,
+        "memory_mb": 2048,
+        "child_process_slots": 3,
+        "lease_released": true,
+        "policy_unchanged": true,
+        "returncode": 0,
+        "offline_validation": true,
+        "network_dependency_installation": false,
+        "ended_utc": "2026-10-15T17:51:54.054790+00:00"
+      },
+      "junit": {
+        "tests": 30,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "modules": [
+          "api.test_native_candidate_round_admission"
+        ],
+        "bytes": 5052,
+        "sha256": "c0e266aa16beb90fedefb9f06bf173e13c4de718533668f795087a62301d6073"
+      },
+      "stdout.log": {
+        "bytes": 291391,
+        "sha256": "cc7766d1229c8fd12d07f8042b7e6801aceba850544151a1aa7b48d887749107"
+      },
+      "stderr.log": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "label": "native-candidate-worker-v01",
+      "qualifying": false,
+      "lease": {
+        "schema": "world-packet-replay-qualification-lease@1",
+        "label": "native-candidate-worker-v01",
+        "started_utc": "2026-10-15T17:32:34.636944+00:00",
+        "cpu_slots": 1,
+        "memory_mb": 2048,
+        "child_process_slots": 3,
+        "lease_released": true,
+        "policy_unchanged": true,
+        "returncode": 0,
+        "offline_validation": true,
+        "network_dependency_installation": false,
+        "ended_utc": "2026-10-15T17:33:52.085446+00:00"
+      },
+      "junit": {
+        "tests": 9,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "modules": [
+          "api.test_native_candidate_round_worker"
+        ],
+        "bytes": 1617,
+        "sha256": "7d6a6edd5725ba5f62391c5ebd086b1fc1cb3bc9e32d8cec3091437f962582a3"
+      },
+      "stdout.log": {
+        "bytes": 92320,
+        "sha256": "1087dcae046a9c10921d6676deb2ad1473ba6a1fbd547187f6b38684779a39c5"
+      },
+      "stderr.log": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "label": "native-candidate-worker-v02",
+      "qualifying": false,
+      "lease": {
+        "schema": "world-packet-replay-qualification-lease@1",
+        "label": "native-candidate-worker-v02",
+        "started_utc": "2026-10-15T17:41:29.255701+00:00",
+        "cpu_slots": 1,
+        "memory_mb": 2048,
+        "child_process_slots": 3,
+        "lease_released": true,
+        "policy_unchanged": true,
+        "returncode": 0,
+        "offline_validation": true,
+        "network_dependency_installation": false,
+        "ended_utc": "2026-10-15T17:42:56.699271+00:00"
+      },
+      "junit": {
+        "tests": 9,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "modules": [
+          "api.test_native_candidate_round_worker"
+        ],
+        "bytes": 1620,
+        "sha256": "9c02c44f6f8ec643374b4246e20971a898950450fcfaa7de66aec40b0d34bf9b"
+      },
+      "stdout.log": {
+        "bytes": 92320,
+        "sha256": "0457425abd50796bf4e4a6384f4d5a8d83ffb93224b785a0b21ca1a5bb0a0a1b"
+      },
+      "stderr.log": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "label": "native-candidate-worker-v03",
+      "qualifying": false,
+      "lease": {
+        "schema": "world-packet-replay-qualification-lease@1",
+        "label": "native-candidate-worker-v03",
+        "started_utc": "2026-10-15T17:44:45.599873+00:00",
+        "cpu_slots": 1,
+        "memory_mb": 2048,
+        "child_process_slots": 3,
+        "lease_released": true,
+        "policy_unchanged": true,
+        "returncode": 0,
+        "offline_validation": true,
+        "network_dependency_installation": false,
+        "ended_utc": "2026-10-15T17:46:41.189774+00:00"
+      },
+      "junit": {
+        "tests": 10,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "modules": [
+          "api.test_native_candidate_round_worker"
+        ],
+        "bytes": 1773,
+        "sha256": "56d0b4db7dbdd637337e258dacbc7a0e135659b2af6a51481380b30e35dda1c1"
+      },
+      "stdout.log": {
+        "bytes": 102790,
+        "sha256": "44ab0f1ad24323587587b75571c1f0efa4085fdcdcc630d448a08286693ec14d"
+      },
+      "stderr.log": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "label": "native-candidate-worker-v04",
+      "qualifying": true,
+      "lease": {
+        "schema": "world-packet-replay-qualification-lease@1",
+        "label": "native-candidate-worker-v04",
+        "started_utc": "2026-10-15T17:48:34.197712+00:00",
+        "cpu_slots": 1,
+        "memory_mb": 2048,
+        "child_process_slots": 3,
+        "lease_released": true,
+        "policy_unchanged": true,
+        "returncode": 0,
+        "offline_validation": true,
+        "network_dependency_installation": false,
+        "ended_utc": "2026-10-15T17:50:11.373332+00:00"
+      },
+      "junit": {
+        "tests": 10,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "modules": [
+          "api.test_native_candidate_round_worker"
+        ],
+        "bytes": 1774,
+        "sha256": "c6c659b4620f748c02612aad625fb657cedf088bff0d82ad57668153cd92a31f"
+      },
+      "stdout.log": {
+        "bytes": 102790,
+        "sha256": "444c699654d23e1fd963eb0326ea5dff9b7af45007739c3543d7d92d2c1e3f1f"
+      },
+      "stderr.log": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "label": "native-census-regression-v01",
+      "qualifying": true,
+      "lease": {
+        "schema": "world-packet-replay-qualification-lease@1",
+        "label": "native-census-regression-v01",
+        "started_utc": "2026-10-15T17:36:12.553676+00:00",
+        "cpu_slots": 1,
+        "memory_mb": 2048,
+        "child_process_slots": 3,
+        "lease_released": true,
+        "policy_unchanged": true,
+        "returncode": 0,
+        "offline_validation": true,
+        "network_dependency_installation": false,
+        "ended_utc": "2026-10-15T17:36:15.833892+00:00"
+      },
+      "junit": {
+        "tests": 155,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "modules": [
+          "benchmarks.agent_supervisor.container_coding.test_terminal_owner_worker_attempt_observation",
+          "test.api.test_owner_worker_attempt",
+          "test.api.test_owner_worker_attempt_e2e",
+          "test.api.test_router_owner_worker_attempt_identity"
+        ],
+        "bytes": 284340,
+        "sha256": "1a773c06a26429eeff9229bcb08bfad1b304c21c94d34caca938988c90b6aead"
+      },
+      "stdout.log": {
+        "bytes": 280488,
+        "sha256": "0696e8ea9c502c85edbd43cd5e3a271c07eca8079c62764c79cbaae40293d822"
+      },
+      "stderr.log": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "label": "native-reader-regression-v01",
+      "qualifying": true,
+      "lease": {
+        "schema": "world-packet-replay-qualification-lease@1",
+        "label": "native-reader-regression-v01",
+        "started_utc": "2026-10-15T17:36:12.555142+00:00",
+        "cpu_slots": 1,
+        "memory_mb": 2048,
+        "child_process_slots": 3,
+        "lease_released": true,
+        "policy_unchanged": true,
+        "returncode": 0,
+        "offline_validation": true,
+        "network_dependency_installation": false,
+        "ended_utc": "2026-10-15T17:39:29.256044+00:00"
+      },
+      "junit": {
+        "tests": 48,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "modules": [
+          "api.test_current_source_task_admission",
+          "api.test_current_source_worktree_allocation"
+        ],
+        "bytes": 7805,
+        "sha256": "a4892525f53552a2bcf418ebafec4552f57f686ff7769667eca7019013691cd1"
+      },
+      "stdout.log": {
+        "bytes": 653772,
+        "sha256": "e69fe310296620f5a89ee18a9321d46e6f5b1b92844cabe400a2019e517da4f2"
+      },
+      "stderr.log": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    }
+  ],
+  "environment": {
+    "duckdb_module_path": "/home/barberb/.local/lib/python3.12/site-packages/duckdb/__init__.py",
+    "duckdb_version": "1.5.5",
+    "model_calls": 0,
+    "native_default_owner_bound_to_existing_policy": true,
+    "native_default_owner_policy_sha256": "f07cb14289fcb6275e4497dcc36be0dcf8bfc3dc87531ff7a9537eb85fdcc661",
+    "native_sql_health_check": true,
+    "network_dependency_installation": false,
+    "schema": "world-prelaunch-environment@1"
+  },
+  "artifact_directory": "/home/barberb/lift_coding/artifacts/native-candidate-admission-20261015-01",
+  "real_boundaries": [
+    "Native task body and exact claim tuple, daemon grant, Portal projection and ACTIVE allocation lifecycle",
+    "Native process-serialized task claim fence across the actual Popen and census birth registration",
+    "Independent native supervisor_run fencing lease and original monotonic prompt deadline",
+    "Existing datasets candidate producers, full original requirements and source-generation replay",
+    "Private prepared/spawned/retired event witnesses and actual waited failed predecessor",
+    "Inert same-UID local child, empty stdin until final validation, exact candidate bytes and bounded wait",
+    "Failure cleanup and reader thread/descriptor/socket retirement observations"
+  ],
+  "authored_fixture_boundaries": [
+    "Quack transport and deployment admission/UID/path boundary",
+    "Cleanup operation for inert local children and selected literal child commands",
+    "Supervisor-run lease provisioning, without an authenticated production runtime-parent join"
+  ],
+  "limitations": [
+    "Host-only admission and launcher; no deployed Terminal daemon-to-wrapper handoff or container identity qualification",
+    "Native supervisor_run lease is not a quantitative CPU/memory/child-slot reservation",
+    "Production group-writable allocation contract and shared coordinator selection remain unqualified",
+    "Typed candidate router input, authenticated source endpoint, original production deadline and explicit two-child policy remain to be connected",
+    "Candidate prompt remains dispatch_usable=False and existing raw candidate router refusal remains",
+    "Source and authority closing checks are bounded sequential observations, not filesystem or distributed atomicity",
+    "No provider/model call, target code execution, automatic native task completion, proof publication or default retry enablement",
+    "No matched TerminalBench token/reward run, measured full-workflow token saving or correctness improvement claim"
+  ]
+}

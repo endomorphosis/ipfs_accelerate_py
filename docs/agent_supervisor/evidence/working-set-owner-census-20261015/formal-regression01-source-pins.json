@@ -1,0 +1,19 @@
+{
+  "base_commit": "ffc7ddad8168e513121cc9986e9de579948f11f0",
+  "files": {
+    "benchmarks/agent_supervisor/container_coding/benchmark_controls.py": "bc973ff26e9b28876a97556f4b928e54dfdeee0cbd257ef21d0e69750a799d47",
+    "benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py": "6864ba47d71142f3033a74f7b4d5555de5fbd302e65e413c6a007bfd0cd8cee3",
+    "benchmarks/agent_supervisor/container_coding/full_supervisor_harbor_agent.py": "2d68b94a895578c7fedcaf53aca48ef30b27b0e4f2c183a9ccd5699905e62a3a",
+    "benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py": "65914e4759af0a5211745d9ef02bca84344a7a83f789b7f7c32b78532b563aa1",
+    "benchmarks/agent_supervisor/container_coding/terminal_live_metadata_census.py": "a3fde9af38c1301fc50e2c623931fff8b73d56ae3e5d8ca18e46fa8ed046f6de",
+    "benchmarks/agent_supervisor/container_coding/terminal_semantic_working_set_policy.py": "2c07693b02dfe6bc0a8bb8f2d18cde44510147ff67d457c00a7fa4386c9b7c1f",
+    "benchmarks/agent_supervisor/container_coding/terminal_working_set_census.py": "bcd1e08214ed2268b3cc3172aa2d4330a7eb81eb1d43c01efe1cfbb49793f94d",
+    "benchmarks/agent_supervisor/container_coding/terminal_working_set_census_observation.py": "d7818e876963b8d3edf564a662027387f17722f4bb053d3c5ff9964781ef65ee",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_formal_status_census.py": "213b61cc56a81a3cb378f46575e0eefbb8893fa074d9a357be652ce7177507ad",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_live_census_cache_profile.py": "910512d19a7fa183331012ad79667155ab10b546d63a43848d0c811b6d28272a",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_working_set_census_driver.py": "fac952a347376fda8f1d699fe8a1acb5179820da97685816c1bb4b8cb8e656d6",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_working_set_census_owner.py": "21684c35f163fd1d8a13bdabdb61f5e1d1b973f691b45bfcb571931b659dd5e4",
+    "benchmarks/agent_supervisor/container_coding/test_working_set_census_harbor.py": "25c9e8507c5bf86ec9766f13920f3e82ce0388588321af00157b6508b5a4cffd",
+    "test/api/test_terminal_working_set_census_replay.py": "aba0223fbb171c8ea973967e3a8b7210fde942266264c014bfe5168e8a58bca3"
+  }
+}

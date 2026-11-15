@@ -1,0 +1,57 @@
+{
+  "absolute_lifetime_seconds_maximum": 600,
+  "acceptance_authority": false,
+  "anchor_history_attachments": 1,
+  "author_executed_tests_or_product_jobs": 0,
+  "caller_owns_admission": true,
+  "canonical_module": "ipfs_accelerate_py.agent_supervisor.runtime.native_admin_execution",
+  "canonical_tasks_accepted": 0,
+  "command_limit": 128,
+  "completion_authority": false,
+  "default_command_seconds": 45,
+  "github_qualification": "skipped_by_user",
+  "installed": false,
+  "no_root_phase_storage_admission_inside_component": true,
+  "pending_api": "NativeAdminCustodyPending retains actual objects; stopped acknowledgement never grants/retries/signals or releases caller ancestors.",
+  "required_native_profile": {
+    "admin_owner": {
+      "CPU": 1,
+      "memory_MiB": 512,
+      "slots": 4
+    },
+    "phase": {
+      "CPU": 3,
+      "memory_MiB": 4096,
+      "same_actual_PID": true,
+      "slots": 16
+    },
+    "prestart_native_consumer": {
+      "CPU": 1,
+      "memory_MiB": 1,
+      "parent": "actual admin native leaf",
+      "slots": 0
+    },
+    "root": {
+      "CPU": 3,
+      "memory_MiB": 4096,
+      "same_PID": true,
+      "slots": 16
+    }
+  },
+  "runtime_enabled": false,
+  "schema": "legal-ir-native-admin-contract@1",
+  "source_only": true,
+  "supported_original_hooks": [
+    "route._agent_git_output",
+    "checkout_lock.git_common_dir",
+    "board_control_plane.control_plane_git_common_dir",
+    "PortalImplementationDaemon._git_ref_exists"
+  ],
+  "timeout_semantics": "NativeAdminRefusal(BaseException) with original TimeoutExpired cause after bounded cleanup; genuine completed nonzero/check/text outcomes remain distinct.",
+  "unsupported_original_paths": "Other original subprocess producers and unsupported query/stream profiles still require separate review; initial selected private bootstrap does not establish full clean-capsule support.",
+  "worker_controls": {
+    "cases": 36,
+    "no_test_execution_by_author": true,
+    "positive_native_cases": 0
+  }
+}

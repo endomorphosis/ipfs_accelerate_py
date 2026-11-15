@@ -1,0 +1,86 @@
+{
+  "schema": "terminal-pack-view-qualification@1",
+  "passed": true,
+  "passed_cases": 177,
+  "failures": 0,
+  "errors": 0,
+  "skipped": 0,
+  "source_sha256": {
+    "benchmarks/agent_supervisor/container_coding/container_worker_deployment.py": "67e5eddaa8e64e6d90daa47db581a4e31dd1f27f93a6d77bdfe75b99350f28dc",
+    "benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py": "6555ea4dbb82333ceeaa3cc130b61a6bfa24478720824b352de9bcc81143e888",
+    "benchmarks/agent_supervisor/container_coding/terminal_semantic_working_set_policy.py": "1da0b785e476db8f63459821c20a8fbce0d345e826971c0b09e26345e3de5456",
+    "benchmarks/agent_supervisor/container_coding/terminal_working_set_census_observation.py": "e2516fcc34330d4391ee993ca578819cb5bf4d5f43c62b4dc48aabeca366bf9c",
+    "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py": "a8876c3c1520fb54801b49deeb077541a010a0fe935da4703e2133f19507d8ff",
+    "ipfs_accelerate_py/agent_supervisor/runtime/semantic_pack_projection.py": "54d3ed887b4037dd860c431053e6e45fff6d7182b66b1b90bc566d00a1384ddf",
+    "ipfs_accelerate_py/agent_supervisor/runtime/semantic_working_set_census.py": "e8d13db2ae702cb39d74e2add87927675e4262b676d314ff31c81b46f5799873",
+    "test/api/test_semantic_pack_census.py": "95c89e8f827874ca4e92c9296cfab10603646dd0cfac4223bd6d0e8159d23a7e",
+    "test/api/test_semantic_pack_projection.py": "7d88cc8129497129435c090950c2375ba6392bd77ae45dbea62874e54ce57f48",
+    "benchmarks/agent_supervisor/container_coding/test_semantic_working_set_census_worker_wiring.py": "fe27915623892bc1b6c7ad39d59bb6b8c87067506b72f8fc866ee30b0b400bf1",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_semantic_working_set_policy.py": "1de78cc1331401f8c2147aa165fde444c5831b2b425f9cb17ee1111a8662c328",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_working_set_census_driver.py": "7495c181d6192011d19b3bc6b0a73ce8240ed504111edd714790137efb39c6eb",
+    "test/api/test_semantic_working_set_census_dispatch.py": "bf8114ed83f949f007fcd5a5bf3ec5be7992d1e0b50a01db427aeb38982f87a7",
+    "test/api/test_terminal_working_set_census_replay.py": "0507a231fbe9100c11a11a9e392fc20f4bed00fe631415cd4690ad85c5a718aa"
+  },
+  "dependencies": {
+    "ipfs_datasets_py": {
+      "path": "/home/barberb/lift_coding/.worktrees/supervisor-bounded-rounds-datasets-20261014",
+      "commit": "28b9ef1f0b9da51e87b1e68ee565b43681397109",
+      "tracked_status": ""
+    },
+    "ipfs_kit_py": {
+      "path": "/home/barberb/lift_coding/.worktrees/publication-main-20261004/kit",
+      "commit": "8ac00bb1974b1378e12091d546d8425af34049e0",
+      "tracked_status": ""
+    }
+  },
+  "batches": [
+    {
+      "label": "codecs-dev02",
+      "passed_cases": 55,
+      "selected_tests": [
+        "test/api/test_semantic_pack_projection.py",
+        "test/api/test_semantic_pack_census.py"
+      ],
+      "artifacts": {
+        "-result.json": "b72041bdcf19deb01e267ddada373789344e638c68c2907c426d7f315988307a",
+        "-source-pins.json": "120ec68521718d2bb6fb5b6ebe645cb6cd146c81bf57231f797f36cf862cf4d4",
+        ".xml": "5fe79dfda7cfd7ab03d0704c9a6945e3e6341d9fda519a1e8b6a815d928fce42",
+        ".log": "61428804e4ba426c9949e0772c747390b1d07e3a00f4ef7fc1881cd9acfc7f47"
+      }
+    },
+    {
+      "label": "routes-dev02",
+      "passed_cases": 116,
+      "selected_tests": [
+        "benchmarks/agent_supervisor/container_coding/test_semantic_working_set_census_worker_wiring.py",
+        "benchmarks/agent_supervisor/container_coding/test_terminal_semantic_working_set_policy.py",
+        "benchmarks/agent_supervisor/container_coding/test_terminal_working_set_census_driver.py",
+        "test/api/test_semantic_working_set_census_dispatch.py"
+      ],
+      "artifacts": {
+        "-result.json": "89923063c860a75d05a93e5087e6bed06adfca703e7c06f831b62dbc72866058",
+        "-source-pins.json": "35b2a71aa61fede6c66394950de0d7472c233c18035f9e983573e8373d07f7c7",
+        ".xml": "5ec7dbba9f7d3f757316a8e522f9a79637003d7691db5508b432ca5dc1d37c21",
+        ".log": "6e1a1e9ed3f7ee2dc0c56a3aafb367a9a3e12560cd222c82daf68356d902a5d1"
+      }
+    },
+    {
+      "label": "replay-dev01",
+      "passed_cases": 6,
+      "selected_tests": [
+        "test/api/test_terminal_working_set_census_replay.py"
+      ],
+      "artifacts": {
+        "-result.json": "bd2a12c5fa70634cf7775706b1070794148d08c8f992a856b00807805bf08147",
+        "-source-pins.json": "8b149db8532543560344aaf8973d8cb476aee6460fe60f53b5b8dd3bb124c35f",
+        ".xml": "52d1671fa689a6034a20e1be7a2e0ad37977b439c283ebdb516796c40055ba9a",
+        ".log": "9292b950b1ed0d98e0b1e3812b7046932e6fcdabf51769896549fbb232837cf1"
+      }
+    }
+  ],
+  "production_sources_match_all_batches": true,
+  "selected_test_sources_match_executed_batches": true,
+  "pin_scope": "all-changed-production-modules-and-batch-selected-tests@1",
+  "note": "Two authored test fixtures corrected between completed development batches. Final production sources and selected tests match every included batch; unrelated test authoring excluded from individual pin scopes.",
+  "provider_calls": 0
+}

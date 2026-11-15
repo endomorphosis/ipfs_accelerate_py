@@ -151,7 +151,7 @@ def compare_semantic_selection(*, repository: Path, full_prompt: str, selected_p
                  "token counter differs from pinned provider/model")
 
     encoded = [codec.encode_semantic_router_prompt(prompt=prompt, repository=repository,
-                slot_policy_revision=codec.SLOT_POLICY_V2) for prompt in (full_prompt, selected_prompt)]
+                transport_schema=codec.COMPACT_TRANSPORT_SCHEMA) for prompt in (full_prompt, selected_prompt)]
     for entry, prompt in zip(encoded, (full_prompt, selected_prompt), strict=False):
         _require(codec.restore_semantic_router_prompt(provider_prompt=entry.provider_prompt,
                  table=entry.table, repository=repository) == prompt, "native alias restoration differs")
@@ -265,6 +265,7 @@ def compare_semantic_selection(*, repository: Path, full_prompt: str, selected_p
     baseline = rows["full_native"]
     return {
         "schema": SCHEMA, "provider": provider, "model": model,
+        "transport_schema": codec.COMPACT_TRANSPORT_SCHEMA,
         "task_id": full["task_id"], "scope_cid": full["scope_cid"], "semantic_root_cid": full["semantic_root_cid"],
         "measurement_basis": measurement_basis, "count_scope": "rendered_user_prompt_only",
         "measurement_status": status,

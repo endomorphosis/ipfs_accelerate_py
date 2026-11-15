@@ -98,7 +98,12 @@ _MODE_DEFAULTS = {
     "capsule_budget": "legacy", "numerical_formalization_profile": None,
     "numerical_selection_config": None, "source384_config": None,
     "metadata_census_only": False, "grok_coding_max_turns": 128,
-}
+
+        'candidate_rounds': 1,
+        'doctor_coding_policy': None,
+        'working_set_census_only': False,
+        'grok_pruning_profile': 'legacy',
+    }
 
 
 def validate_decision_route(selection, *, arm, provider, **options):

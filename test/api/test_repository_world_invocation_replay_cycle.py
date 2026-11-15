@@ -146,6 +146,7 @@ def test_native_owner_mcp_dispatch_replays_after_owner_and_workspace_are_unavail
                     assert not error, found
                     candidate = next(row for row in found["candidates"]
                         if row["path"] == "answer.py" and row["name"] == "answer.answer")
+                    assert candidate["path"] == "answer.py" and candidate["name"] == "answer.answer"
                     read, error = client.call("repository_read", generation=1, path="answer.py",
                         symbol_id=candidate["symbol_id"])
                     assert not error, read

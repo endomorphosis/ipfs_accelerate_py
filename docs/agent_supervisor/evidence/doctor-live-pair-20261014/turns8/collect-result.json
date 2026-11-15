@@ -1,0 +1,16 @@
+{
+  "exit_code": 0,
+  "seconds": 0.2313304499257356,
+  "source_pins_unchanged": true,
+  "stderr": {
+    "bytes": 0,
+    "path": "/home/barberb/lift_coding/artifacts/doctor-turns8-live-20261014/collect.stderr",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "stdout": {
+    "bytes": 166193,
+    "path": "/home/barberb/lift_coding/artifacts/doctor-turns8-live-20261014/collect.stdout",
+    "sha256": "1d2319443f9a6093c14b100133932eea331fb6bc89a994a1d498e92d10794a2a"
+  },
+  "step": "collect"
+}

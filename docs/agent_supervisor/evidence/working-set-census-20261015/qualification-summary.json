@@ -1,0 +1,32 @@
+{
+  "schema": "supervisor-working-set-census-qualification@1",
+  "final_batches": [
+    {
+      "label": "native-final01",
+      "passed": 1,
+      "source_pins_match_final_files": true
+    },
+    {
+      "label": "dispatch-final01",
+      "passed": 28,
+      "source_pins_match_final_files": true
+    },
+    {
+      "label": "components-final01",
+      "passed": 68,
+      "source_pins_match_final_files": true
+    },
+    {
+      "label": "worker-final01",
+      "passed": 138,
+      "source_pins_match_final_files": true
+    }
+  ],
+  "final_passed": 235,
+  "unique_xml_case_identities": 235,
+  "earlier_regression_passed": 107,
+  "live_provider_calls": 0,
+  "live_terminal_bench_run": false,
+  "provider_tokens_measured": false,
+  "complete_run_savings_claimed": false
+}

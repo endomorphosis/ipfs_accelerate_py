@@ -1,0 +1,38 @@
+{
+  "benchmarks/agent_supervisor/container_coding/terminal_worker_capability.py": {
+    "bytes": 10431,
+    "sha256": "de2352f6d50499e782774305e820cc324b0eaa768754931b64926792079c7e9b"
+  },
+  "benchmarks/agent_supervisor/container_coding/test_terminal_worker_capability.py": {
+    "bytes": 22150,
+    "sha256": "d7fb1a1336f0460720e51bff3b781ab08a05934c65baa78b359710d688f40586"
+  },
+  "docs/agent_supervisor/terminal_token_metadata_plan.md": {
+    "bytes": 110499,
+    "sha256": "29085fcf34fdef4348049859af9b69611487fb91a62ea1875d67aa48002f0038"
+  },
+  "ipfs_accelerate_py/agent_supervisor/runtime/current_source_worktree_allocation.py": {
+    "bytes": 40203,
+    "sha256": "d97deb6a98bcdb8bcc042d7f2217d107281001774285a933cd76aee24e263a3b"
+  },
+  "ipfs_accelerate_py/agent_supervisor/runtime/native_candidate_continuation.py": {
+    "bytes": 22039,
+    "sha256": "601af459cab825c8f6b29909960010cf9058c4ce840860fb8b223cea3e5e1ed1"
+  },
+  "ipfs_accelerate_py/agent_supervisor/runtime/native_candidate_round_admission.py": {
+    "bytes": 33456,
+    "sha256": "b9b43e52e089737e91509e7d896956789660208360c41a3e0a5331a471653085"
+  },
+  "ipfs_accelerate_py/agent_supervisor/runtime/native_writable_allocation.py": {
+    "bytes": 14660,
+    "sha256": "cf6e2f5ac86b01f959103bbb8e3c9d2d170e8f537d02727a1b19d9211dcc1386"
+  },
+  "test/api/test_native_candidate_round_admission.py": {
+    "bytes": 24655,
+    "sha256": "db64533de03b1c2f9f535bc6df9be191daf6a0965dff9ec50daa391cdf4d2d4d"
+  },
+  "test/api/test_native_delegated_allocation.py": {
+    "bytes": 16259,
+    "sha256": "28f0553406f22e5647986378419de05dc81182928560637daffbb002e6997f43"
+  }
+}

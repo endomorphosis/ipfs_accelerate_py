@@ -1,0 +1,137 @@
+{
+  "arbitrary_descendant_containment_claimed": false,
+  "audit_violations": [],
+  "candidate_commit": "fd9bb19192401155de01280ba22cef48f1b9b42a",
+  "caught_audit_refusals_are_fatal": true,
+  "child_compilation_attested": false,
+  "current_result_not_pooled_with_history": true,
+  "deselections": 0,
+  "durable_attempt_bytes": 446435,
+  "errors": 0,
+  "evidence": {
+    "durability": {
+      "bytes": 38176,
+      "path": "/tmp/pytest-of-barberb/legal-ir-candidate-owner-deadline-attempt-20261109-v04/attempt/logs/validation-durability.json",
+      "sha256": "3a5e7f64f183c815d39d05fa925a3a50778f8d4f2f22c5f31ae44f01390dc2df"
+    },
+    "junit": {
+      "bytes": 279191,
+      "path": "/tmp/pytest-of-barberb/legal-ir-candidate-owner-deadline-attempt-20261109-v04/attempt/exports/junit.xml",
+      "sha256": "8bac57854c714da668a7dcfa2b4002029de179cb2525d72b6479a90b459b1438"
+    },
+    "parent": {
+      "bytes": 12424,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/legal-ir-peer-revision-reconciliation-20261109-v01/candidate-owner-deadline-attempt-v04/parent-closeout.json",
+      "sha256": "335466396ecab205a8d45e5ff0406df8587b8158a1a2393d8a1aeb8aa76f4c09"
+    },
+    "request": {
+      "bytes": 49259,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/legal-ir-peer-revision-reconciliation-20261109-v01/candidate-owner-deadline-attempt-v04/request.json",
+      "sha256": "f5c7230742069e7ab1005e7aad28764410c5a5c33f607cc7495372ae720358f1"
+    },
+    "result": {
+      "bytes": 1110,
+      "path": "/tmp/pytest-of-barberb/legal-ir-candidate-owner-deadline-attempt-20261109-v04/attempt/logs/result.json",
+      "sha256": "475a85165200b083e0da3e15cda56858cc635cd6094aa484f4db79c4a8a7fb1f"
+    },
+    "source_capture": {
+      "bytes": 2161174,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/legal-ir-peer-revision-reconciliation-20261109-v01/candidate-owner-deadline-attempt-v04/captured-source-buffers.tar.gz",
+      "sha256": "9636bfae89d53fa5828e4618a81d62b4f833fccdad345b130c09cce57eae6d54"
+    },
+    "source_observation": {
+      "bytes": 38914,
+      "path": "/tmp/pytest-of-barberb/legal-ir-candidate-owner-deadline-attempt-20261109-v04/attempt/exports/source-observation.json",
+      "sha256": "70694f172422bd89cef3c745348f4d7ed3a71a93df0fa7b51d20ac92f4974115"
+    },
+    "terminal": {
+      "bytes": 7100,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/legal-ir-peer-revision-reconciliation-20261109-v01/candidate-owner-deadline-attempt-v04/owner.stdout",
+      "sha256": "272b236b97e9d9936c044a89cb4af15115bbf3940117c766d07cd640f36c105e"
+    }
+  },
+  "failures": 0,
+  "fixture_fixes": [
+    "Disable bytecode before inert -I child imports; inherited PYTHONDONTWRITEBYTECODE is ignored by -I.",
+    "Keep the hostile hardlink live during refusal, then retire only its authored alias and preserve an observation before artifact finalization."
+  ],
+  "full_branch_qualification": false,
+  "historical_attempts": {
+    "v01": "185 passed/five missing lazy-dependency failures on sparse source preparation; retained 16MiB claim.",
+    "v02": "185 passed/five unpinned projection failures and six persisted audits, including a caught optional refusal; retained 16MiB claim.",
+    "v03": "190 passed/zero audit violations, but final artifact inventory refused an authored hardlink; retained 16MiB claim."
+  },
+  "historical_bytecode_observation": {
+    "bytes": 1243192,
+    "files": 13,
+    "individual_generating_or_reading_child_attested": false,
+    "preserved_within_original_named_evidence_root": true
+  },
+  "hosted_ci_qualified": false,
+  "junit_seconds": 6.287,
+  "live_deployment_changed": false,
+  "matched_worktree_files": 236,
+  "model_or_legal_admission": false,
+  "native_limits": {
+    "child_process_slots": 4,
+    "cpu_slots": 1,
+    "memory_mb": 1536,
+    "timeout_seconds": 180
+  },
+  "native_provider_or_docker_qualification": false,
+  "original_popen_wait_source_native_observed_process_closed": true,
+  "owned_operation_seconds": 174.4423687509261,
+  "parent_compiled_buffers": 214,
+  "passed": 190,
+  "prior_failed_reservations": [
+    {
+      "attempt": "v01",
+      "current_status": "retained",
+      "original_status": "retained",
+      "reservation_id": "2c2ca144695f48eba05f1ecb03cdea03"
+    },
+    {
+      "attempt": "v02",
+      "current_status": "retained",
+      "original_status": "retained",
+      "reservation_id": "37851cb0860e4a8d80223faac419f224"
+    },
+    {
+      "attempt": "v03",
+      "current_status": "retained",
+      "original_status": "retained",
+      "reservation_id": "a7b236794a69446bb8fcd4b07459669a"
+    }
+  ],
+  "process_scope": "sampled_birth_bound_descendants",
+  "public_dependency_qualification_claimed": false,
+  "recorded_at": "2026-11-09T21:14:43.285561+00:00",
+  "remaining_coverage": [
+    "archive/deployment and writable-worktree integrations",
+    "native candidate admission/resources/continuation and current-source delegate compatibility",
+    "separate-UID/Docker/native provider and live deployment where independently authorized"
+  ],
+  "request_sha256": "f5c7230742069e7ab1005e7aad28764410c5a5c33f607cc7495372ae720358f1",
+  "resource_bounds_unchanged": true,
+  "schema": "candidate-owner-deadline-attempt-qualification/v1",
+  "scope": "Six complete existing deadline handoff, launcher/wiring, worker-attempt and receipt-observation owning files. Authored boundary/cleanup/usage fixtures with real local child processes.",
+  "selected_checks": [
+    "test/api/test_owner_provider_deadline.py",
+    "test/api/test_owner_provider_deadline_launcher.py",
+    "benchmarks/agent_supervisor/container_coding/test_owner_provider_deadline_wiring.py",
+    "test/api/test_owner_worker_attempt.py",
+    "test/api/test_owner_worker_attempt_e2e.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_owner_worker_attempt_observation.py"
+  ],
+  "skips": 0,
+  "source_cap_raised": false,
+  "source_capture_members": 253,
+  "source_checkout_bytecode": [],
+  "source_drift": [],
+  "source_limit": 256,
+  "source_pins": 256,
+  "storage_bytes": 16777216,
+  "storage_reservation_id": "61aae0cdfc9d4f52aa670da463ba6223",
+  "storage_status": "released",
+  "vendor_sources_attested": false
+}

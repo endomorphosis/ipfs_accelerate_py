@@ -1,0 +1,19 @@
+{
+  "tmpdir": "/home/barberb/.p",
+  "runs": {
+    "parent-focused-v01": {
+      "basetemp": "/home/barberb/.p16u01",
+      "orchestration": "/home/barberb/lift_coding/artifacts/protected-parent-creation-20261016-01/parent-focused-v01-orchestration"
+    },
+    "parent-git-integration-v01": {
+      "basetemp": "/home/barberb/.p16g01",
+      "orchestration": "/home/barberb/lift_coding/artifacts/protected-parent-creation-20261016-01/parent-git-integration-v01-orchestration"
+    },
+    "parent-archive-regression-v01": {
+      "basetemp": "/home/barberb/.p16a01",
+      "orchestration": "/home/barberb/lift_coding/artifacts/protected-parent-creation-20261016-01/parent-archive-regression-v01-orchestration"
+    }
+  },
+  "basetemp_initially_absent": true,
+  "existing_permissions_changed": false
+}

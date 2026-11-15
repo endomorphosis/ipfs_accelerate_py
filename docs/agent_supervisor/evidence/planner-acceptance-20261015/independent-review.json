@@ -1,0 +1,34 @@
+{
+  "bindings": [
+    {
+      "bytes": 11763,
+      "path": "/home/barberb/lift_coding/artifacts/planner-acceptance-20261015/run.py",
+      "sha256": "9b3d224087fbc39930dcc3b5fe952c753e77f70f5354a201d385a99d761cf7f5"
+    },
+    {
+      "bytes": 149879,
+      "path": "/home/barberb/lift_coding/artifacts/planner-acceptance-20261015/recipe-draft.json",
+      "sha256": "99ccff55189ff1db44f9f2619156164bb2097e63d101eaa46dbc9a8fd4bfb8cb"
+    },
+    {
+      "bytes": 4758,
+      "path": "/home/barberb/lift_coding/.worktrees/supervisor-planner-acceptance-20261015/benchmarks/agent_supervisor/container_coding/test_terminal_public_model_planning.py",
+      "sha256": "4251aac4c23f2663246676f113f1451e44465d081b62fb1135671db89a34d2bd"
+    },
+    {
+      "bytes": 116261,
+      "path": "/home/barberb/lift_coding/.worktrees/supervisor-planner-acceptance-20261015/ipfs_accelerate_py/agent_supervisor/prompt/prompt_goal_planner.py",
+      "sha256": "b7164dc4456117658ba733625fda703fff4847e3fd3e9ed9c3894aa92bdf2496"
+    }
+  ],
+  "findings": [
+    "Root native regression exercises actual model parsing, signed admission, and DuckDB materialization; authored responses are explicitly labeled.",
+    "All three criteria retained; omitted/altered task criteria and altered goal criteria refused before storage.",
+    "Draft launcher preserves live controls, prior qualified reader freeze and metadata-only readiness.",
+    "Only launcher verify function changed: exact reviewed archive-test exclusion and explicit fixed planner pin."
+  ],
+  "provider_calls": 0,
+  "reviewer": "doctor_budget_design",
+  "schema": "planner-acceptance-independent-review@1",
+  "status": "no_blocker_reported"
+}

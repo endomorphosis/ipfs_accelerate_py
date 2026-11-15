@@ -1,0 +1,102 @@
+{
+  "schema": "supervisor-working-set-census-evidence@1",
+  "runtime_commit": "5c1ab44ede7f611e0526ed1e488ceb373e060538",
+  "base_commit": "434d007ca454b0235ff0387c0d6be77f44c07c23",
+  "artifacts": [
+    {
+      "path": "components-final01-result.json",
+      "sha256": "a047aa3d2c771db3d2d052618d4497b79f6d827ee4c87515fee714049a63d987",
+      "bytes": 2006
+    },
+    {
+      "path": "components-final01-source-pins.json",
+      "sha256": "555e3c2048a0f208e696b1c126adeb2474e497bb6ee2fc704f8c788f7eac2bf3",
+      "bytes": 1503
+    },
+    {
+      "path": "components-final01.xml",
+      "sha256": "869aca818416566177335920f58905ee6653f37a60436f8fa19f8eb73be14a57",
+      "bytes": 10879
+    },
+    {
+      "path": "dispatch-final01-metrics.json",
+      "sha256": "460dd84e63f03ba00dbfec1221bf9d8d53dd0afabf59d98d4bdb36ffc75e8c54",
+      "bytes": 1743
+    },
+    {
+      "path": "dispatch-final01-result.json",
+      "sha256": "c3ba974b14b1b64b10c79270e4d49f112ce436bc16cd082783fa623758f2aa69",
+      "bytes": 1960
+    },
+    {
+      "path": "dispatch-final01-source-pins.json",
+      "sha256": "3edb850d5847a2b72141f47ce523617b72ad1bb94e1fd510de5d4cb13c1358e0",
+      "bytes": 1383
+    },
+    {
+      "path": "dispatch-final01.xml",
+      "sha256": "22e68df19343eb77ab924d02727a9a7bde1fddaf17c484bf043f6e99d5b82103",
+      "bytes": 5441
+    },
+    {
+      "path": "native-final01-result.json",
+      "sha256": "ba904fd7e891e7a790d8e14b4382c24a37883595afc7d6958f86ada22e8c7bd9",
+      "bytes": 1949
+    },
+    {
+      "path": "native-final01-source-pins.json",
+      "sha256": "3edb850d5847a2b72141f47ce523617b72ad1bb94e1fd510de5d4cb13c1358e0",
+      "bytes": 1383
+    },
+    {
+      "path": "native-final01.xml",
+      "sha256": "faa9719b03452522c9b81f6ea1566a1c0c7cc8612ec09dd5cd5d9d2811c1667b",
+      "bytes": 1653
+    },
+    {
+      "path": "native-measurement.json",
+      "sha256": "2b38fdb3694394c5d37e8c946e31664fb54411c9aeccdbc39c6101f3bb320769",
+      "bytes": 1708
+    },
+    {
+      "path": "qualification-summary.json",
+      "sha256": "b6c67b84da65a9bb765da79e4aef6bdd2b11a285cb4574856856f22d53895cca",
+      "bytes": 773
+    },
+    {
+      "path": "regression-dev01-result.json",
+      "sha256": "615e18e579c3a58ae0027a88f73a9406f79222c48e395baebd971cdb4d955dd4",
+      "bytes": 2155
+    },
+    {
+      "path": "regression-dev01-source-pins.json",
+      "sha256": "02f7080a1e1cd5f187887fddf232f62fd917e21634bdb8e83fd0686ae21060c8",
+      "bytes": 1588
+    },
+    {
+      "path": "regression-dev01.xml",
+      "sha256": "79c12bcbad6f85a9e596a38e9f76229f6263666f97737d32abb1b81498b3f5cc",
+      "bytes": 18266
+    },
+    {
+      "path": "worker-final01-result.json",
+      "sha256": "5156cd58566197997491626e63e34efbe9350ebd2d29c7a528312ecf7a795a21",
+      "bytes": 2379
+    },
+    {
+      "path": "worker-final01-source-pins.json",
+      "sha256": "82f886c19579040f21dd74d10f33d7b879212c97cb6dc65c881975847e167f41",
+      "bytes": 2034
+    },
+    {
+      "path": "worker-final01.xml",
+      "sha256": "9f98cbc3a8c23a3c70f6fd0a41e0b4495f1feb014bb486e359ff593e61bc8453",
+      "bytes": 29371
+    }
+  ],
+  "live_provider_calls": 0,
+  "live_terminal_bench_run": false,
+  "raw_provider_content_exported": false,
+  "provider_token_usage": null,
+  "whole_codebase_minification_claimed": false
+}

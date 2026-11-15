@@ -1,0 +1,224 @@
+{
+  "artifacts": {
+    "JUnit": {
+      "bytes": 5865,
+      "sha256": "478b32fdda76b54bd814e63f55f8d94dbad311f0613d7ef2d5f2af5063824ba5"
+    },
+    "durability": {
+      "bytes": 38901,
+      "sha256": "9068a9eaeac92abe19e6b28154fe15021dfc5bdf9ad80ce934db1895af8d75e1"
+    },
+    "execution": {
+      "bytes": 3415,
+      "sha256": "d6db5efac2709a148b4ea11a0ba07cab46747b276b79fc2c19ce27446c1e94bd"
+    },
+    "original_terminal": {
+      "bytes": 5459,
+      "sha256": "41607d5596fd2e2bec338bad730a55bac48185ff425c085686cb142fca94a5ac"
+    },
+    "parent_closeout": {
+      "bytes": 9520,
+      "sha256": "2777b65112f53fe2bb31ba00c93917d82197495d6717ecab7e19ba86a789bddb"
+    },
+    "prelaunch": {
+      "bytes": 576,
+      "sha256": "90d873904e9c6878fcd87be02c23e9ca188b61e58aba76a314438f54ca0b514c"
+    },
+    "prepared_manifest": {
+      "bytes": 18863,
+      "sha256": "4c6f3c10decae0eeb1e4e95b775ee2d7136d0fc820072425abe64bbf8f7c1ff3"
+    },
+    "request": {
+      "bytes": 31279,
+      "sha256": "9c4f80db10e589a5add22a24b6148b9edf8f82c82f0cd46955c9c2418ccaac0c"
+    },
+    "result": {
+      "bytes": 2904,
+      "sha256": "6454950fd5876f86cfdfd89a77f7b102e6d46e0faf2699463b23ec6ce1ebb0be"
+    },
+    "stderr": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "stdout": {
+      "bytes": 99,
+      "sha256": "015ab3c198a23a9e71ae415573d9386dbf529591199ef3cd97fc6a459d669cfa"
+    }
+  },
+  "canonical_dependency_heads_at_qualification": {
+    "accelerate": "2440dd4f56d70594ed4799888c8eb599f8f52890",
+    "datasets": "c444b65349a402e017a39c399a3ebeb8b188143d"
+  },
+  "canonical_source_dependency_sha256": {
+    "accelerate": {
+      "__init__.py": "44fa0886961bfb3823e19e6d6b2d167f89ce2d3a9337706abff2ac8224a8dcb6",
+      "ipfs_accelerate_py/__init__.py": "5083369f823be18cd467346f6f3b955925ec65bedafe9eb28a61ca8897997c03",
+      "ipfs_accelerate_py/_hash_resources.py": "6037d8aa7d70f70deae36e26c45e08c90c617be558253d85004589463eea9420",
+      "ipfs_accelerate_py/agent_supervisor/__init__.py": "3c16dfa0ab9f73de44418dcdb44996fbf0f293daaf7ce9979d2e42a7bb1a2436",
+      "ipfs_accelerate_py/agent_supervisor/control/__init__.py": "3149e832facdcebf525dbbe990f81a8f9fa79cb4b4295280cfe97124bc8a2e27",
+      "ipfs_accelerate_py/agent_supervisor/control/control_contracts.py": "b1a402d74f28584c26133e1b800f3010f69a0e643375037e693856a95ae8e1ca",
+      "ipfs_accelerate_py/agent_supervisor/control/control_plane.py": "1229e506a1bf624b4ddddbd443c484cc2e7ef396cc242208a7c27c8f8931334e",
+      "ipfs_accelerate_py/agent_supervisor/core/__init__.py": "8f63664c0f36cffc31902ee60919f14280ef47c81d8c5a67fd18c13476a32f7a",
+      "ipfs_accelerate_py/agent_supervisor/core/wrapper_utils.py": "33d187418663f20e5eaf06da1a5baff4891c19d82133553a743f1b1330a76faa",
+      "ipfs_accelerate_py/agent_supervisor/git_environment.py": "b0d7d3f37d411d02391fb876ee6b3f9d92da1d896121d05e3218f7ef362dee87",
+      "ipfs_accelerate_py/agent_supervisor/merge/__init__.py": "e69b0078b66d97d7b489f97523477871c94853569eefdcad0256380d19051a5b",
+      "ipfs_accelerate_py/agent_supervisor/merge/checkout_lock.py": "8e0820ac71147059c76a81e1c0281e932e2c800838169f8392a89522c40ed87f",
+      "ipfs_accelerate_py/agent_supervisor/merge/quarantine_validation.py": "02b73107eb6f11749ddc62bab91c31ccb23148c7e715c4a37813452b86e72a22",
+      "ipfs_accelerate_py/agent_supervisor/merge/workspace_quarantine.py": "5a470ee8265f8d7b18daa44d2f0075569aaca287ff194a046823d6f576860b03",
+      "ipfs_accelerate_py/agent_supervisor/merge/worktree_lifecycle.py": "b7f8508b4b4b50d5bc259c186b55c4c6f87e938d99689a913383a8a35130249f",
+      "ipfs_accelerate_py/agent_supervisor/objectives/__init__.py": "61b58d42ede1324024a280e35c0772263496c42d917deeb82991455964db0c15",
+      "ipfs_accelerate_py/agent_supervisor/objectives/goal_completion.py": "906ae66f40556740e07c5d9d4e5ffe0003ab4dbf3509d2d95684e45ce07ba1d2",
+      "ipfs_accelerate_py/agent_supervisor/proof/__init__.py": "ae0ac8ba4b29666a7d527d7153b77869fd9a96b9e66b7a76e44273d663353b22",
+      "ipfs_accelerate_py/agent_supervisor/proof/formal_verification_contracts.py": "2fd9f10b07d778247d04889d9ca1f08bfddf5249aa2a800b689c80d454bcdbbd",
+      "ipfs_accelerate_py/agent_supervisor/rescue/__init__.py": "e8739a06f27803a3055de89f207f3ca63ee3c633e5be1f91a196e14b4d45f73c",
+      "ipfs_accelerate_py/agent_supervisor/rescue/canonical_writer_custody.py": "1d579269401e4679c6e7857b9a9028cf84feb5ce9078133e781042996f9178e6",
+      "ipfs_accelerate_py/agent_supervisor/rescue/fleet_repair.py": "92939162612d04dbeac757187dee125ec265b1ae729a44fc54817482be35f43b",
+      "ipfs_accelerate_py/agent_supervisor/rescue/fleet_watchdog.py": "78215da78f15122ce489eff402ce63a203cae2edeb97f3c9807f18812424592b",
+      "ipfs_accelerate_py/agent_supervisor/rescue/live_board_probe.py": "bb9a54894acb9d13f8f5349cda3d930b2b391b96a909deeb2d2fe690081a2f9b",
+      "ipfs_accelerate_py/agent_supervisor/rescue/native_executor_health.py": "490c1605f72c4a5e9aab3e80af28922aa2303458d2f03a8e5b3726a0f875f5e3",
+      "ipfs_accelerate_py/agent_supervisor/rescue/original_embedded_observation_owner.py": "b71139f7e18e3292555f887ad879e67bf4fb678921adccb8b92cf097c3b75c6c",
+      "ipfs_accelerate_py/agent_supervisor/rescue/recovery_policy.py": "094e7ebc8fd50c46e17ccda4269f41e7a57b5eafec641a9264063967569e90e1",
+      "ipfs_accelerate_py/agent_supervisor/rescue/repair_authorization.py": "2d4c53800afda64493e93ddcfdcce1f769e47da95723c4394520e7c244db7433",
+      "ipfs_accelerate_py/agent_supervisor/rescue/repair_candidate.py": "2b44a20f2f22794d0911c67ff30a51c136aca21520d5aea97dc48bbf1b5511ac",
+      "ipfs_accelerate_py/agent_supervisor/rescue/repair_candidate_owners.py": "8005334455bef73f8c8cc62a713d9f5b2b192d4c24c410d2e2fdf7d84ab23683",
+      "ipfs_accelerate_py/agent_supervisor/rescue/repair_candidate_runtime.py": "0f97cfc6a89ac11808b0696a1ef94308e9bfcd15e6ffbdc472dbf695b4b87e12",
+      "ipfs_accelerate_py/agent_supervisor/rescue/repair_validation_worker.py": "c6cd344c776e94bce694a195bd230cab5bfa4cdb8eb47b14933c4a18030583ce",
+      "ipfs_accelerate_py/agent_supervisor/rescue/scientific_executor.py": "e829538551f36894351e2c6019c31eebf782d0ac51b3663de080941d419ef752",
+      "ipfs_accelerate_py/agent_supervisor/rescue/systemd_heartbeat.py": "92bb60e1f67d33ac31cb53591decb95f0f6afa6639c267db6d2936723a2be5e1",
+      "ipfs_accelerate_py/agent_supervisor/runtime/__init__.py": "9e528fb4611c1c0d25646b85f751046c7de73ba5547e6a996572abe37ded0a64",
+      "ipfs_accelerate_py/agent_supervisor/runtime/configured_board_extension_cache.py": "30eb6e5cce5e759f9cf1bd63ad0c45687a358c9375c77e1fba03c795ca2af9f3",
+      "ipfs_accelerate_py/agent_supervisor/runtime/configured_board_extension_projection.py": "1ad67d3f10708310aaba666473c6d3c2bb4dcadad35cd7dd1917b32c30b526b6",
+      "ipfs_accelerate_py/agent_supervisor/runtime/event_log.py": "25c3f517ab96b5297d57a0b4744bb0f3b3d469be3086728a04ecba81d09e099b",
+      "ipfs_accelerate_py/agent_supervisor/self_improvement/__init__.py": "7096b272db0aee285a2e3c08197a00e4fd61827171e8f0ee57569f655529668e",
+      "ipfs_accelerate_py/agent_supervisor/self_improvement/self_improvement_completion.py": "4dcd01c5d444baa22a7e9589e2395b5970bbf7fd030ef6b94af101f3bb923947",
+      "ipfs_accelerate_py/agent_supervisor/self_improvement/supervisor_v2_contracts.py": "bfee62bc924026e448603386405ffc6525976e533cfded06068e33cd77a5942e",
+      "ipfs_accelerate_py/agent_supervisor/task_sources/__init__.py": "6e28d035a95ff5bdd2f42ca8639f1c8b8f8f4bddeb5bc1d23cbef304e4867947",
+      "ipfs_accelerate_py/agent_supervisor/task_sources/board_stall_watchdog.py": "ade282cb0c10d2b33d03a4e4444bd10ce26fcf58c410a863d80c8085b1189392",
+      "ipfs_accelerate_py/agent_supervisor/task_sources/control_plane_contracts.py": "ac1ea77073b7a8f8e009722e1c42dbe3e3ffe277cf01252413ca9a57ca724543",
+      "ipfs_accelerate_py/agent_supervisor/task_sources/control_plane_migrations.py": "467cb69e2cbeaead3dd39b3c46d175b6587f7370daf9e4200cb9113b302a5a8e",
+      "ipfs_accelerate_py/agent_supervisor/task_sources/control_plane_schema.py": "a06d0b6a927836aca3b06fd4efcab73054bd308c61822337670e3dc4c1dda358",
+      "ipfs_accelerate_py/agent_supervisor/task_sources/duckdb_state.py": "cfdc98e25c08e9203189d8e9540be5e75827b9a39927ec46b036307dc0fea0b6",
+      "ipfs_accelerate_py/agent_supervisor/task_sources/intent_repository.py": "76bc54642770a24a16e15796f79f6c43dffe4ab2fd680a3250f6395719519c05",
+      "ipfs_accelerate_py/agent_supervisor/task_sources/quack_owner_command.py": "7971d6b6444e7fd51d0a1f10b681419c0a4669d014fc3e4481d892f2419d9e8d",
+      "ipfs_accelerate_py/agent_supervisor/task_sources/quack_owner_mutation.py": "ae75f139b95951a5f9f015ac8e913a89dad7350c8cc99147aceae477902bce61",
+      "ipfs_accelerate_py/agent_supervisor/task_sources/task_identity.py": "4168c617ba079ca8fbeb2346931d4c7fcfb6516a09e5ddc7079434fb3541654e",
+      "ipfs_accelerate_py/agent_supervisor/todo_daemon/__init__.py": "1ecefe081ff5a74d55fcf44a268cf4f690eb88364e627211e80f24d2a5fe4317",
+      "ipfs_accelerate_py/agent_supervisor/todo_daemon/app.py": "0b42261fc05b96a49d0633dea6dffc76ab494262b7222d9e3691b9de81cedbf1",
+      "ipfs_accelerate_py/agent_supervisor/todo_daemon/artifacts.py": "dc155777f3cc8aafa02b41c3035beddc7c9bf79fdd535594bc56d12bcddfc3ab",
+      "ipfs_accelerate_py/agent_supervisor/todo_daemon/auto_commit.py": "5a1403d68b4def1a2e41d2cb01b3753d70b280d207b8367d2d71a23dfbb2f853",
+      "ipfs_accelerate_py/agent_supervisor/todo_daemon/cli.py": "bbed0729d1ac3f42220c94627f012e6863ccb708c76d9029b918a05f4db86806",
+      "ipfs_accelerate_py/agent_supervisor/todo_daemon/context.py": "1730598f1066142afa781ac562156fba1fb2732e9900404762ba7592715a59e6",
+      "ipfs_accelerate_py/agent_supervisor/todo_daemon/core.py": "0b54ca9a9bc630d2a9873027312dc4ac55863afadc7de0492b9e311eb1350157",
+      "ipfs_accelerate_py/agent_supervisor/todo_daemon/deterministic_fallback.py": "ee551a2ebd6cc2ca2367d48d5ace4fbc1e34108c65e56e754072e649f86caf64",
+      "ipfs_accelerate_py/agent_supervisor/todo_daemon/diagnostics.py": "100a532edb293c3f4eafc9b12b06fc8b8841ab5644b99f76bde67b95020fe8a5",
+      "ipfs_accelerate_py/agent_supervisor/todo_daemon/engine.py": "e6e3e5fc0906cd312e305f46d5c7b12f48c726855561f28991de62ebee759b30",
+      "ipfs_accelerate_py/agent_supervisor/todo_daemon/file_replacement.py": "60b298934a5c5ac74b35cd98251ff0fe8ca2d4d1ddf2656964bff688fa8664c5",
+      "ipfs_accelerate_py/agent_supervisor/todo_daemon/git_utils.py": "3f5cccfc0f3d9792c1b4c9468fd111d32a30ef68d3ced71cfc9cabdc433777cc",
+      "ipfs_accelerate_py/agent_supervisor/todo_daemon/history.py": "4e5095db6453de8d7c30bec1fcbd44fc85353251c391605521287546b8db9b1d",
+      "ipfs_accelerate_py/agent_supervisor/todo_daemon/lifecycle_wrapper.py": "28416d1d1d14a33b930613747fb8296a988ab92ca42433bca741910bd0af6183",
+      "ipfs_accelerate_py/agent_supervisor/todo_daemon/llm.py": "4aadb9d8d88581450ea9c48897d3c673e8af2c52b5bfad4a7b7e80dcb14e6b37",
+      "ipfs_accelerate_py/agent_supervisor/todo_daemon/llm_defaults.py": "be8a55f21bcce275e680a86ccf30c3746446cafa61523af7c0e112356ef4f795",
+      "ipfs_accelerate_py/agent_supervisor/todo_daemon/plans.py": "47ea8d281d1764746d2fc573bb49014abaee059c377fb54471ce8bbb7fc16542",
+      "ipfs_accelerate_py/agent_supervisor/todo_daemon/registry.py": "9149bf4dd6bac00fff46c19cc1ba32096f31bff54e898968d1e5d8e44cb89d80",
+      "ipfs_accelerate_py/agent_supervisor/todo_daemon/runner.py": "ea45d74ef0883c8542fc48fd06eb07e87c7667496eaad0aab07ceec567638183",
+      "ipfs_accelerate_py/agent_supervisor/todo_daemon/specs.py": "59f16dca18393d91dc9a5157fbad4029eab0f88335bbdb29b19aa0c5d8b921fd",
+      "ipfs_accelerate_py/agent_supervisor/todo_daemon/status.py": "8e62923ee28cab765e4243b2924c7849a05552e8a20f9e2fcdc827863a59c577",
+      "ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor.py": "c04386e092947e52cc408c051f0f67ecd740d60d717da4f8390907900e3381e1",
+      "ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor_loop.py": "350e33ddbf94649c23a2408fb14cd2539f3ddd014e01e0b2146cce2c700e5221",
+      "ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor_runtime.py": "27338dca395f4e7f8c6b6f41fe45a5e68e3a395f9d34dec080abc4f6329cb1ec",
+      "ipfs_accelerate_py/agent_supervisor/todo_daemon/task_board.py": "b68b256834397a6de667999a0ef6b6f0d547883d13d0259a4b2dead5790616c1",
+      "ipfs_accelerate_py/agent_supervisor/todo_daemon/typescript.py": "d0638c9ff134da1147f91decb756294530c488dd41e3c5e24a45647d5f8fd397",
+      "ipfs_accelerate_py/agent_supervisor/todo_daemon/worktrees.py": "bbd2c82edbd7f1127a2cb4c79d32e2bc4e16238975a9d054bcaf614e0493ac9e",
+      "ipfs_accelerate_py/agent_supervisor/todo_daemon/wrapper.py": "ceadcb203f6aecff9d8a51175de56c3c6d84efe865a1722604a06f479cf71dd3",
+      "ipfs_accelerate_py/agent_supervisor/validation/__init__.py": "180c80111b96e994927a652feb56cb1afed046eb83130ed0d7fcbdd6cf455779",
+      "ipfs_accelerate_py/agent_supervisor/validation/validation_commands.py": "8c5d7316c0e706dd469422f69f157f990a356c361af0039bdc75b2d591f7ec3b",
+      "ipfs_accelerate_py/agent_supervisor/validation/validation_runtime.py": "8e70bc6ca4c58954baa2327abf39a91b2fd827039d1117ae6f455c964496f3ec",
+      "scripts/__init__.py": "07b19b94677e5ca1a8c409c2687292a807e4c6925d9ae989ca4ad80c175576c3",
+      "scripts/ops/agent_supervisor/install_fleet_watchdog.py": "a06abdf50ec51fd23f14b06ad3a1c959deadf35020fa150711a86f1c82f97c81",
+      "test/api/test_agent_supervisor_fleet_repair.py": "0aa60f64ec4a03f11a84b7a467d93c6e1f033d25a1690df632779cb032b73d3e",
+      "test/api/test_agent_supervisor_productive_owner_v3.py": "d2c962bfa59dd1a56f05a8dd0e2d31bfbf38d03d3ef53a0aa54fc9800194d65b",
+      "test/api/test_agent_supervisor_repair_candidate_runtime.py": "31219936e0efe9ff37ca02d32b3a34cf1dbfe228464da60601725bd3c99a5c25",
+      "test/api/test_agent_supervisor_scientific_executor.py": "11288683ee785a06f4120d312042dbe165c665706e720d5799febb1b3745e1d2",
+      "test/api/test_agent_supervisor_validation_source_retry.py": "f47f474fa97af9f095ddd16fd489bd13b5072d79227e2afb9532a08480a7943a",
+      "test/api/test_board_stall_watchdog.py": "17bc421c47d8d1bec3b85120a10303f4f2577d612e013f598e0bc82fef088973",
+      "tests/unit/agent_supervisor/test_scientific_closed_capacity_continuation.py": "5f121714d360c5fdef21ef4a96bb341874129b21adbcd9b478f91d5173eb53a8"
+    },
+    "datasets": {
+      "ipfs_datasets_py/__init__.py": "f258f8eada774251feacd8e2ee2048efe56c89a8ee88efd50e4271ea41d43dc9",
+      "ipfs_datasets_py/ipfs_backend_router.py": "d57898ceb7a5be0d8776f81ecb08cf96144afa03f55090d5f33b41baed3e8b0d",
+      "ipfs_datasets_py/logic/__init__.py": "f25a9702ddc282092dbae1bc1731afdcc35576c10745487dccedaa531ccc9e79",
+      "ipfs_datasets_py/logic/backends/process.py": "4434f571e209c17165aa3ea941001bbeaad3efc10957a8dfe9c183f7531b44b6",
+      "ipfs_datasets_py/optimizers/__init__.py": "a12bab3724da07be67b447719ace42fc1f480cb5635581f320a99a372f02f450",
+      "ipfs_datasets_py/optimizers/logic_theorem_optimizer/__init__.py": "9d693fa576f00dc36899faad75ef3044c437e2bfec5c62306f7031236725bb0e",
+      "ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_daemon_resources.py": "3d1086df85ca33394c71f848e6bb45f954d369d2e977b9b73df92941f9ff4075",
+      "ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_external_resource_recovery.py": "239c9355cc1fe4396edee7a126e85194d45be960e43d0966bb99de8afbc27cff",
+      "ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_resource_recovery.py": "76a4fc7606ef8a5bfc25bf14432543f57f52ce533ec85dc688b2ce66fc3b5888",
+      "ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_source_lease.py": "42e9f07d0d458177079269d9f495f0b70512180c1adc2f7fe0bfdb05518a12f9",
+      "ipfs_datasets_py/optimizers/logic_theorem_optimizer/existing_resource_scheduler.py": "d654ab5ed2fec314ea5ac07a662784ab20843b0b2feb56f13989ce1504607776",
+      "ipfs_datasets_py/optimizers/logic_theorem_optimizer/parented_phase_resources.py": "4a9406233f57deb8322bd30836c4360f8163f313939a9420f354d6e183a9fb61",
+      "ipfs_datasets_py/optimizers/logic_theorem_optimizer/proof_resource_safety.py": "3655923785cb99409171caaba8c523354f03dbe8d82b6deb45a7b46db8394633",
+      "ipfs_datasets_py/optimizers/logic_theorem_optimizer/resource_scheduler.py": "2c00683202b4a783b5050329caa24a411f83788010baba86d9380123bae7d083",
+      "ipfs_datasets_py/optimizers/logic_theorem_optimizer/runtime_telemetry.py": "542f705867b93fcb138a117e1f5c97a144ad6635dc92c37bc5034eee5065ef63",
+      "ipfs_datasets_py/optimizers/logic_theorem_optimizer/validation_pytest.py": "c19ab1470d0a1638635dc796e7ed60cc515181c79bc75f8ca89ad74af59a51e1",
+      "ipfs_datasets_py/optimizers/logic_theorem_optimizer/validation_run_resources.py": "860d25af0ab629c48bb7a2c7356c7690c09fdfe81b53777777c0a41384f1b293",
+      "ipfs_datasets_py/router_deps.py": "56f66dfff183d9d0ee7977a314c49adbaa181e6fe0087c8f1c581a7d2973bf4c",
+      "scripts/__init__.py": "8bae0240c318680619db09765fadb6f8159d857d1ade30d030148a24da0c585e",
+      "scripts/ops/__init__.py": "4c9d3c43d6e3f9cf1ef247346a713679a5a93f3c4c47345ad8e2780983132a5a",
+      "scripts/ops/legal_ir/__init__.py": "f01f69ade8a699c97cfcad8ba04a79fab4b219f4ac39e3b5a47b0d4a8a4426c5",
+      "scripts/ops/legal_ir/run_owned_validation.py": "7b9d9f35779629bbca252c6da4ee83681e9c9b0845e9db5ced51ae4bd04c2fb6"
+    }
+  },
+  "changes": [
+    "Recheck unchanged blocked dependency signatures after 120 monotonic seconds, retaining repair deduplication and operator holds.",
+    "Preserve original validation process wait on ledger-busy success/failure terminals and later verifier refusal; unknown exits cannot replay or produce success."
+  ],
+  "historical_qualification": {
+    "cases": 34,
+    "earlier_failures_retained": true,
+    "not_additive_with_current_cases": true,
+    "sha256": "7c401ddd4e071747d6b72195a2aba8da19c8ec4880c69e58f33bf3188323cc84"
+  },
+  "limits": [
+    "34 freshcases overlap the old34; do not sum as68 independentcases.",
+    "Native closure refers to real VALIDATION resource custody, not Lean/prover proof.",
+    "Selected tests contain modeled owner/process/recovery frames and finite public helper processes; this does not establish live service recovery or full failed-parent adoption.",
+    "A34 targets qualified under current122 source pins. Other dirtyA/R work remains separately scoped.",
+    "Current selected software checks are not whole-repository or hosted CI qualification.",
+    "No service activation, approval, new retry budget, source adoption, statutory review, model training/inference or native Lean proof is established.",
+    "Private archives and model checkpoints remain on hold."
+  ],
+  "model_or_private_assets_published": false,
+  "original_parent_sha256": "2c664d7ae3ddfb202342d472c904e0328449830970dbfd1964efeeba79403acb",
+  "permission_or_budget_reset": false,
+  "qualification": {
+    "current_source_drift": [],
+    "initial_acceptance_seconds": 420,
+    "junit": {
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "tests": 34
+    },
+    "original_custody_closed": true,
+    "original_parent_elapsed_seconds": 159.1832269569859,
+    "original_tool_exit_code": 0,
+    "original_tool_handle": 31418,
+    "original_tool_terminal_chunk": "b3e39f",
+    "own_storage_bytes": 67108864,
+    "own_storage_released_durably": true,
+    "productive_seconds": 300,
+    "retained_runtime_cases": 20,
+    "source_pin_count": 122,
+    "watchdog_cases": 14
+  },
+  "qualified_source_sha256": {
+    "ipfs_accelerate_py/agent_supervisor/rescue/repair_candidate_runtime.py": "0f97cfc6a89ac11808b0696a1ef94308e9bfcd15e6ffbdc472dbf695b4b87e12",
+    "ipfs_accelerate_py/agent_supervisor/task_sources/board_stall_watchdog.py": "ade282cb0c10d2b33d03a4e4444bd10ce26fcf58c410a863d80c8085b1189392",
+    "test/api/test_agent_supervisor_repair_candidate_runtime.py": "31219936e0efe9ff37ca02d32b3a34cf1dbfe228464da60601725bd3c99a5c25",
+    "test/api/test_board_stall_watchdog.py": "17bc421c47d8d1bec3b85120a10303f4f2577d612e013f598e0bc82fef088973"
+  },
+  "recorded_at_utc": "2026-11-15T02:40:36Z",
+  "request_sha256": "9c4f80db10e589a5add22a24b6148b9edf8f82c82f0cd46955c9c2418ccaac0c",
+  "schema": "legal-ir-stall-recheck-original-wait-source-qualification/v1",
+  "source_qualification_sha256": "6151839e8a477813ddf88b366e9311fab7b3308482b774e47b8e94641637141e"
+}

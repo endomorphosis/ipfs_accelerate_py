@@ -1,0 +1,26 @@
+[Unit]
+Description=LegalIR implementation supervisor lane 3 of 4
+PartOf=legal-ir-autoencoder-v1-workers.target
+StartLimitIntervalSec=900
+StartLimitBurst=8
+
+[Service]
+Type=simple
+WorkingDirectory=/home/barberb/lift_coding/.worktrees/legal-ir-autoencoder-v1
+Environment=PYTHONPATH=/home/barberb/lift_coding/external/ipfs_accelerate
+Environment=IPFS_DATASETS_PY_MINIMAL_IMPORTS=1
+Environment=IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER=grok
+Environment=PYTHONUNBUFFERED=1
+EnvironmentFile=/home/barberb/lift_coding/external/ipfs_accelerate/config/legal_ir_autoencoder_provider.env
+Environment=IPFS_ACCELERATE_AGENT_VALIDATION_PATH=/opt/ipfs-accelerate/formal-toolchains/fvt083-20260801-01/lean-v4.31.0/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+Environment=IPFS_ACCELERATE_AGENT_REQUIRE_PROVIDER_TASK_CONTRACT=1
+Environment=IPFS_ACCELERATE_AGENT_VALIDATION_PYTHONPATH=/opt/ipfs-accelerate-legal-validation-7ffe92439767/site-packages
+ExecStart="/usr/bin/python3" "-m" "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor" "--todo-path" "/home/barberb/lift_coding/.worktrees/legal-ir-autoencoder-v1/ipfs_datasets_py/logic/autoformal/LIRAE-TODO.md" "--task-prefix" "## LIRAE-" "--board-namespace" "legal-ir-autoencoder-v1" "--task-source-kind" "legacy-markdown" "--authority-mode" "legacy_markdown" "--explicit-legacy-task-source" "--state-dir" "/home/barberb/lift_coding/.worktrees/legal-ir-autoencoder-v1/data/legal-ir-autoencoder-v1/state/lane-3" "--state-prefix" "lirae_lane_3" "--implement" "--merge-target-branch" "legal-ir-plaintext-definition-landing" "--merge-queue-dir" "/home/barberb/lift_coding/.worktrees/legal-ir-autoencoder-v1/data/legal-ir-autoencoder-v1/merge-queue" "--worktree-root" "/home/barberb/lift_coding/.worktrees/legal-ir-autoencoder-v1/data/legal-ir-autoencoder-v1/worktrees-lane-3" "--stale-seconds" "600" "--check-interval" "20" "--daemon-interval" "30" "--watchdog-startup-grace-seconds" "300" "--max-restarts" "8" "--max-task-attempts" "4" "--implementation-timeout" "1800" "--implementation-max-timeout" "3600" "--implementation-log-stall-seconds" "300" "--implementation-retry-budget" "3" "--validation-retry-budget" "3" "--merge-retry-budget" "3" "--no-objective-task-janitor" "--no-objective-goal-completion-reconcile" "--no-objective-goal-migration" "--log-level" "INFO" "--task-shard-count" "4" "--task-shard-index" "3" "--strict-task-sharding" "--implementation-protected-path" "ipfs_datasets_py/logic/autoformal/LIRAE-TODO.md" "--implementation-protected-path" "ipfs_datasets_py/logic/autoformal/legal_ir_autoencoder_supervisor_plan.json" "--implementation-protected-path" "scripts/ops/legal_ir/legal_ir_supervisor_contract.py" "--implementation-protected-path" "docs/implementation/reports/evidence/legal_ir_autoencoder/inputs/constitution.txt" "--implementation-protected-path" "tests/unit/logic/test_legal_ir_supervisor_contract.py" "--implementation-protected-path" "scripts/ops/legal_ir/materialize_legal_ir_inventory.py" "--implementation-protected-path" "tests/unit/logic/test_legal_ir_inventory_materializer.py" "--implementation-protected-path" "tests/unit/logic/test_legal_ir_contract_zip_payload.py" "--implementation-protected-path" "tests/unit/logic/test_legal_ir_local_inventory_routing.py" "--implementation-protected-path" "tests/unit/logic/test_legal_ir_width_replay_gate.py" "--implementation-protected-path" "scripts/ops/legal_ir/plan_constitution_ancillary.py" "--implementation-protected-path" "tests/unit/logic/test_constitution_ancillary_contract.py" "--implementation-protected-path" "scripts/ops/legal_ir/replay_born_alive_width.py" "--implementation-protected-path" "tests/unit/logic/test_born_alive_width_replay_contract.py" "--implementation-protected-path" "tests/unit/logic/test_born_alive_width_replay_owner.py"
+Restart=always
+RestartSec=30
+KillMode=control-group
+TimeoutStopSec=45
+UMask=0077
+
+[Install]
+WantedBy=default.target

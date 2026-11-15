@@ -1,0 +1,9 @@
+{
+  "base_commit": "3a7ec1c97be93dab918f005c93a9bbdb42409512",
+  "files": {
+    "benchmarks/agent_supervisor/container_coding/terminal_context_audit.py": "cf1fb606552145698976a5b6cbfbe064f4c81367a39a1dce882b83491908bf24",
+    "test/api/test_doctor_candidate_dispatch.py": "dddf403737d86b79ef0025d4a946564548f57ad3dbcaab4977b250be64cb369b",
+    "test/api/test_doctor_router_budget_capability.py": "d1234e6bc7762a43393fad92ffffcfdd897abc934b225941c9e0ec3fcb7731d8",
+    "test/api/test_grok_coding_turn_bound.py": "02da81f059d8db57c8f24e623642d3dcf199f9c8ea6813bdc6356e465c8a2474"
+  }
+}

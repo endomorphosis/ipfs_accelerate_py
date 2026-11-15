@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="1" failures="1" skipped="0" tests="2" time="59.020" timestamp="2026-10-14T20:20:32.118518+00:00" hostname="spark-b271"><testcase classname="api.test_doctor_candidate_dispatch" name="test_two_native_router_children_and_late_doctor_preflight[secret_analysis-False-grok8-late-worker]" time="40.977"><failure message="AssertionError: Traceback (most recent call last):&#10;    File &quot;&lt;string&gt;&quot;, line 85, in &lt;module&gt;&#10;    File &quot;/home/barberb/lift_coding/.worktrees/supervisor-doctor-repaired-results-20261014/ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py&quot;, line 743, in run&#10;      candidate_receipt = _candidate_dispatch_observation(prompt=prompt,&#10;                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^&#10;    File &quot;/home/barberb/lift_coding/.worktrees/supervisor-doctor-repaired-results-20261014/ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py&quot;, line 495, in _candidate_dispatch_observation&#10;      return validate_candidate_dispatch_context(prompt=prompt, repository=repository,&#10;             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^&#10;    File &quot;/home/barberb/lift_coding/.worktrees/supervisor-doctor-repaired-results-20261014/ipfs_accelerate_py/agent_supervisor/runtime/candidate_dispatch_context.py&quot;, line 268, in validate_candidate_dispatch_context&#10;      _need(type(issued) is int and type(expires) is int and 0 &lt; expires-issued &lt;= MAX_LIFETIME_NS&#10;    File &quot;/home/barberb/lift_coding/.worktrees/supervisor-doctor-repaired-results-20261014/ipfs_accelerate_py/agent_supervisor/runtime/candidate_dispatch_context.py&quot;, line 40, in _need&#10;      raise ValueError(reason)&#10;  ValueError: candidate handoff expired or exceeds original deadline&#10;  &#10;assert 1 == 0">test/api/test_doctor_candidate_dispatch.py:318: in test_two_native_router_children_and_late_doctor_preflight
+    assert code == (9 if drift else 0), error_path.read_text()[-12000:]
+E   AssertionError: Traceback (most recent call last):
+E       File "&lt;string&gt;", line 85, in &lt;module&gt;
+E       File "/home/barberb/lift_coding/.worktrees/supervisor-doctor-repaired-results-20261014/ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py", line 743, in run
+E         candidate_receipt = _candidate_dispatch_observation(prompt=prompt,
+E                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       File "/home/barberb/lift_coding/.worktrees/supervisor-doctor-repaired-results-20261014/ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py", line 495, in _candidate_dispatch_observation
+E         return validate_candidate_dispatch_context(prompt=prompt, repository=repository,
+E                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       File "/home/barberb/lift_coding/.worktrees/supervisor-doctor-repaired-results-20261014/ipfs_accelerate_py/agent_supervisor/runtime/candidate_dispatch_context.py", line 268, in validate_candidate_dispatch_context
+E         _need(type(issued) is int and type(expires) is int and 0 &lt; expires-issued &lt;= MAX_LIFETIME_NS
+E       File "/home/barberb/lift_coding/.worktrees/supervisor-doctor-repaired-results-20261014/ipfs_accelerate_py/agent_supervisor/runtime/candidate_dispatch_context.py", line 40, in _need
+E         raise ValueError(reason)
+E     ValueError: candidate handoff expired or exceeds original deadline
+E     
+E   assert 1 == 0</failure></testcase><testcase classname="api.test_doctor_candidate_dispatch" name="test_two_native_router_children_and_late_doctor_preflight[secret_analysis-False-grok8-late-worker]" time="0.127"><error message="failed on teardown with &quot;ValueError: waited candidate still requires isolated owner retirement&quot;">test/api/test_doctor_candidate_dispatch.py:226: in doctor_dispatch_case
+    prepared.close()
+ipfs_accelerate_py/agent_supervisor/runtime/owner_candidate_dispatch.py:593: in close
+    raise ValueError("waited candidate still requires isolated owner retirement")
+E   ValueError: waited candidate still requires isolated owner retirement</error></testcase></testsuite></testsuites>

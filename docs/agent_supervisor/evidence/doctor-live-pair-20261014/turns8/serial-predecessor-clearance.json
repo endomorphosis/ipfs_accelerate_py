@@ -1,0 +1,31 @@
+{
+  "schema": "doctor-turns8-serial-predecessor-clearance@1",
+  "execute_result": {
+    "path": "/home/barberb/lift_coding/artifacts/doctor-dispatch-live-20261014/execute-result.json",
+    "bytes": 536,
+    "sha256": "defc20c6d90d47731a251c84198bc6001e352e3796a44999022ab2990d341300"
+  },
+  "collect_result": {
+    "path": "/home/barberb/lift_coding/artifacts/doctor-dispatch-live-20261014/collect-result.json",
+    "bytes": 537,
+    "sha256": "a44ed1918044a9838450d81440e9431969a9f94bd283dfc29971bc50852b9b92"
+  },
+  "receipt": {
+    "path": "/home/barberb/lift_coding/artifacts/doctor-dispatch-live-20261014/live-trials/grok-two-attempts-01/receipt.json",
+    "bytes": 199450,
+    "sha256": "717dbfbf1b91f4e65c57d649f222f4ab7d521a732e5bad3d87f7efb402bea2bb"
+  },
+  "container_cleanup_observed": true,
+  "remaining_trial_container_ids": [],
+  "observed_after_collect": true,
+  "observed_at": "2026-10-14T19:36:11.225725+00:00",
+  "observation_command": [
+    "docker",
+    "ps",
+    "-a",
+    "--filter",
+    "name=^/largest-eigenval__w9idfmd__env-main-1$",
+    "--format",
+    "{{.ID}}"
+  ]
+}

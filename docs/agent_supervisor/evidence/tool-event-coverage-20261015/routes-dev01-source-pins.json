@@ -1,0 +1,14 @@
+{
+  "base_commit": "d0690f8454d0126d7cff6a1d99975ca252110d4f",
+  "files": {
+    "benchmarks/agent_supervisor/container_coding/benchmark_comparison.py": "66391e9c9735fb65937ed15bda07c21e80dc2a0bc09b3e3be9f32a9752227ef6",
+    "benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py": "6746da40da37392bc76b865d71b36c44f18e8e545fc30ff20c690df89bbc64c2",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_worker_capability.py": "5690bf5ff65b56de469bfc2fd3a4c249eb4c68a4d1837df6389954a2d6cc709a",
+    "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py": "73bc9d510f202e28a12631bc1b079feeb483a538b9c2c4e23a1c741fbb72b927",
+    "ipfs_accelerate_py/cli_runtime/grok_stream_capture.py": "72d38f903b4b73ab076ee74c55d37be951f62faf55d5216b51c2a9ea86efbeb0",
+    "ipfs_accelerate_py/cli_runtime/grok_tool_events.py": "15d661ce6ba3acd7ec12aaa3a431cfd739806c28f664e4ff9513ca369bf12f83",
+    "ipfs_accelerate_py/llm_router.py": "13fb5b1815662b9edf50761826d291504534629b578bdea84feee0fe85347bde",
+    "test/api/test_grok_stream_router.py": "399db826ea5e483c501b989c4785b1a3075a561127c326490797fe661f7f2000",
+    "test/api/test_router_implementation_runner.py": "a53068326a777c743b1b00b51b9f7e983d3ab8ba42400e64ebf4ad452c91086f"
+  }
+}

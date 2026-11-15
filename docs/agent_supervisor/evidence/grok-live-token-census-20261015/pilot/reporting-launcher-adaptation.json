@@ -1,0 +1,10 @@
+{
+  "schema": "additive-reporting-launcher-adaptation@1",
+  "before_sha256": "bad181e2b262445853f95392289952ed243229d2df9d26015662e54930d929bb",
+  "after_sha256": "e1904a9213f1810fd3d721422fee1106a5b82bc51a783d1588838ccb50905951",
+  "changes": [
+    "Bind reporting-freeze-v2.json at source freeze and live launch"
+  ],
+  "runtime_or_provider_controls_changed": false,
+  "benchmark_steps_run": 0
+}

@@ -1,0 +1,27 @@
+{
+  "all_frozen_inputs_unchanged": true,
+  "checked_utc": "2026-10-15T05:43:55.040726+00:00",
+  "free_bytes": 126958620672,
+  "minimum_free_bytes": 34359738368,
+  "provider_calls": 0,
+  "public_input_and_asset_bindings_checked": 21,
+  "recipe_binding_checked": true,
+  "roots": {
+    "datasets": {
+      "commit": "28b9ef1f0b9da51e87b1e68ee565b43681397109",
+      "unchanged": true
+    },
+    "kit": {
+      "commit": "8ac00bb1974b1378e12091d546d8425af34049e0",
+      "unchanged": true
+    },
+    "source": {
+      "commit": "19dbb524c80d6fdfedd5ce15e696cbf911eed8c1",
+      "unchanged": true
+    }
+  },
+  "schema": "terminal-pack-view-final-freeze-check@1",
+  "script_and_manifest_bindings_checked": 11,
+  "source_freeze_sha256": "5928a447fc96f0a02573dfc732ef5977bf9a7fe20da77add660f2a956eb9b5cb",
+  "source_qualification_file_count": 14
+}

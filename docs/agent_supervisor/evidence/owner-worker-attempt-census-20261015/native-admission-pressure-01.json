@@ -1,0 +1,45 @@
+{
+  "schema": "retained-native-admission-observation@1",
+  "policy_sha256": "f07cb14289fcb6275e4497dcc36be0dcf8bfc3dc87531ff7a9537eb85fdcc661",
+  "last_native_refusal": {
+    "backoff_until": 1792083161.9289775,
+    "decision_cycle_at": 1792083159.9289775,
+    "demand": {
+      "additional_memory_mb": 2048,
+      "additional_process_slots": 3,
+      "pid_tasks_required": 80,
+      "root_reserved_memory_mb": 0,
+      "root_reserved_process_slots": 0
+    },
+    "error_type": null,
+    "gate": "envelope",
+    "historical": true,
+    "lane": "validation",
+    "parent_lease_id": null,
+    "proof_memory_headroom_mb": 24922,
+    "reason": "proof_cpu_stall",
+    "request_id": "world-packet-replay-qualification:owner-census-collector-v01",
+    "sample": {
+      "available_memory_mb": 108611,
+      "available_pid_tasks": 336293,
+      "cpu_slots": 20,
+      "cpu_stall_percent": 52.15,
+      "io_stall_percent": 0.05,
+      "memory_stall_percent": 0.0,
+      "pid_task_limit": 337808,
+      "total_memory_mb": 124610
+    },
+    "sample_contract": "max-host-visible-cgroup-avg10; memory/full,cpu/some,io/full; optional-psi-zero-fallback",
+    "schema": "proof-resource-admission-refusal@1",
+    "sequence": 3077,
+    "thresholds": {
+      "cpu_stall_percent": 50.0,
+      "io_stall_percent": 10.0,
+      "memory_stall_percent": 2.0
+    },
+    "waiter_id": "767b6940c4fa4997abe07d963dee4231"
+  },
+  "active_leases": 0,
+  "pending_requests": 0,
+  "owner_reconfigured": false
+}

@@ -1,0 +1,496 @@
+{
+  "artifact_root": "/home/barberb/lift_coding/artifacts/doctor-dispatch-20261014",
+  "base_commit": "28ece422052f041e4388c5b8a9883db0072c38e6",
+  "coding_policy": {
+    "max_child_attempts": 2,
+    "max_outer_router_calls": 2,
+    "no_serialized_admission_reload": true,
+    "original_deadline_preserved": true,
+    "policy_id": "doctor-coding-two-attempts@1",
+    "provider_internal_calls_bounded": false,
+    "token_and_cost_limits_enforced": false
+  },
+  "development_history": [
+    {
+      "counts": {
+        "error": 4,
+        "passed": 56
+      },
+      "dependencies_unchanged": true,
+      "exit_code": 1,
+      "label": "doctor-audit-01",
+      "note": "Four native Doctor fixtures hit the same missing multiformats dependency; 56 existing tests passed. Other source edits occurred during parallel development.",
+      "result_sha256": "bd318e1addf2b03695482c5bb3cc88073cbd5bc1c4ab8836def2530b0cdd1ced",
+      "seconds": 242.0459596979199,
+      "source_pins_unchanged": false
+    },
+    {
+      "counts": {
+        "passed": 49
+      },
+      "dependencies_unchanged": true,
+      "exit_code": 0,
+      "label": "doctor-audit-02",
+      "note": "Focused development qualification; final frozen suites supersede its source state.",
+      "result_sha256": "e22e97dfb24d2305f35694507634461d5e885fac350c776501609346319fbf5e",
+      "seconds": 166.52130368899088,
+      "source_pins_unchanged": false
+    },
+    {
+      "counts": {
+        "error": 1
+      },
+      "dependencies_unchanged": true,
+      "exit_code": 2,
+      "label": "doctor-benchmark-01",
+      "note": "New test module used relative imports incompatible with this pytest collection layout; corrected to absolute imports.",
+      "result_sha256": "1e278b69d1cc5f561072fe08f3e9b0283ef1e63c398789279533a72344845ccf",
+      "seconds": 48.462846381007694,
+      "source_pins_unchanged": true
+    },
+    {
+      "counts": {
+        "failed": 3,
+        "passed": 265
+      },
+      "dependencies_unchanged": true,
+      "exit_code": 1,
+      "label": "doctor-benchmark-02",
+      "note": "Corrected three fixture expectations: add pinned CLI metadata to dry preparation and preserve unknown usage for mocked provider-free routes lacking a materialization receipt.",
+      "result_sha256": "0e4a3845e9d20fda52fbad6219f947dbd19d25ca89e1776280602da5c2cb3f85",
+      "seconds": 81.38454296696,
+      "source_pins_unchanged": true
+    },
+    {
+      "counts": {
+        "passed": 191
+      },
+      "dependencies_unchanged": true,
+      "exit_code": 0,
+      "label": "doctor-benchmark-03",
+      "note": "Focused development qualification; final frozen suites supersede its source state.",
+      "result_sha256": "4a5ea441d7b4ef0c0e62e0f3976b9117369dda643ccf9248af99f97b48eb7e1b",
+      "seconds": 55.66347015101928,
+      "source_pins_unchanged": false
+    },
+    {
+      "counts": {
+        "passed": 291
+      },
+      "dependencies_unchanged": true,
+      "exit_code": 0,
+      "label": "doctor-benchmark-04",
+      "note": "Focused development qualification; final frozen suites supersede its source state.",
+      "result_sha256": "ad53d80f0f1111cb2af93962a26bd8accc79b5986d99db53576bdd98c94f4c9d",
+      "seconds": 5.3486662990180776,
+      "source_pins_unchanged": true
+    },
+    {
+      "counts": {
+        "passed": 284
+      },
+      "dependencies_unchanged": true,
+      "exit_code": 0,
+      "label": "doctor-benchmark-05",
+      "note": "Focused development qualification; final frozen suites supersede its source state.",
+      "result_sha256": "b93e77db7e827bd3dce7efa0440e50c81d73e21a88d04f330f1bf109ddbb9032",
+      "seconds": 3.899179037893191,
+      "source_pins_unchanged": true
+    },
+    {
+      "counts": {
+        "passed": 77
+      },
+      "dependencies_unchanged": true,
+      "exit_code": 0,
+      "label": "doctor-owner-prep-01",
+      "note": "Focused development qualification; final frozen suites supersede its source state.",
+      "result_sha256": "87b920674684c22e1be786b91e5bf417edb603de490301b8990210901b01567f",
+      "seconds": 181.79592361592222,
+      "source_pins_unchanged": false
+    },
+    {
+      "counts": {
+        "passed": 61
+      },
+      "dependencies_unchanged": true,
+      "exit_code": 0,
+      "label": "doctor-owner-prep-02",
+      "note": "Focused development qualification; final frozen suites supersede its source state.",
+      "result_sha256": "bed1c1579acc4c6bfeced44faa6b02a4fcb65e03dd508c26ac02a778b078b0d4",
+      "seconds": 345.2976467779372,
+      "source_pins_unchanged": false
+    },
+    {
+      "counts": {
+        "passed": 21
+      },
+      "dependencies_unchanged": true,
+      "exit_code": 0,
+      "label": "doctor-owner-prep-03",
+      "note": "Focused development qualification; final frozen suites supersede its source state.",
+      "result_sha256": "79cd537d677601fa08452ffa14fb98887eef8dd30259f2b43e42f1627a26ed99",
+      "seconds": 164.24564420396928,
+      "source_pins_unchanged": false
+    },
+    {
+      "counts": {
+        "error": 6
+      },
+      "dependencies_unchanged": true,
+      "exit_code": 1,
+      "label": "doctor-worker-01",
+      "note": "Six first-child fixtures exposed the missing declared multiformats dependency before provider calls; installed the exact repository-pinned package into the isolated benchmark environment.",
+      "result_sha256": "0cd8a337749dacb889573d947beeeeb6ca06b6346212723c4462ac000f1cc883",
+      "seconds": 38.52825297100935,
+      "source_pins_unchanged": true
+    },
+    {
+      "counts": {
+        "passed": 6
+      },
+      "dependencies_unchanged": true,
+      "exit_code": 0,
+      "label": "doctor-worker-02",
+      "note": "Focused development qualification; final frozen suites supersede its source state.",
+      "result_sha256": "fbbeb961b28b3db300255ba1a5bc23ac1d5dc81f4e34fecb7292f048f12817d2",
+      "seconds": 256.040006162948,
+      "source_pins_unchanged": false
+    },
+    {
+      "counts": {
+        "passed": 27
+      },
+      "dependencies_unchanged": true,
+      "exit_code": 0,
+      "label": "doctor-worker-03",
+      "note": "Focused development qualification; final frozen suites supersede its source state.",
+      "result_sha256": "4afcc471220ddce88228ef5d85aac64ebbb1509f758b8815aa2c1b4ad7a4b9fe",
+      "seconds": 284.813473432092,
+      "source_pins_unchanged": false
+    }
+  ],
+  "environment_dependency_installation": {
+    "installed_distributions": [
+      {
+        "metadata_path": "/home/barberb/lift_coding/.venvs/terminal-bench-harbor/lib/python3.12/site-packages/multiformats-0.3.1.post4.dist-info/METADATA",
+        "metadata_sha256": "5f496e298bca2e0392d6e2b07a572504ccc810fcc3d4f23f668ca94e85f44a61",
+        "name": "multiformats",
+        "version": "0.3.1.post4"
+      },
+      {
+        "metadata_path": "/home/barberb/lift_coding/.venvs/terminal-bench-harbor/lib/python3.12/site-packages/bases-0.3.0.dist-info/METADATA",
+        "metadata_sha256": "799dcd021735893ec0b329568a7b77082bd1a26e1e3aa39e8e8db97131b4c6cd",
+        "name": "bases",
+        "version": "0.3.0"
+      },
+      {
+        "metadata_path": "/home/barberb/lift_coding/.venvs/terminal-bench-harbor/lib/python3.12/site-packages/multiformats_config-0.3.1.dist-info/METADATA",
+        "metadata_sha256": "5ad039230cf37c7ac8d9718e748614e62bf1cb5942aeec1cf56f0277990519c5",
+        "name": "multiformats-config",
+        "version": "0.3.1"
+      },
+      {
+        "metadata_path": "/home/barberb/lift_coding/.venvs/terminal-bench-harbor/lib/python3.12/site-packages/typing_validation-1.2.12.dist-info/METADATA",
+        "metadata_sha256": "9a455c22af00ede089a4f93508cdce7440213a918d8605936eea99d96604d72d",
+        "name": "typing-validation",
+        "version": "1.2.12"
+      }
+    ],
+    "python": "/home/barberb/lift_coding/.venvs/terminal-bench-harbor/bin/python",
+    "selection": "multiformats==0.3.1.post4",
+    "source": "/home/barberb/lift_coding/.worktrees/supervisor-bounded-rounds-datasets-20261014/requirements-agent-supervisor-validation.txt:18"
+  },
+  "frozen_sources": {
+    "benchmarks/agent_supervisor/container_coding/benchmark_controls.py": "9d2ae4e95e79b4a589425f4745dd6e3911284b9ac690ecac50e62ac7ed5ca664",
+    "benchmarks/agent_supervisor/container_coding/container_worker_deployment.py": "3f7b8fe0af24ba5c51e16344884e69012f57b26d7f3943f20e0dcbc850f9c58d",
+    "benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py": "3efff0ceade5dfd3b71459aed21d8eb0b4e58a4ed3a9271fdefd55c911f6998d",
+    "benchmarks/agent_supervisor/container_coding/full_supervisor_harbor_agent.py": "468a061d9d35e17ea2aeb92421a9f1814d3748166703d1e523d2fa3dad2cdc9a",
+    "benchmarks/agent_supervisor/container_coding/terminal_candidate_attempt_accounting.py": "ba4ba96440fada8280ae6fdeecc496597114b680439717d978c7ed679fbdea87",
+    "benchmarks/agent_supervisor/container_coding/terminal_candidate_input_audit.py": "7e6dff8d427c10ddab5a580fdc36b687944127d625508cc942dde1b7619cb91c",
+    "benchmarks/agent_supervisor/container_coding/terminal_candidate_round_observation.py": "8b49350d025def692944540052b596a8f51870f699065c2c6005253ce6157df6",
+    "benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py": "4f8e7a6391348df8b7e67baae35d127f0a873f8726e1bf4f0e8981f7bf8a2645",
+    "benchmarks/agent_supervisor/container_coding/terminal_doctor_coding_policy.py": "241330c26157c98a93e54aac526133c5cbe532b452d59012dd21ff822b3b059a",
+    "benchmarks/agent_supervisor/container_coding/terminal_doctor_dispatch.py": "dd05aac130a0f551e6beca0b2245d00753eda3203a87f377acc305def3cd0bb2",
+    "benchmarks/agent_supervisor/container_coding/terminal_source_view_observation.py": "f7c3ffb0a783bc4f6f6cdbb86166ff3a9a0050987a1a65860ed295a8e35e7be8",
+    "benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py": "af47ead606516d8ecbbef21057268eef7310231f16bb1fc6a04d3b435a439c7e",
+    "benchmarks/agent_supervisor/container_coding/test_benchmark_controls.py": "180e2ac6ea8fa9079040e5d3a23a8bdafc0694ab61bbce9277068669160e05f5",
+    "benchmarks/agent_supervisor/container_coding/test_doctor_dispatch_budget.py": "23bb73f47c993259d0a2a6434ec1af51ee2ad3f12bb4f6e33c01d25661e2988c",
+    "benchmarks/agent_supervisor/container_coding/test_full_supervisor_candidate_round_guard.py": "66640863aa56ad782fdc62409c3bb9d5219a63838a1734d89636d85742613641",
+    "benchmarks/agent_supervisor/container_coding/test_full_supervisor_harbor_agent.py": "9b7f8c3c58bbe1935135317edfe86faac95611f4ee271ce337c55056747cfd9c",
+    "benchmarks/agent_supervisor/container_coding/test_grok_coding_budget.py": "4c74c607fda93ddecb4fc90efc43e104b05ac8cb511fcbb89da50688354f6253",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_candidate_round_observation.py": "39f0dfdf0d3bfe578e9d0b68d331d9d01313b7e54ba5e17038e3b8c0bddd85f0",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_context_audit.py": "c325940970169404ca2f4e67b2b241ff33ecbeac9d4855d9b5d3112346e86998",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_doctor_coding_policy.py": "0b100a76f0d96adbee2183f2b4d5f9c00bef15332ba0094733dd3fbcd07e2406",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_live_metadata_census.py": "d13cec3dbe01f29b6902c8552679ce9fa063e16266773a780ebee4fa7f7c62a8",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_metadata_preflight.py": "b45e4bc4425aa9d87f8057b298acab43ca33ea772d01be4dc2531e7e8fe04a5d",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_policy.py": "bff077f9738d7b2455f9c479ded5f52fa77455317f78a6e47dcb714dae3ccc4d",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_provider_selection.py": "7334ac617cb86e14d1bab2112187b55a7c62e0fd20a8bdf2e1b1435d8710c803",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_semantic_working_set_policy.py": "6ac3e3aca2d48974eca90927ef5a4416cd6cb39d5405aa370ce01c97ae530a0b",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_source_view_observation.py": "eb6f9a666e3308617fc4d58db3aea365559b2594781e9a3d3ab73f1a54df13f5",
+    "ipfs_accelerate_py/agent_supervisor/runtime/candidate_dispatch_context.py": "e8ab4dc855c3d3b9fc8403a3a0c91fff19ed890f99ffd54502bb2cc68a30cf52",
+    "ipfs_accelerate_py/agent_supervisor/runtime/candidate_doctor_dispatch.py": "1c880586284efc38c32a57a4974b6aaa21441edcca936a0b909d7f6a040ad372",
+    "ipfs_accelerate_py/agent_supervisor/runtime/candidate_round_lifecycle.py": "39062e67537be193f0981230986e80cff523e0fdec738da35d0ca71b56d3dd3c",
+    "ipfs_accelerate_py/agent_supervisor/runtime/candidate_round_monitor.py": "c5349f8574d4114a028e6ad931aaf35db00083db67e886308cb387348a4952c8",
+    "ipfs_accelerate_py/agent_supervisor/runtime/candidate_round_policy.py": "e2e953e5d70fde049a349933fc73b01667f174195e66a04ef8e0af5238ea8928",
+    "ipfs_accelerate_py/agent_supervisor/runtime/owner_candidate_dispatch.py": "c35fe5688abce6cb214b93994f72a0ebe65f45ae58a455632128adb26e78fce5",
+    "ipfs_accelerate_py/agent_supervisor/runtime/owner_candidate_dispatch_audit.py": "b771110a4f81f1e3f06392f19c2401dd4ff702663df6d8a618d4e82432ba7b61",
+    "ipfs_accelerate_py/agent_supervisor/runtime/owner_candidate_round_prompt.py": "8272f53527e9b6dc8c0e01aa0763ac5f5b41c55823186dc52de19570ba82fc4f",
+    "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py": "a3803c6b6d4ad0c381684f1f0a27473313d1ce25c4ed5936653a8a79a939488f",
+    "test/api/test_candidate_dispatch_context.py": "9bd16112a31968484d9aeba38d76f37811579bdf189ca178745ac10e0bc3ac53",
+    "test/api/test_candidate_dispatch_native_pipeline.py": "ddb3e5d9499081015f2f759ede218332608e851d48294813c8a6b309c9196241",
+    "test/api/test_candidate_input_audit.py": "78e8033af678336d1d33d3deb5c146ba9e396b3feb27c4c7726a1c5c7f808702",
+    "test/api/test_candidate_round_lifecycle.py": "a88096da9b8265e7c17f6b5c7c4837cc61ec420fa38633baaa0315df7dd0adbe",
+    "test/api/test_candidate_round_monitor.py": "42668da4a57cf2358adce65c06ac582c9f20fd3d421fd9c8056c5f6b9f312d1e",
+    "test/api/test_candidate_round_native_pipeline.py": "6824243574be4a8c8d4a1be4ed8babf9facc7299f6d89af5055d80217eebdfab",
+    "test/api/test_candidate_round_policy.py": "ecc85d71151cb1fea83094508461080d368a0c76f335e117387d40cf5ff6d4f3",
+    "test/api/test_candidate_router_dispatch.py": "fbd93437aaa1a92debe6749de46c47e1121852bc2b2c06e0bdae5e2c60deb23e",
+    "test/api/test_doctor_candidate_context.py": "d52f10bac7070b488e41cc97720afe87c0407a978d4ddbbb130d1005a6cd199c",
+    "test/api/test_doctor_candidate_dispatch.py": "c3a34a4654a79ecc90857a1cc6b33a5cc9d21921c4e6db7d762bdbcbf7025690",
+    "test/api/test_doctor_candidate_input_audit.py": "1377cfe7ff5ecc257f6b08e9570a866f8f41527e70836692a40e76fcb5e0ecd4",
+    "test/api/test_doctor_dispatch_revalidation.py": "d6a3b871bd235445bded682b19635dab8a06f9891402a21d4289390abd11882f",
+    "test/api/test_doctor_residual_budget.py": "11c143da7d2abdf39952753571fc9cc8a8743152f18c3604626f142fa41530e5",
+    "test/api/test_doctor_residual_context.py": "d36d3c064743f0972e738af13345e4008f3cf063d1bf804aac614244f1323a3b",
+    "test/api/test_doctor_router_budget_capability.py": "51ced3c095824bbb06edb493093caea42f1feab789dea5cb1a741156539554cd",
+    "test/api/test_owner_candidate_dispatch.py": "61ee2fecd45256ce7b65797061dfdf3fae103bb04f5287794f8f0f3ee824b81d",
+    "test/api/test_owner_candidate_dispatch_audit.py": "5e41d5632a03acdda5d2965ea159a268a7b838b91ccc4adbb16b91933a4d5d3f",
+    "test/api/test_owner_candidate_round_prompt.py": "1fb93d5746af577a5d509801c1447d74d55022164baa3e8899ec0ca641975d8f",
+    "test/api/test_owner_doctor_dispatch.py": "af2b13f6251cf424bcbffdfc3edb4f433b35b4e34aa50db85e9776701f7cf1a8",
+    "test/api/test_router_failure_diagnostics.py": "fdcd9f20d5421404db5db8c02e9ff12ad540895fced29f7c68a561107078116c",
+    "test/api/test_router_implementation_runner.py": "e02ebf6a530912f0ddd1070b258e3b8c01d64f418adf2592a2714e7d7ef9504a",
+    "test/api/test_semantic_router_integration.py": "8be5d5f73fa57a005572bec790d88b1f3485ca3e0e5b5e2116b6eb76f07c4d03",
+    "test/api/test_terminal_candidate_attempt_accounting.py": "a6f0cb259e81d3b34512d989aa75915bd6d07fa2bc638bb2ea1bcdfffe0c2392",
+    "test/api/test_terminal_doctor_dispatch.py": "644c7f4ee1b3920daea395cd950a6ca49a7f29e9aeb10971f8784c9c554bb600",
+    "test/api/test_worker_source_broker.py": "e8d53fe0d857d6f5ab5dcc67c6a71c0b4ef83e12099f987d38e737040c8ea55a"
+  },
+  "limitations": [
+    "One-attempt default is unchanged; explicit full indexed selection is required.",
+    "No-index, mapped-edit and separate numerical-obligation broker continuations remain unsupported.",
+    "Native CLI token/cost usage is observational and missing usage remains unknown.",
+    "The residual-proposal budget is unchanged and is not a coding-token ledger.",
+    "The measured metadata reduction is UTF-8 bytes, not provider token savings.",
+    "No new live Terminal Bench task score, billed-token total, proof acceptance or checkpoint training result is established."
+  ],
+  "measured_fixture_metadata": [
+    {
+      "doctor_context_binding_bytes": 147,
+      "doctor_context_full_bytes": 3606,
+      "owner_metadata_bytes_omitted": 3459,
+      "test": "test_native_preparation_preserves_doctor_constraints_and_refuses_a_third_attempt"
+    }
+  ],
+  "passed": 1407,
+  "qualification_artifacts": {
+    "benchmark": {
+      "-result.json": {
+        "path": "/home/barberb/lift_coding/artifacts/doctor-dispatch-20261014/qualification-benchmark-01-result.json",
+        "sha256": "3f505f1437e54520aac8a6cd79108a2cae544fee00035974da0278a46111dfea"
+      },
+      "-source-pins.json": {
+        "path": "/home/barberb/lift_coding/artifacts/doctor-dispatch-20261014/qualification-benchmark-01-source-pins.json",
+        "sha256": "c9eac6643cc9fcc3e8906f99bd81b8b09425f631e5438a14af6254f403b564a3"
+      },
+      ".log": {
+        "path": "/home/barberb/lift_coding/artifacts/doctor-dispatch-20261014/qualification-benchmark-01.log",
+        "sha256": "3edd19e914208741c7513d2ec703cb845340f26897708b888d880cdd6c243587"
+      },
+      ".xml": {
+        "path": "/home/barberb/lift_coding/artifacts/doctor-dispatch-20261014/qualification-benchmark-01.xml",
+        "sha256": "a49b3310707c83f9dd7e557af32525c6732512032193f9252e4017c584764ccb"
+      }
+    },
+    "runtime": {
+      "-result.json": {
+        "path": "/home/barberb/lift_coding/artifacts/doctor-dispatch-20261014/qualification-runtime-01-result.json",
+        "sha256": "3779d050e162286636acb3a61304e4fd09b37ea2aef457b2ffa08ef061306b22"
+      },
+      "-source-pins.json": {
+        "path": "/home/barberb/lift_coding/artifacts/doctor-dispatch-20261014/qualification-runtime-01-source-pins.json",
+        "sha256": "aa2de0dd9c82d89fa3f36bb525b2bbd7d2a4f9b6ed3eb4b45b82b9521dbcf2fb"
+      },
+      ".log": {
+        "path": "/home/barberb/lift_coding/artifacts/doctor-dispatch-20261014/qualification-runtime-01.log",
+        "sha256": "5417ba5e84ef0e1174f05064ac1512f8c5a74b9f0966aae4102d8e2e6465bb57"
+      },
+      ".xml": {
+        "path": "/home/barberb/lift_coding/artifacts/doctor-dispatch-20261014/qualification-runtime-01.xml",
+        "sha256": "27405ddcff034947979af086b81b3f338d613801f95ce025ae085c3fdb44d532"
+      }
+    }
+  },
+  "qualifications": {
+    "benchmark": {
+      "argv": [
+        "/home/barberb/lift_coding/.venvs/terminal-bench-harbor/bin/python",
+        "-m",
+        "pytest",
+        "-q",
+        "--tb=short",
+        "--color=no",
+        "-o",
+        "log_cli=false",
+        "-o",
+        "addopts=",
+        "benchmarks/agent_supervisor/container_coding/test_doctor_dispatch_budget.py",
+        "benchmarks/agent_supervisor/container_coding/test_terminal_context_audit.py",
+        "benchmarks/agent_supervisor/container_coding/test_terminal_metadata_preflight.py",
+        "benchmarks/agent_supervisor/container_coding/test_terminal_live_metadata_census.py",
+        "benchmarks/agent_supervisor/container_coding/test_full_supervisor_candidate_round_guard.py",
+        "benchmarks/agent_supervisor/container_coding/test_benchmark_controls.py",
+        "benchmarks/agent_supervisor/container_coding/test_terminal_provider_selection.py",
+        "benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py",
+        "benchmarks/agent_supervisor/container_coding/test_terminal_doctor_coding_policy.py",
+        "benchmarks/agent_supervisor/container_coding/test_full_supervisor_harbor_agent.py",
+        "benchmarks/agent_supervisor/container_coding/test_grok_coding_budget.py",
+        "benchmarks/agent_supervisor/container_coding/test_terminal_semantic_working_set_policy.py",
+        "benchmarks/agent_supervisor/container_coding/test_terminal_source_view_observation.py",
+        "benchmarks/agent_supervisor/container_coding/test_terminal_candidate_round_observation.py",
+        "benchmarks/agent_supervisor/container_coding/test_terminal_numerical_policy.py",
+        "--junitxml=/home/barberb/lift_coding/artifacts/doctor-dispatch-20261014/qualification-benchmark-01.xml"
+      ],
+      "counts": {
+        "passed": 918
+      },
+      "dependencies": {
+        "ipfs_datasets_py": {
+          "commit": "28b9ef1f0b9da51e87b1e68ee565b43681397109",
+          "path": "/home/barberb/lift_coding/.worktrees/supervisor-bounded-rounds-datasets-20261014",
+          "tracked_status": ""
+        },
+        "ipfs_kit_py": {
+          "commit": "8ac00bb1974b1378e12091d546d8425af34049e0",
+          "path": "/home/barberb/lift_coding/.worktrees/publication-main-20261004/kit",
+          "tracked_status": ""
+        }
+      },
+      "dependencies_unchanged": true,
+      "dependency_import_origins": {
+        "ipfs_datasets_py": "/home/barberb/lift_coding/.worktrees/supervisor-bounded-rounds-datasets-20261014/ipfs_datasets_py/__init__.py",
+        "ipfs_kit_py": "/home/barberb/lift_coding/.worktrees/publication-main-20261004/kit/ipfs_kit_py/__init__.py"
+      },
+      "distribution_pins": {
+        "bases": {
+          "metadata_sha256": "dec42e7aaeaa33bb2e6e0290d86ebf1c2400cb096bfd3258257dbbe93215b918",
+          "version": "0.3.0"
+        },
+        "multiformats": {
+          "metadata_sha256": "983d90687bea02cf1244f730d9b1575c4633c76f60a2177b6a19e4de7b3f101b",
+          "version": "0.3.1.post4"
+        },
+        "multiformats-config": {
+          "metadata_sha256": "bc1354b0aac1e441ea030cd6d149dcd1738a21add13c47255ab2bbc69892c754",
+          "version": "0.3.1"
+        },
+        "typing-validation": {
+          "metadata_sha256": "75c9b28c8f307a5b5d67022412095a31a1adb0b5baeec9cc10883190b5bca8b5",
+          "version": "1.2.12"
+        }
+      },
+      "distribution_pins_unchanged": true,
+      "exit_code": 0,
+      "live_provider_calls": 0,
+      "seconds": 282.7223234269768,
+      "source_pins_unchanged": true
+    },
+    "runtime": {
+      "argv": [
+        "/home/barberb/lift_coding/.venvs/terminal-bench-harbor/bin/python",
+        "-m",
+        "pytest",
+        "-q",
+        "--tb=short",
+        "--color=no",
+        "-o",
+        "log_cli=false",
+        "-o",
+        "addopts=",
+        "test/api/test_doctor_residual_budget.py",
+        "test/api/test_doctor_router_budget_capability.py",
+        "test/api/test_doctor_dispatch_revalidation.py",
+        "test/api/test_doctor_candidate_context.py",
+        "test/api/test_doctor_residual_context.py",
+        "test/api/test_worker_source_broker.py",
+        "test/api/test_owner_candidate_round_prompt.py",
+        "test/api/test_owner_candidate_dispatch.py",
+        "test/api/test_candidate_round_native_pipeline.py",
+        "test/api/test_candidate_dispatch_native_pipeline.py",
+        "test/api/test_candidate_router_dispatch.py",
+        "test/api/test_candidate_input_audit.py",
+        "test/api/test_terminal_doctor_dispatch.py",
+        "test/api/test_router_implementation_runner.py",
+        "test/api/test_semantic_router_integration.py",
+        "test/api/test_router_failure_diagnostics.py",
+        "test/api/test_doctor_candidate_dispatch.py",
+        "test/api/test_doctor_candidate_input_audit.py",
+        "test/api/test_owner_doctor_dispatch.py",
+        "test/api/test_candidate_round_policy.py",
+        "test/api/test_candidate_round_monitor.py",
+        "test/api/test_candidate_round_lifecycle.py",
+        "test/api/test_candidate_dispatch_context.py",
+        "test/api/test_owner_candidate_dispatch_audit.py",
+        "test/api/test_terminal_candidate_attempt_accounting.py",
+        "--junitxml=/home/barberb/lift_coding/artifacts/doctor-dispatch-20261014/qualification-runtime-01.xml"
+      ],
+      "counts": {
+        "passed": 489
+      },
+      "dependencies": {
+        "ipfs_datasets_py": {
+          "commit": "28b9ef1f0b9da51e87b1e68ee565b43681397109",
+          "path": "/home/barberb/lift_coding/.worktrees/supervisor-bounded-rounds-datasets-20261014",
+          "tracked_status": ""
+        },
+        "ipfs_kit_py": {
+          "commit": "8ac00bb1974b1378e12091d546d8425af34049e0",
+          "path": "/home/barberb/lift_coding/.worktrees/publication-main-20261004/kit",
+          "tracked_status": ""
+        }
+      },
+      "dependencies_unchanged": true,
+      "dependency_import_origins": {
+        "ipfs_datasets_py": "/home/barberb/lift_coding/.worktrees/supervisor-bounded-rounds-datasets-20261014/ipfs_datasets_py/__init__.py",
+        "ipfs_kit_py": "/home/barberb/lift_coding/.worktrees/publication-main-20261004/kit/ipfs_kit_py/__init__.py"
+      },
+      "distribution_pins": {
+        "bases": {
+          "metadata_sha256": "dec42e7aaeaa33bb2e6e0290d86ebf1c2400cb096bfd3258257dbbe93215b918",
+          "version": "0.3.0"
+        },
+        "multiformats": {
+          "metadata_sha256": "983d90687bea02cf1244f730d9b1575c4633c76f60a2177b6a19e4de7b3f101b",
+          "version": "0.3.1.post4"
+        },
+        "multiformats-config": {
+          "metadata_sha256": "bc1354b0aac1e441ea030cd6d149dcd1738a21add13c47255ab2bbc69892c754",
+          "version": "0.3.1"
+        },
+        "typing-validation": {
+          "metadata_sha256": "75c9b28c8f307a5b5d67022412095a31a1adb0b5baeec9cc10883190b5bca8b5",
+          "version": "1.2.12"
+        }
+      },
+      "distribution_pins_unchanged": true,
+      "exit_code": 0,
+      "live_provider_calls": 0,
+      "seconds": 1769.155183022027,
+      "source_pins_unchanged": true
+    }
+  },
+  "schema": "supervisor-doctor-dispatch-qualification@1",
+  "scope": {
+    "actual_two_child_router_paths": true,
+    "authored_container_uid_path_isolation": true,
+    "distinct_attempt_receipt_accounting": true,
+    "docker_campaigns": 0,
+    "external_prover_campaigns": 0,
+    "historical_input_reconstruction": true,
+    "live_provider_calls": 0,
+    "native_candidate_socket_preflight": true,
+    "native_doctor_residuals": true,
+    "native_semantic_artifact_generation": true,
+    "native_signed_task_admission": true,
+    "provider_test_doubles": true,
+    "training_campaigns": 0,
+    "unchanged_proposal_budget": true
+  }
+}

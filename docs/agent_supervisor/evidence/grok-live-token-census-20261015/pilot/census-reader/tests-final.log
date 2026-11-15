@@ -1,0 +1,20 @@
+test_boolean_unavailable_flag_not_coerced (test_read_census.CensusTests.test_boolean_unavailable_flag_not_coerced) ... ok
+test_conflicting_receipts_fail_whole_population (test_read_census.CensusTests.test_conflicting_receipts_fail_whole_population) ... ok
+test_count_boolean_negative_oversized_refused (test_read_census.CensusTests.test_count_boolean_negative_oversized_refused) ... ok
+test_cross_partition_join_rejects_consistent_local_forgery (test_read_census.CensusTests.test_cross_partition_join_rejects_consistent_local_forgery) ... ok
+test_duplicate_and_two_distinct_receipts (test_read_census.CensusTests.test_duplicate_and_two_distinct_receipts) ... ok
+test_duplicate_json_keys_and_nonfinite_refused (test_read_census.CensusTests.test_duplicate_json_keys_and_nonfinite_refused) ... ok
+test_flags_exact_types (test_read_census.CensusTests.test_flags_exact_types) ... ok
+test_hash_shape_rejected (test_read_census.CensusTests.test_hash_shape_rejected) ... ok
+test_missing_and_explicit_unavailable_remain_unknown (test_read_census.CensusTests.test_missing_and_explicit_unavailable_remain_unknown) ... ok
+test_native_and_transport_receipt_digest_joins (test_read_census.CensusTests.test_native_and_transport_receipt_digest_joins) ... ok
+test_no_coding_does_not_invent_census (test_read_census.CensusTests.test_no_coding_does_not_invent_census) ... ok
+test_nominal_counts_and_no_unselected_content (test_read_census.CensusTests.test_nominal_counts_and_no_unselected_content) ... ok
+test_partition_and_summary_arithmetic (test_read_census.CensusTests.test_partition_and_summary_arithmetic) ... ok
+test_recipe_single_report_and_binding (test_read_census.CensusTests.test_recipe_single_report_and_binding) ... ok
+test_unknown_fields_or_labels_refused (test_read_census.CensusTests.test_unknown_fields_or_labels_refused) ... ok
+
+----------------------------------------------------------------------
+Ran 15 tests in 0.007s
+
+OK

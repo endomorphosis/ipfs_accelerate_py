@@ -137,6 +137,10 @@ def test_config_adds_only_explicit_decision_controls_and_keeps_current_model_res
     {**POLICY, "planning_mode": "declared"},
     {**POLICY, "semantic_metadata_view": "common-bindings@1"},
     {**POLICY, "provider_profile": GROK_PROFILE},
+    {**POLICY, 'candidate_rounds': 2},
+    {**POLICY, 'doctor_coding_policy': 'doctor-coding-two-attempts@1'},
+    {**POLICY, 'working_set_census_only': True},
+    {**POLICY, 'grok_pruning_profile': 'grok-pruning-on@1'},
 ])
 def test_invalid_selected_configuration_refuses_before_any_filesystem_or_adapter_setup(tmp_path, options):
     def unread(*args, **kwargs):
@@ -629,3 +633,18 @@ def test_ordinary_collect_shape_remains_free_of_selected_decision_observations(t
                 "semantic_decision_runtime_verified", "semantic_decision_verification_scope"} & observed.keys()
     assert "semantic_decision_dispatch" not in observed["trials"][0]
     assert observed["complete_single_trial_receipt"] is True
+
+
+@pytest.mark.parametrize("control,value", [
+    ("candidate_rounds", 2),
+    ("doctor_coding_policy", "doctor-coding-two-attempts@1"),
+    ("working_set_census_only", True),
+    ("grok_pruning_profile", "grok-pruning-on@1"),
+])
+def test_historical_optional_coding_controls_cannot_qualify_selected_semantic_receipts(control, value):
+    selected = benchmark._prompt_options("full", **POLICY)
+    prepared = {"arm": "full", "prompt_comparison_options": selected}
+    configured = {**selected, control: value}
+    observed = benchmark._prompt_option_observation(prepared, configured)
+    assert observed["prompt_comparison_options_valid"] is False
+    assert observed["prompt_comparison_config_unchanged"] is False

@@ -1,0 +1,20 @@
+[Unit]
+Description=Restore only missing, literal-pinned LegalIR384/768 validation inputs
+ConditionPathExists=/home/barberb/lift_coding/.worktrees/legal-ir-autoencoder-v1/data/legal-ir-autoencoder-v1/validation-input-mirror/manifest.json
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /home/barberb/lift_coding/external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/rescue/legal_ir_validation_input_recovery.py recover --apply --mirror /home/barberb/lift_coding/.worktrees/legal-ir-autoencoder-v1/data/legal-ir-autoencoder-v1/validation-input-mirror --budget-bytes 1073741824 --max-restores 8 --deadline-seconds 90
+TimeoutStartSec=120
+UMask=0077
+NoNewPrivileges=true
+RestrictAddressFamilies=AF_UNIX
+MemoryMax=128M
+TasksMax=8
+CPUQuota=50%
+IOWeight=10
+Nice=10
+LimitNOFILE=128
+LimitFSIZE=1073741824
+StandardOutput=journal
+StandardError=journal

@@ -1,0 +1,16 @@
+{
+  "base_commit": "d0690f8454d0126d7cff6a1d99975ca252110d4f",
+  "files": {
+    "/home/barberb/lift_coding/artifacts/tool-event-coverage-20261015/authored-e2e/test_authored_pipeline.py": "14334f94f2d36469c3e817de8811a16f38f2edeeddea78048b80da0233d295e2",
+    "/home/barberb/lift_coding/artifacts/tool-event-coverage-20261015/live/closed_export.py": "2f7b4e2c5264d212e26a50075df7b244e0d09f54809c536fb47b68c992fc0985",
+    "/home/barberb/lift_coding/artifacts/tool-event-coverage-20261015/live/prepare_draft.py": "a2ff14b31bd1bfe497b761715b8c8f26512a01e313fe7cf5ad6bd5b45fac8a13",
+    "/home/barberb/lift_coding/artifacts/tool-event-coverage-20261015/live/run.py": "81ef64437f72b6acf7b09df24b93ab7e4e5ed1625bb25c1e3e754a43b6e275fc",
+    "/home/barberb/lift_coding/artifacts/tool-event-coverage-20261015/live/test_closed_export.py": "637e050606485d9949ccfdb1dca0cc4cf4ce543d383f95379e6df19525bdaa18",
+    "/home/barberb/lift_coding/artifacts/tool-event-coverage-20261015/live/test_run.py": "d8ea36148dcbee3b4acf4dabc3dec8d187c68f8d9d73819bfbb4a7d64ff4c0e3",
+    "benchmarks/agent_supervisor/container_coding/benchmark_comparison.py": "66391e9c9735fb65937ed15bda07c21e80dc2a0bc09b3e3be9f32a9752227ef6",
+    "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py": "73bc9d510f202e28a12631bc1b079feeb483a538b9c2c4e23a1c741fbb72b927",
+    "ipfs_accelerate_py/cli_runtime/grok_stream_capture.py": "72d38f903b4b73ab076ee74c55d37be951f62faf55d5216b51c2a9ea86efbeb0",
+    "ipfs_accelerate_py/cli_runtime/grok_tool_events.py": "15d661ce6ba3acd7ec12aaa3a431cfd739806c28f664e4ff9513ca369bf12f83",
+    "ipfs_accelerate_py/llm_router.py": "13fb5b1815662b9edf50761826d291504534629b578bdea84feee0fe85347bde"
+  }
+}

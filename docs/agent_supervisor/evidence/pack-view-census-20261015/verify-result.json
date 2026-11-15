@@ -1,0 +1,21 @@
+{
+  "all_archive_members_verified": true,
+  "archive": {
+    "bytes": 1411551713,
+    "path": "/home/barberb/lift_coding/artifacts/pack-view-census-20261015/live/runtime-01/runtime.tar.gz",
+    "sha256": "ff9e2c085caa28c506a9af796feda36d45cfce17c099984aea5dc8eca86d56ad"
+  },
+  "archive_members": 27554,
+  "docker_calls": 0,
+  "exit_code": 0,
+  "frozen_inputs_unchanged": true,
+  "manifest": {
+    "bytes": 6227151,
+    "path": "/home/barberb/lift_coding/artifacts/pack-view-census-20261015/live/runtime-01/manifest.json",
+    "sha256": "fca1006abfbd23f24f5d01a678382c688e9a336c7b9a7102f670a257af062a5f"
+  },
+  "provider_calls": 0,
+  "seconds": 12.044107012916356,
+  "step": "verify",
+  "uncompressed_bytes": 4072818161
+}

@@ -1,0 +1,14 @@
+{
+  "base_commit": "94e3af0a422e69e3519dc2e8fa7bbdd767be4af8",
+  "files": {
+    "benchmarks/agent_supervisor/container_coding/container_worker_deployment.py": "67e5eddaa8e64e6d90daa47db581a4e31dd1f27f93a6d77bdfe75b99350f28dc",
+    "benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py": "6555ea4dbb82333ceeaa3cc130b61a6bfa24478720824b352de9bcc81143e888",
+    "benchmarks/agent_supervisor/container_coding/terminal_semantic_working_set_policy.py": "1da0b785e476db8f63459821c20a8fbce0d345e826971c0b09e26345e3de5456",
+    "benchmarks/agent_supervisor/container_coding/terminal_working_set_census_observation.py": "e2516fcc34330d4391ee993ca578819cb5bf4d5f43c62b4dc48aabeca366bf9c",
+    "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py": "a8876c3c1520fb54801b49deeb077541a010a0fe935da4703e2133f19507d8ff",
+    "ipfs_accelerate_py/agent_supervisor/runtime/semantic_pack_projection.py": "54d3ed887b4037dd860c431053e6e45fff6d7182b66b1b90bc566d00a1384ddf",
+    "ipfs_accelerate_py/agent_supervisor/runtime/semantic_working_set_census.py": "e8d13db2ae702cb39d74e2add87927675e4262b676d314ff31c81b46f5799873",
+    "test/api/test_semantic_pack_census.py": "95c89e8f827874ca4e92c9296cfab10603646dd0cfac4223bd6d0e8159d23a7e",
+    "test/api/test_semantic_pack_projection.py": "7d88cc8129497129435c090950c2375ba6392bd77ae45dbea62874e54ce57f48"
+  }
+}

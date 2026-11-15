@@ -1,0 +1,131 @@
+{
+  "caveats": [
+    "Single sequential trials; some offline tests overlapped pilot wall time.",
+    "Full coding token totals unknown in both runs.",
+    "Both runs used pre-fix Grok coding routes."
+  ],
+  "declared_planning_scope": "exact_signed_task_structure_only",
+  "runs": {
+    "pilot": {
+      "coding_receipts": 2,
+      "coding_usage": null,
+      "declared_planning_model_calls": 0,
+      "native_supervisor_seconds": 397.5991736740107,
+      "official_reward": 0.0,
+      "planning_mode": "declared-contract@1",
+      "planning_observed_tokens": null,
+      "planning_seconds": 4.666124962968752,
+      "rounds": [
+        {
+          "actual_returncode": 1,
+          "checks": [
+            {
+              "reason": "obligations_satisfied",
+              "status": "passed",
+              "validation_key": "public-structural-smoke"
+            },
+            {
+              "reason": "obligations_satisfied",
+              "status": "passed",
+              "validation_key": "public-eigenpair-behavior"
+            },
+            {
+              "reason": "timing_unstable",
+              "status": "inconclusive",
+              "validation_key": "public-eigenvalue-performance"
+            }
+          ],
+          "round_number": 1,
+          "status": "inconclusive"
+        },
+        {
+          "actual_returncode": 1,
+          "checks": [
+            {
+              "reason": "obligations_satisfied",
+              "status": "passed",
+              "validation_key": "public-structural-smoke"
+            },
+            {
+              "reason": "obligations_satisfied",
+              "status": "passed",
+              "validation_key": "public-eigenpair-behavior"
+            },
+            {
+              "reason": "timing_unstable",
+              "status": "inconclusive",
+              "validation_key": "public-eigenvalue-performance"
+            }
+          ],
+          "round_number": 2,
+          "status": "inconclusive"
+        }
+      ],
+      "trial": "largest-eigenval__LJh3TxD"
+    },
+    "prior": {
+      "coding_receipts": 2,
+      "coding_usage": null,
+      "declared_planning_model_calls": null,
+      "native_supervisor_seconds": 521.3229553110432,
+      "official_reward": 0.0,
+      "planning_mode": "model",
+      "planning_observed_tokens": 26977,
+      "planning_seconds": 120.5755973389605,
+      "rounds": [
+        {
+          "actual_returncode": 1,
+          "checks": [
+            {
+              "reason": "obligations_satisfied",
+              "status": "passed",
+              "validation_key": "public-structural-smoke"
+            },
+            {
+              "reason": "obligations_satisfied",
+              "status": "passed",
+              "validation_key": "public-eigenpair-behavior"
+            },
+            {
+              "reason": "timing_unstable",
+              "status": "inconclusive",
+              "validation_key": "public-eigenvalue-performance"
+            }
+          ],
+          "round_number": 1,
+          "status": "inconclusive"
+        },
+        {
+          "actual_returncode": 1,
+          "checks": [
+            {
+              "reason": "obligations_satisfied",
+              "status": "passed",
+              "validation_key": "public-structural-smoke"
+            },
+            {
+              "reason": "obligations_satisfied",
+              "status": "passed",
+              "validation_key": "public-eigenpair-behavior"
+            },
+            {
+              "reason": "timing_unstable",
+              "status": "inconclusive",
+              "validation_key": "public-eigenvalue-performance"
+            }
+          ],
+          "round_number": 2,
+          "status": "inconclusive"
+        }
+      ],
+      "trial": "largest-eigenval__gnfcWvo"
+    }
+  },
+  "schema": "declared-planning-live-comparison@1",
+  "source_readout": {
+    "path": "/home/barberb/lift_coding/artifacts/declared-public-planning-20261015/readout-final-v2.json",
+    "sha256": "8380555f4ba20b03d8578810b5bf8e946a002e37937d161f0feb3653c0a1faa3"
+  },
+  "sources_semantically_proved": false,
+  "total_token_savings_established": false
+}

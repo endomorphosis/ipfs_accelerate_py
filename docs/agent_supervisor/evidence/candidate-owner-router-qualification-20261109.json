@@ -1,0 +1,117 @@
+{
+  "all_original_cases_and_assertions_retained": true,
+  "all_prior_qualified_accelerate_blobs_unchanged": true,
+  "audit_violations": [],
+  "candidate_commit": "daf738db4c301b7f7b8d1937862299fb346c53f4",
+  "capture_scope": "Module/class/complete selected-test bodies, direct function-body imports in the runner, plus actual receipt/delivery dependencies. Unused all-function closure had377 buffers and was not admitted; strict guard still refused every unpinned parent compilation, even caught import failures.",
+  "caught_audit_refusals_are_fatal": true,
+  "child_or_vendor_compilation_attested": false,
+  "deselections": 0,
+  "durable_attempt_bytes": 2532742,
+  "errors": 0,
+  "evidence": {
+    "durability": {
+      "bytes": 324640,
+      "path": "/tmp/pytest-of-barberb/legal-ir-candidate-owner-router-20261109-v03/attempt/logs/validation-durability.json",
+      "sha256": "83ff6cb0d120590626b2072ea062eab121e429434c534a312ecb4c63012be294"
+    },
+    "junit": {
+      "bytes": 15415,
+      "path": "/tmp/pytest-of-barberb/legal-ir-candidate-owner-router-20261109-v03/attempt/exports/junit.xml",
+      "sha256": "2e21751143cd4f063279aca1a0807f952bed1ef8a563f7c5a37358fb0be02ae0"
+    },
+    "parent": {
+      "bytes": 9759,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/legal-ir-peer-revision-reconciliation-20261109-v01/candidate-owner-router-v03/parent-closeout.json",
+      "sha256": "0a1b30c73d9a39a70051b3416593b5790e79ca81675452608c37a0314d8cb125"
+    },
+    "request": {
+      "bytes": 43484,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/legal-ir-peer-revision-reconciliation-20261109-v01/candidate-owner-router-v03/request.json",
+      "sha256": "ab67a1144a81d0c487bec24b564bf510903ac3ca769f66af0f8209ec88a8020f"
+    },
+    "result": {
+      "bytes": 729,
+      "path": "/tmp/pytest-of-barberb/legal-ir-candidate-owner-router-20261109-v03/attempt/logs/result.json",
+      "sha256": "8b5096f414a6524ae8cf63e958b501a13a0118b2dac4ff41c317237c8d7128d6"
+    },
+    "source_capture": {
+      "bytes": 1837491,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/legal-ir-peer-revision-reconciliation-20261109-v01/candidate-owner-router-v03/captured-source-buffers.tar.gz",
+      "sha256": "3d0dbe7b89ba63deaa526185e455a7c38641bd6ec59d34f45127cf35784c28b4"
+    },
+    "source_observation": {
+      "bytes": 38289,
+      "path": "/tmp/pytest-of-barberb/legal-ir-candidate-owner-router-20261109-v03/attempt/exports/source-observation.json",
+      "sha256": "db902f5ae8265729808c0e17ad8f8c6b3ad6e5dbd8a7df06a24757e1d7c491dc"
+    },
+    "terminal": {
+      "bytes": 5597,
+      "path": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/legal-ir-peer-revision-reconciliation-20261109-v01/candidate-owner-router-v03/owner.stdout",
+      "sha256": "690a897443f1e84f7c9d62b17174d0ac036c00c3a5a6b010c953191edbc99899"
+    }
+  },
+  "failures": 0,
+  "full_branch_qualified": false,
+  "global_policy_cap_roots_or_pin_maximum_changed": false,
+  "historical_profiles": {
+    "v01": "75 passed/44 failed; 45 persisted source audit refusals included one optional caught test.common import plus budget/tool-output policies. Original32MiB failed claim retained.",
+    "v02": "91 passed/28 failed on uncaptured Codex usage receipt helper; original32MiB failed claim retained."
+  },
+  "hosted_ci_qualified": false,
+  "junit_seconds": 1.719,
+  "matched_worktree_files": 210,
+  "model_or_legal_admission": false,
+  "native_provider_or_docker_qualification": false,
+  "original_popen_wait_source_native_observed_process_closed": true,
+  "owned_operation_seconds": 142.05503390496597,
+  "parent_compiled_buffers": 214,
+  "passed": 119,
+  "prior_control_generations_not_pooled": true,
+  "prior_failed_reservations": [
+    {
+      "attempt": "candidate-owner-router-v01",
+      "current_status": "retained",
+      "original_status": "retained",
+      "reservation_id": "466b56073025462ba44ea61872b5b6a1"
+    },
+    {
+      "attempt": "candidate-owner-router-v02",
+      "current_status": "retained",
+      "original_status": "retained",
+      "reservation_id": "b81c57f6b5544d43ab9c00e1e73b95cf"
+    }
+  ],
+  "process_scope": "sampled_birth_bound_descendants",
+  "product_owner_changed": false,
+  "public_dependency_qualification_claimed": false,
+  "recorded_at": "2026-11-09T23:01:58.103645+00:00",
+  "remaining_owning_test_files": 14,
+  "request_sha256": "ab67a1144a81d0c487bec24b564bf510903ac3ca769f66af0f8209ec88a8020f",
+  "resource_bounds": {
+    "child_process_slots": 4,
+    "cpu_slots": 1,
+    "memory_mb": 1536,
+    "storage_bytes": 33554432,
+    "timeout_seconds": 180
+  },
+  "router_files_qualified": true,
+  "schema": "candidate-owner-router-qualification/v1",
+  "scope": "Three complete candidate/owner-deadline/attempt-identity router owning files. Actual local Git fixtures and real client factories, shape/exact-byte/late-validation/receipt checks; provider, transport and UID/container boundaries authored. No native owner handoff, provider/model/container execution or candidate-correctness qualification",
+  "selected_checks": [
+    "test/api/test_router_candidate_dispatch.py",
+    "test/api/test_router_owner_provider_deadline.py",
+    "test/api/test_router_owner_worker_attempt_identity.py"
+  ],
+  "skips": 0,
+  "source_capture_members": 227,
+  "source_checkout_bytecode": [],
+  "source_drift": [],
+  "source_pin_maximum": 256,
+  "source_pins": 230,
+  "storage_bytes": 33554432,
+  "storage_profile": "First router profile forecast19,791,872 bytes for119 cases; explicitly requested32MiB before first admission. Prior profiles, failed promises, global220,000,000,000-byte cap, roots, pin maximum and1CPU/1536MiB/four-child/180-second native envelope unchanged.",
+  "storage_reservation_id": "afb11a05214441fd8eabf4749fd3b408",
+  "storage_status": "released",
+  "test_source_changed": false
+}

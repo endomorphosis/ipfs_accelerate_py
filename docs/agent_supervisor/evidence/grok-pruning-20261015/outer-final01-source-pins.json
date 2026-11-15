@@ -1,0 +1,25 @@
+{
+  "base_commit": "c3144fbbce99347ed37aa86cee18a63a3ac6c621",
+  "files": {
+    "benchmarks/agent_supervisor/container_coding/benchmark_comparison.py": "f7f6a6348b63b8f06f66679f9f58c8bec2f88df87e22894b37d171fbec6fa1b2",
+    "benchmarks/agent_supervisor/container_coding/benchmark_controls.py": "888ba231ddebaa46ef2323e837e3c9def5b1acc8585acd48ee9aa886fd1c732a",
+    "benchmarks/agent_supervisor/container_coding/container_worker_deployment.py": "7761926faba07adab4003ec35c5bd992c63c2aad412538f7719a314ea158fc0c",
+    "benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py": "40b9ebcd31caecd36ffd9f6392dafc974e389ecc3e9951849a931cd480dce809",
+    "benchmarks/agent_supervisor/container_coding/full_supervisor_harbor_agent.py": "9c2675ca50ed66a72b24a59feb88be205c683e5f06ae7b6e627dec3dc8d5595c",
+    "benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py": "87d3a018bd6515a67881873a744d875c914c6ad507a8fc261f6147fccde398bc",
+    "benchmarks/agent_supervisor/container_coding/terminal_doctor_dispatch.py": "90fc1163012dc01e4e387a73fc4e5fffaa7002760d955906bc31809feccbe99e",
+    "benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py": "6746da40da37392bc76b865d71b36c44f18e8e545fc30ff20c690df89bbc64c2",
+    "benchmarks/agent_supervisor/container_coding/test_benchmark_controls.py": "180e2ac6ea8fa9079040e5d3a23a8bdafc0694ab61bbce9277068669160e05f5",
+    "benchmarks/agent_supervisor/container_coding/test_full_supervisor_grok_readiness_setup.py": "12f38393904f1ff588b709331e1e24c7595223af87f6331459efb381128e84d8",
+    "benchmarks/agent_supervisor/container_coding/test_full_supervisor_harbor_agent.py": "9b7f8c3c58bbe1935135317edfe86faac95611f4ee271ce337c55056747cfd9c",
+    "benchmarks/agent_supervisor/container_coding/test_grok_coding_budget.py": "4c74c607fda93ddecb4fc90efc43e104b05ac8cb511fcbb89da50688354f6253",
+    "benchmarks/agent_supervisor/container_coding/test_grok_pruning_comparison.py": "63d07f64e451a421792a82573055af2c46edcbeeebea366f9078c9f08f89f84b",
+    "benchmarks/agent_supervisor/container_coding/test_grok_pruning_deployment.py": "ade7b372c08e25356158e4363064e7ba3aa506b4ba501e570bd8de9467589315",
+    "benchmarks/agent_supervisor/container_coding/test_grok_pruning_supervisor.py": "a7bce3a543f6c46263251f37482ef712ffc540f5998c92730570ba767f292b8e",
+    "benchmarks/agent_supervisor/container_coding/test_source_formalization_worker_deployment.py": "da407a63226b6b8252ff04524a13fbff7daa6b50dc1e724c501205c70d72ca3e",
+    "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py": "fd68bf806b6fdde2e9cac9f58681494145fd9bb6fcd51455dcd2bd1983dba7b3",
+    "ipfs_accelerate_py/cli_runtime/cli_metadata.py": "5f7601ed7cb57e2339a5ff536cc9db1346b60e38db3ab738bbac3d5bc35504ae",
+    "ipfs_accelerate_py/cli_runtime/grok_pruning.py": "f2fbe5d119bf115a83ff047825f660bdc532567e3fa283705bed5b845ecc62c7",
+    "ipfs_accelerate_py/llm_router.py": "c52017514cb8c06b65c43de9a97c439e026a5da391d3dcc7d9cd073dced7440a"
+  }
+}

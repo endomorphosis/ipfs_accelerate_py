@@ -1,0 +1,92 @@
+{
+  "affected_owning_files_newly_qualified": 0,
+  "all_existing_test_assertions_and_parameter_matrices_retained": true,
+  "checkout_preparation_note": {
+    "initial_step": "Sparse add after read-tree left three never-materialized files reported as local deletions; committed blobs intact.",
+    "no_test_run_started_before_repair": true,
+    "restored_exact_head_paths": [
+      "test/api/candidate_resource_test_support.py",
+      "test/api/test_owner_worktree_parent.py",
+      "test/api/test_owner_worktree_traversal.py"
+    ]
+  },
+  "earlier_qualified_accelerate_buffers_unchanged": true,
+  "earlier_sdk_control_generations_not_pooled": true,
+  "existing_filesystem_helpers_unchanged": true,
+  "full_branch_qualified": false,
+  "host_precondition": {
+    "all_four_current_storage_roots_have_writable_ancestry": true,
+    "approved_protected_profile_supplied": false,
+    "creation_reentry_and_race_paths_reached_not_inferred": true,
+    "guard_weakened_or_ambient_modes_mocked": false,
+    "new_root_or_permission_assumed": false,
+    "shared_host_permissions_changed": false,
+    "source_guard_correctly_refuses_actual_ancestry": true
+  },
+  "legal_model_corpus_or_hosted_ci_qualified": false,
+  "native_continuation_or_protected_host_qualified": false,
+  "product_or_artifact_guard_changed": false,
+  "qualified": false,
+  "recorded_at": "2026-11-09T23:53:31.552978+00:00",
+  "remaining_owning_files": 14,
+  "root_scope_or_previous_claims_changed": false,
+  "schema": "candidate-owner-permission-fixture-preparation/v1",
+  "source_changes": [
+    {
+      "commit": "22c62676f46fbeb0767bb6b8683c4d6612c68973",
+      "scope": "Move three native-integration imports into their sole existing integration case; leave shared filesystem helpers and test assertions unchanged. Static parent/traversal closure315 to231 source files."
+    },
+    {
+      "commit": "dcbc6433e78728a42ebc84b10341b4b1dc35201e",
+      "scope": "After original assertions, retire only five finite author-created aliases in finally; preserve exact inode/target and target metadata observations without reading target payloads or normalizing permissions."
+    }
+  ],
+  "source_commit": "dcbc6433e78728a42ebc84b10341b4b1dc35201e",
+  "source_pin_maximum": 256,
+  "storage_cap_bytes": 220000000000,
+  "validation_profiles": {
+    "parent_v01": {
+      "audit_violations": [],
+      "authored_aliases_retired": 4,
+      "cases": 35,
+      "deselections": 0,
+      "errors": 0,
+      "failed": 9,
+      "junit_seconds": 5.085,
+      "original_wait_source_native_observed_process_custody_closed": true,
+      "owned_operation_seconds": 139.1390362381935,
+      "parent_compiled_buffers": 222,
+      "passed": 26,
+      "qualified": false,
+      "request_sha256": "4ce747e2d7d9332bc2238cf97855f4f32f4b1e36a667f3252f010d5d32e6662f",
+      "skips": 0,
+      "source_checkout_bytecode": [],
+      "source_drift": [],
+      "source_pins": 235,
+      "storage_status": "retained"
+    },
+    "permissions_v01": {
+      "complete_suite_outcome_available": false,
+      "custody_closed": true,
+      "result": "Storage watchdog cancelled partial execution on retained authored symlink; no case count or qualification inferred.",
+      "selected_cases": 75,
+      "source_observation_available": false,
+      "storage_status": "retained"
+    },
+    "permissions_v02": {
+      "audit_scope": "Uncaptured board_control_plane import during factory setup.",
+      "authored_aliases_retired": 3,
+      "custody_closed": true,
+      "errors": 13,
+      "failed": 21,
+      "parent_compiled_buffers": 223,
+      "passed": 41,
+      "persisted_audit_refusals": 13,
+      "qualified": false,
+      "selected_cases": 75,
+      "source_pins": 236,
+      "storage_status": "retained"
+    }
+  },
+  "vendor_or_child_compilation_attested": false
+}

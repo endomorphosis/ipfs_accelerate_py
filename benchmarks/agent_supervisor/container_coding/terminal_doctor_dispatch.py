@@ -245,10 +245,36 @@ def prepare_terminal_doctor_dispatch(*, repository: Path, state: Path,
     return dispatch
 
 
+def semantic_metadata_tokenizer_selection(*, artifact, sha256, semantic_metadata_view,
+                                         semantic_transport_schema, semantic_repository,
+                                         arm=None, census_only=False):
+    """Validate a declared local selection without opening any asset."""
+    if artifact is None and sha256 is None:
+        return None
+    if (not isinstance(artifact, Path) or not artifact.is_absolute()
+            or artifact == Path("/") or ".." in artifact.parts
+            or len(str(artifact)) > 4096 or "\0" in str(artifact)
+            or type(sha256) is not str or re.fullmatch(r"[0-9a-f]{64}", sha256) is None):
+        raise ValueError("exact local semantic metadata tokenizer artifact and SHA256 required")
+    if (type(semantic_metadata_view) is not str
+            or semantic_metadata_view not in {"common-bindings@1", "common-bindings-instruction@1", "capsule-columns@1"}
+            or semantic_transport_schema != "supervisor-semantic-router-input@1"
+            or semantic_repository is None or arm not in (None, "full") or census_only):
+        raise ValueError("metadata tokenizer requires the original full semantic coding route")
+    return {"schema": "terminal-semantic-metadata-tokenizer-request@1",
+            "artifact_sha256": sha256,
+            "artifact_path_sha256": hashlib.sha256(str(artifact).encode()).hexdigest(),
+            "requested": True, "descriptor_loaded": False,
+            "worker_provisioning_verified": False, "provider_tokenizer_compatibility_verified": False,
+            "provider_usage_verified": False, "token_savings_established": False}
+
+
 def implementation_argv(*, router: Path, model: str, reasoning: str, timeout: int,
                         semantic_repository: Path | None, doctor: dict | None,
                         semantic_transport_schema: str = "supervisor-semantic-router-input@1",
                         coding_reply_mode: str = "legacy", semantic_metadata_view: str = "legacy",
+                        semantic_metadata_tokenizer_artifact: Path | None = None,
+                        semantic_metadata_tokenizer_sha256: str | None = None,
                         source_view_profile: str = "disabled", source_view_policy: dict | None = None,
                         source_edit_mode: str = "disabled",
                         tool_output_policy: str = "legacy", source_view_advisory_policy: str = "legacy",
@@ -256,6 +282,9 @@ def implementation_argv(*, router: Path, model: str, reasoning: str, timeout: in
                         source_input_policy: str = "legacy", query_reference_policy: str = "legacy",
                         semantic_working_set: str = "legacy",
                         grok_coding_max_turns: int = 128, provider: str = "codex_cli",
+                        grok_pruning_profile: str = "legacy",
+                        candidate_rounds: int = 1,
+                        doctor_coding_policy: str | None = None,
                         prompt_tokenizer_artifact: str | Path | None = None,
                         prompt_tokenizer_sha256: str | None = None,
                         max_input_tokens: int | None = None,
@@ -375,8 +404,31 @@ def implementation_argv(*, router: Path, model: str, reasoning: str, timeout: in
             "query_reference_policy": query_reference_policy, "provider": provider})
     from ipfs_accelerate_py.agent_supervisor.runtime.grok_coding_budget import validate_grok_coding_max_turns
     validate_grok_coding_max_turns(grok_coding_max_turns, provider=provider)
+    from ipfs_accelerate_py.agent_supervisor.runtime.candidate_round_policy import (
+        validate_candidate_rounds, validate_doctor_coding_policy,
+    )
+    validate_candidate_rounds(candidate_rounds)
+    validate_doctor_coding_policy(doctor_coding_policy, candidate_rounds=candidate_rounds)
+    provider_free_candidate = doctor is not None and doctor.get("route") in {
+        "doctor_candidate", "doctor_contract_candidate"}
+    if candidate_rounds == 2 and (doctor is not None and doctor_coding_policy is None
+            or not provider_free_candidate and (semantic_repository is None or source_view_profile == "disabled")):
+        raise ValueError("candidate continuation requires ordinary semantic source coding")
+    if doctor_coding_policy is not None and doctor is None:
+        raise ValueError("explicit Doctor coding policy requires Doctor dispatch constraints")
+    if doctor_coding_policy is not None and source_edit_mode != "disabled":
+        raise ValueError("Doctor coding continuation does not admit mapped source edits")
+    from ipfs_accelerate_py.cli_runtime.grok_pruning import validate_grok_pruning_profile
+    validate_grok_pruning_profile(grok_pruning_profile, provider=provider)
+    if grok_pruning_profile != "legacy" and (provider_free_candidate or candidate_rounds != 1
+            or doctor_coding_policy is not None or source_edit_mode != "disabled"):
+        raise ValueError("Grok pruning requires an ordinary model coding route")
     from .terminal_semantic_transport_policy import DEFAULT_SEMANTIC_TRANSPORT_SCHEMA, validate_semantic_transport_schema
     validate_semantic_transport_schema(semantic_transport_schema)
+    tokenizer_selection = semantic_metadata_tokenizer_selection(
+        artifact=semantic_metadata_tokenizer_artifact, sha256=semantic_metadata_tokenizer_sha256,
+        semantic_metadata_view=semantic_metadata_view, semantic_transport_schema=semantic_transport_schema,
+        semantic_repository=semantic_repository)
     from .terminal_coding_reply_policy import DEFAULT_CODING_REPLY_MODE, validate_coding_reply_mode
     validate_coding_reply_mode(coding_reply_mode)
     from .terminal_source_view_policy import (
@@ -427,12 +479,14 @@ def implementation_argv(*, router: Path, model: str, reasoning: str, timeout: in
     if tool_output_policy != "legacy" and not provider_free_candidate and (semantic_repository is None
             or doctor is not None and doctor.get("route") != "model_router"):
         raise ValueError("tool output policy requires a semantic model-router coding route")
-    if type(semantic_metadata_view) is not str or semantic_metadata_view not in {"legacy", "common-bindings@1", "common-bindings-instruction@1"}:
+    if type(semantic_metadata_view) is not str or semantic_metadata_view not in {"legacy", "common-bindings@1", "common-bindings-instruction@1", "capsule-columns@1"}:
         raise ValueError("unsupported semantic metadata view")
     if semantic_metadata_view != "legacy" and (semantic_repository is None
             or semantic_transport_schema != DEFAULT_SEMANTIC_TRANSPORT_SCHEMA
             or doctor is not None and doctor.get("route") != "model_router" and not provider_free_candidate):
         raise ValueError("metadata view requires the original semantic model-router coding route")
+    if semantic_metadata_view == "capsule-columns@1" and provider_free_candidate:
+        raise ValueError("capsule columns require a signed semantic model-router coding route")
     if coding_reply_mode != DEFAULT_CODING_REPLY_MODE and (semantic_repository is None
             or doctor is not None and doctor.get("route") != "model_router" and not provider_free_candidate):
         raise ValueError("ordinary completion requires a semantic model-router coding route")
@@ -452,9 +506,15 @@ def implementation_argv(*, router: Path, model: str, reasoning: str, timeout: in
                 "--doctor-candidate-sha256", doctor["sha256"], "--doctor-task-cid", doctor["task_cid"]]
     if doctor is not None and (doctor.get("route") != "model_router" or doctor.get("status") != "residual"):
         raise ValueError("Doctor dispatch is neither a candidate nor a residual fallback")
+    if doctor_coding_policy is not None and (type(doctor.get("residual_context")) is not dict
+            or not all(doctor["residual_context"].get(key) for key in ("artifact", "sha256", "task_cid"))):
+        raise ValueError("Doctor continuation requires the exact residual context binding")
     return [str(router), "--model", model, "--reasoning-effort", reasoning,
             "--timeout", str(timeout), "--max-output-tokens", "4096",
+            *(["--candidate-rounds", "2"] if candidate_rounds == 2 else []),
+            *(["--doctor-coding-policy", doctor_coding_policy] if doctor_coding_policy is not None else []),
             *(["--grok-coding-max-turns", str(grok_coding_max_turns)] if grok_coding_max_turns != 128 else []),
+            *(["--grok-pruning-profile", grok_pruning_profile] if grok_pruning_profile != "legacy" else []),
             *(["--semantic-repository", str(semantic_repository)] if semantic_repository is not None else []),
             *(["--semantic-transport-schema", semantic_transport_schema]
               if semantic_transport_schema != DEFAULT_SEMANTIC_TRANSPORT_SCHEMA else []),
@@ -467,6 +527,9 @@ def implementation_argv(*, router: Path, model: str, reasoning: str, timeout: in
               if coding_reply_mode != DEFAULT_CODING_REPLY_MODE else []),
             *(["--semantic-metadata-view", semantic_metadata_view]
               if semantic_metadata_view != "legacy" else []),
+            *(["--semantic-metadata-tokenizer-artifact", str(semantic_metadata_tokenizer_artifact),
+               "--semantic-metadata-tokenizer-sha256", semantic_metadata_tokenizer_sha256]
+              if tokenizer_selection is not None else []),
             *(["--source-view-profile", source_view_profile]
               if source_view_profile != DEFAULT_SOURCE_VIEW_PROFILE else []),
             *source_view_policy_argv(source_view_policy, profile=source_view_profile),

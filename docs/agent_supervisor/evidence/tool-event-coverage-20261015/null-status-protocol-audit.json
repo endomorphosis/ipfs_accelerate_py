@@ -1,0 +1,49 @@
+{
+  "boundaries": {
+    "binary_executed": false,
+    "network_calls": 0,
+    "private_artifacts_read": false,
+    "provider_calls": 0,
+    "raw_document_bodies_exported": false,
+    "raw_live_inputs_read": false,
+    "runtime_configuration_changed": false,
+    "source_edits": false
+  },
+  "conclusion": {
+    "absence_claim_scope": "reviewed-public-documents-only",
+    "future_evidence_needed": "version-pinned-normative-null-update-status-contract",
+    "null_as_omission_supported_by_reviewed_docs": false,
+    "null_update_status_semantics": "unknown",
+    "recommended_behavior": "retain_explicit_null_as_unknown_coverage",
+    "runtime_behavior_change_supported": false
+  },
+  "facts": {
+    "leaf_names_described_as_acp_derived": true,
+    "null_status_equals_omitted_explicitly_documented": false,
+    "null_status_example_present": false,
+    "null_status_means_unchanged_explicitly_documented": false,
+    "reference_is_exhaustive_schema": false,
+    "retained_audits_affirm_null_status_semantics": false,
+    "status_listed_as_update_field": true,
+    "tool_call_update_example_present": true,
+    "update_status_example_shape": "string",
+    "update_status_example_value": "completed",
+    "update_status_optional_or_nullable_schema_present": false,
+    "version_pinned_acp_status_schema_reviewed": false
+  },
+  "input_audit_sha256": {
+    "protocol_reference": "4dfc0ff8aa169793ec0faf363b6b615da71e531b4d13883cf3f482357266f1bd",
+    "request_boundary": "80846c7c524d604a042344da0d720aad030162afd142f7d7c25e5221b689203f",
+    "tool_taxonomy": "cf3c8993c0665a5abb1760c978ea0527b477c530ec49d7d9aae960b91659def5"
+  },
+  "pinned_binary_identity_verified": true,
+  "pinned_binary_sha256": "45b0943e736f00a249b9cf02af2be9e0749d97c09a6f55cfcf3029a1a836f23e",
+  "schema": "grok-null-update-status-public-protocol-audit@1",
+  "scope": "three-retained-public-audits-and-pinned-streaming-json-section",
+  "streaming_json_section": {
+    "bytes": 3025,
+    "offset": 7587606,
+    "sha256": "9df2f3daa9b6fc1fb8f90bd6b8e4e56831de3e7a85008797de37c0d43dc5b9c0"
+  },
+  "version": "1.0.46"
+}

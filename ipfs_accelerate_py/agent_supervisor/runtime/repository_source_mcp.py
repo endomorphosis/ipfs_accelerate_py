@@ -151,8 +151,10 @@ TOOLS = [
           {"generation": GENERATION, "semantic_root_cid": CID,
            "stable_symbol_ids": {"type": "array", "items": CID, "minItems": 1, "maxItems": 32, "uniqueItems": True},
            "max_bytes": CONTEXT_BYTES}, ["generation", "semantic_root_cid", "stable_symbol_ids"]),
-    _tool("repository_read", "Read current source with its canonical file SHA256. Optional symbol_id from a query or symbols result selects a supported Python definition and returns its verified local edit name; omit it for the full file. Definitions are dedented and omit enclosing/import context. Compact omits comments/formatting; a bound local tokenizer selects it only for a smaller complete reply. Request original source for missing context.",
+    _tool("repository_read", "Read current source with its canonical file SHA256. Optional symbol_id selects a supported Python definition and its verified local edit name. For any UTF-8 file, use start_line and end_line together with representation original for an exact inclusive physical-line range (at most 4096 lines/64 KiB); ranges omit other context and provide no symbol edit handle. Do not combine a range with symbol_id. Omit both selectors for the full file. Definitions are dedented and omit enclosing/import context. Compact omits comments/formatting; a bound local tokenizer selects it only for a smaller complete reply. Request original source for missing context.",
           {"generation": GENERATION, "path": PATH, "symbol_id": CID,
+           "start_line": {"type": "integer", "minimum": 1, "maximum": 2**31 - 1},
+           "end_line": {"type": "integer", "minimum": 1, "maximum": 2**31 - 1},
            "representation": {"type": "string", "enum": ["original", "compact"]}}, ["generation", "path"]),
     _tool("repository_replace_symbol", "Replace one Python definition using the read's source_sha256, verified local symbol and returned representation. Legacy local names such as Class.method are accepted; native CIDs and module-prefixed index names are not edit names. Refreshes canonical checkout/index; check refresh_required and run task tests. Comment-only changes require a direct original-source edit.",
           {"generation": GENERATION, "path": PATH, "symbol": {"type": "string", "minLength": 1, "maxLength": 1024},
@@ -717,6 +719,10 @@ class RepositoryMCPServer:
     def _selected_read(self, identity, arguments):
         from ipfs_accelerate_py.agent_supervisor.runtime.repository_source_token_budget import select_repository_reply
         requested = arguments.get("representation", self.config["representation"])
+        if (any(key in arguments for key in ("start_line", "end_line"))
+                and requested != "original"):
+            from ipfs_accelerate_py.agent_supervisor.runtime.repository_source_session import RepositorySourceSessionError
+            raise RepositorySourceSessionError("line_range_requires_original")
         original = self.session.read(**{**arguments, "representation": "original"})
         compact = self.session.read(**{**arguments, "representation": "compact"}) if requested == "compact" else None
         if compact is not None and any(original.get(key) != compact.get(key) for key in (

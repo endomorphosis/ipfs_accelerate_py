@@ -230,3 +230,20 @@ def test_reserved_candidate_prompt_cannot_fall_through_to_raw_model_dispatch(
     with pytest.raises(ValueError, match="independent dispatch admission"):
         router.run(prompt=" \n"+json.dumps(forged)+suffix, provider=provider, purpose=purpose,
             model="authored", timeout=1, max_output_tokens=128)
+
+
+@pytest.mark.parametrize("flags", [
+    ["--doctor-residual-artifact", "/authored/residual.json"],
+    ["--doctor-residual-sha256", "a" * 64],
+    ["--doctor-residual-artifact", "/authored/residual.json", "--doctor-residual-sha256", "a" * 64],
+])
+def test_partial_doctor_selection_is_refused_before_creating_source_broker(source_service, monkeypatch, flags):
+    created = []
+    def forbidden_constructor(*args, **kwargs):
+        created.append(True)
+        raise AssertionError("partial Doctor declaration allocated a source broker")
+    with monkeypatch.context() as patch:
+        patch.setattr(sources, "WorkerSourceBroker", forbidden_constructor)
+        with pytest.raises(ValueError, match="complete original Doctor residual selection"):
+            _prepared(source_service, flags)
+    assert created == []

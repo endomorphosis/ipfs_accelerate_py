@@ -1,0 +1,42 @@
+{
+  "attempt_directory": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-native-bootstrap-capsule-20261017-r01",
+  "base_capsule_manifest_sha256": "01f38d5aa9ea18dc84b45909cdc2265fbd4ffcc8f35f4cda5e49d54ca5cfd1db",
+  "base_capsule_root": "/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-supervisor-runs/legal-ir-disposition-entry-capsule-20261017-r01/capsule",
+  "base_preparation_root_observation_path": "/home/barberb/lift_coding/artifacts/legal-ir-daemon-disposition-20261017-01/disposition-entry-capsule-root-observation-r01.json",
+  "base_preparation_root_observation_sha256": "20b49c65e26c722193588f0010602c5260ca4c7ee0ea17f0ad08bfb0a5b7637e",
+  "expected_payload_bytes": 106984106,
+  "expected_payload_file_count": 2813,
+  "hook_assembler_path": "/home/barberb/lift_coding/artifacts/legal-ir-native-bootstrap-20261017-01/bootstrap-hooks-v01/build_patch.py",
+  "hook_assembler_sha256": "1e9c94d1f037f4a1fd4aa79450956f3c772936d1081a0094241dd7027e667e3a",
+  "hook_assembly_report_path": "/home/barberb/lift_coding/artifacts/legal-ir-native-bootstrap-20261017-01/bootstrap-hooks-v01/ASSEMBLY.json",
+  "hook_assembly_report_sha256": "d381e25e9c1a955b709ef16f4ae18e588f03b219ece70bce467d5ffd4e9aaf5d",
+  "overrides": [
+    {
+      "bytes": 38649,
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime/native_admin_execution.py",
+      "sha256": "12d96d89b1dfafffa1ca198510284c2c340741bb60774ec01c5011ef576697d3",
+      "source_path": "/home/barberb/lift_coding/artifacts/legal-ir-native-bootstrap-20261017-01/native-admin-v01/proposed/ipfs_accelerate_py/agent_supervisor/runtime/native_admin_execution.py"
+    },
+    {
+      "bytes": 33273,
+      "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/report_only_native_host.py",
+      "sha256": "1fb433c29462fc65c15a2ea6be74cfc4c0f816c04d9a4ff95f3fc88a3e47ac0c",
+      "source_path": "/home/barberb/lift_coding/artifacts/legal-ir-native-bootstrap-20261017-01/native-host-v06/proposed/ipfs_accelerate_py/agent_supervisor/todo_daemon/report_only_native_host.py"
+    },
+    {
+      "bytes": 2194,
+      "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/report_only_disposition_gate.py",
+      "sha256": "63bedb42176a195e5c9ab7c78079ef3498bccef34058462b1a07b41cbc3ab74f",
+      "source_path": "/home/barberb/lift_coding/artifacts/legal-ir-native-bootstrap-20261017-01/entry-gate-v02/proposed/ipfs_accelerate_py/agent_supervisor/todo_daemon/report_only_disposition_gate.py"
+    }
+  ],
+  "parent_request_name": "legal-ir-native-bootstrap-capsule-20261017-r01",
+  "parent_request_path": "/home/barberb/lift_coding/artifacts/legal-ir-native-bootstrap-20261017-01/full-host-fixture-v01/prepare-request-r01.json",
+  "reviewed_composed_daemon_sha256": "39fc698864435ad9668ee88fcf86390ab2b34d048663a1096d08851b7abcca9d",
+  "reviewed_entry_gate_sha256": "63bedb42176a195e5c9ab7c78079ef3498bccef34058462b1a07b41cbc3ab74f",
+  "reviewed_host_sha256": "1fb433c29462fc65c15a2ea6be74cfc4c0f816c04d9a4ff95f3fc88a3e47ac0c",
+  "reviewed_native_admin_sha256": "12d96d89b1dfafffa1ca198510284c2c340741bb60774ec01c5011ef576697d3",
+  "schema": "legal-ir-full-host-bootstrap-preparation@1",
+  "source_manifest_sha256": "811afb33c988ad1a04b746b319d72d246420853112c599db930aafd9f06b3cba",
+  "storage_bytes": 134217728
+}

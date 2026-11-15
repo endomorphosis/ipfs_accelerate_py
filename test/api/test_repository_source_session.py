@@ -2,6 +2,8 @@
 import copy
 import hashlib
 import json
+import os
+import stat
 from pathlib import Path
 
 import pytest
@@ -66,7 +68,10 @@ def source(tmp_path):
     (root / "opaque.bin").write_bytes(b"\xff\x00\x10")
     (root / "empty").mkdir()
     (root / "link").symlink_to("calc.py")
-    return root
+    try:
+        yield root
+    finally:
+        _retire_source_fixture_alias(root)
 
 
 def make(source, tmp_path, **kwargs):
@@ -424,3 +429,29 @@ def test_retained_cache_consumes_full_package_limits(tmp_path, limits, code):
 def test_invalid_generation_handles_are_rejected(source, tmp_path, generation):
     with make(source, tmp_path) as session:
         assert_error("invalid_generation", lambda: session.read(generation=generation, path="calc.py"))
+
+
+def _retire_source_fixture_alias(root):
+    """Retire the authored alias after assertions; preserve its target and evidence."""
+    alias = root / "link"
+    before = alias.lstat()
+    target_name = os.readlink(alias)
+    assert stat.S_ISLNK(before.st_mode) and before.st_uid == os.getuid() and before.st_nlink == 1
+    assert target_name in {"calc.py", "opaque.bin"}
+    target = root / target_name
+    def metadata(path):
+        info = path.stat(follow_symlinks=False)
+        return {key: getattr(info, key) for key in (
+            "st_dev", "st_ino", "st_mode", "st_uid", "st_gid", "st_nlink", "st_size", "st_mtime_ns")}
+    target_before = metadata(target)
+    current = alias.lstat()
+    assert (current.st_dev, current.st_ino) == (before.st_dev, before.st_ino)
+    assert os.readlink(alias) == target_name
+    alias.unlink()
+    target_after = metadata(target)
+    receipt = dict(schema="authored-source-alias-retirement/v1", alias="link", target=target_name,
+        alias_device=before.st_dev, alias_inode=before.st_ino,
+        target_before=target_before, target_after=target_after,
+        target_unchanged=target_before == target_after)
+    (root.parent / "source-alias-retirement.json").write_text(json.dumps(receipt, sort_keys=True) + "\n")
+    assert target_before == target_after

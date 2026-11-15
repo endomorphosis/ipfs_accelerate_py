@@ -5418,6 +5418,246 @@ class IntentRepository:
                 body=event_body,
             )
 
+    def _dependency_evidence_records(self, task_cid: str) -> tuple[Mapping[str, Any], ...]:
+        """Current recorded evidence, never inferred from a predecessor's status."""
+        return self.current_evidence_for_task(task_cid)
+
+    def release_dependency_satisfied_blocks(
+        self, *, expected_revisions: Mapping[str, int] | None = None,
+    ) -> Mapping[str, Any]:
+        """Resolve metadata dependency gates without dispatching scientific work.
+
+        Only opted-in manual tasks with explicit acceptance and current stored
+        evidence bound to the exact task spec and dependency revisions complete.
+        Other eligible goals may gain blocked obligations. This operation never
+        clears a block, claim, lease, permission, packet, backoff, or budget; it
+        never sets a task ready or runs a source probe. A borrowed repository
+        composes the existing upsert/CAS owners within one write transaction.
+        Scientific builder/probe receipts remain the producer's responsibility.
+        A bound connection must already be in its owner's transaction; its
+        caller retains responsibility for rollback if any mutation fails.
+        """
+        from .dependency_block_resolution import (
+            catalogue_resolution_decision, dependency_resolution_receipt,
+            obligation_slug, resolution_obligations,
+        )
+        if self.uses_quack_transport:
+            raise IntentRepositoryError(
+                "dependency resolution requires the exclusive owner's local or bound connection"
+            )
+        if self.uses_bound_connection and getattr(self._bound_connection, "in_transaction", None) is not True:
+            raise IntentRepositoryError("dependency resolution requires an active owner transaction")
+        revisions = None
+        if expected_revisions is not None:
+            revisions = {
+                _identifier(key, noun="task_cid"): _positive_int(value, noun="expected_revision")
+                for key, value in _mapping(expected_revisions, noun="expected revisions").items()
+            }
+        result: dict[str, Any] = {key: [] for key in ("completed", "pending", "held", "spawned", "retired")}
+        # Runtime admission has its own canonical owner. Its presence is a hold,
+        # not an invitation for a metadata watchdog to reinterpret its validity.
+        runtime_fields = frozenset({
+            "local_planning_contract", "execution_packet_policy", "permission",
+            "permission_id", "permission_expires_at_ms", "resource_admission",
+            "resource_budget", "budgets", "retry_budget", "max_attempts",
+            "budget_exhausted", "permission_expired", "source_lease",
+        })
+        binding_fields = frozenset({
+            "source_binding", "source_sha256", "source_digest", "source_revision",
+            "artifact_sha256", "artifact_digest", "interpretation_version",
+            "dependency_version", "toolchain_profile", "checkpoint_sha256",
+            "checkpoint_cid", "encoder_checkpoint", "decoder_checkpoint",
+            "formal_obligation", "assumptions", "legal_ir", "typed_ir",
+            "declaration", "proposition", "backend_profile",
+        })
+        with self._connection(write=True) as connection:
+            bound = IntentRepository(
+                bound_connection=connection, owner_id=self.owner_id,
+                session_id=self.session_id,
+                evidence_freshness_seconds=self.evidence_freshness_seconds,
+                clock_ms=self._clock_ms,
+            )
+            try:
+                rows = connection.execute(
+                    "SELECT task_cid FROM tasks ORDER BY ordinal, task_cid LIMIT ?",
+                    [MAX_PROJECTION_RECORDS + 1],
+                ).fetchall()
+                if len(rows) > MAX_PROJECTION_RECORDS:
+                    raise IntentRepositoryBoundsError("dependency resolution task population exceeds bound")
+                task_ids = [str(row[0]) for row in rows]
+                if revisions is not None:
+                    for key, revision in revisions.items():
+                        current = bound.get_task(key)
+                        if current is None or current["revision"] != revision:
+                            raise IntentRepositoryConflictError("dependency resolution snapshot CAS is stale")
+                tables = {str(row[0]) for row in connection.execute("SHOW TABLES").fetchall()}
+                # At most one completion per original task, in dependency order.
+                # Newly created obligations stay blocked until a future producer.
+                for _pass in range(len(task_ids) + 1):
+                    changed = False
+                    pending: dict[str, Any] = {}
+                    held: dict[str, Any] = {}
+                    for cid in task_ids:
+                        task = bound.get_task(cid)
+                        if task is None or task["status"] != "blocked":
+                            continue
+                        body = dict(task["body"])
+                        deps = [bound.get_task(key) for key in task["dependencies"]]
+                        criteria = tuple(item["criterion"] for item in task["acceptance"])
+                        active = connection.execute(
+                            "SELECT 1 FROM task_blocks WHERE task_cid=? AND state='active' LIMIT 1", [cid]
+                        ).fetchone() is not None
+                        decision = catalogue_resolution_decision(
+                            status=task["status"], body=body,
+                            dependency_statuses=[item["status"] if item else "missing" for item in deps],
+                            active_block=active, criteria=criteria,
+                        )
+                        if decision in {"not_blocked", "no_dependencies", "dependencies_open", "packet_not_required", "not_manual"}:
+                            continue
+                        item = {"task_cid": cid, "task_alias": task["task_alias"], "decision": decision}
+                        if decision not in {"release", "unclassified_blocked_reason"}:
+                            held[cid] = item
+                            continue
+                        fenced = False
+                        for table in ("task_claims", "fenced_leases", "leases"):
+                            if table in tables and connection.execute(
+                                "SELECT 1 FROM " + table + " WHERE task_cid=? LIMIT 1", [cid]
+                            ).fetchone() is not None:
+                                fenced = True
+                                break
+                        if any(body.get(flag) is True for flag, value in dependency_resolution_receipt().items() if value is False):
+                            item["decision"] = "authority_flag_hold"
+                            held[cid] = item
+                            continue
+                        if fenced or runtime_fields.intersection(body):
+                            item["decision"] = "runtime_authority_hold"
+                            held[cid] = item
+                            continue
+                        evidence = bound.current_evidence_for_task(cid)
+                        bindings = {
+                            section: {key: value for key, value in task[section].items() if key in binding_fields}
+                            for section in ("body", "identity")
+                        }
+                        bindings = {section: fields for section, fields in bindings.items() if fields}
+                        spec_cid = task_authority_spec_cid(task)
+                        dependency_snapshot = [
+                            {"task_cid": dep["task_cid"], "revision": dep["revision"],
+                             "status": dep["status"], "spec_cid": task_authority_spec_cid(dep)}
+                            for dep in deps if dep is not None
+                        ]
+                        dependency_bound = any(
+                            binding_fields.intersection(dep[section])
+                            for dep in deps if dep is not None
+                            for section in ("body", "identity")
+                        )
+                        allowed_kinds = {"validation", "test", "acceptance"}
+                        required_digests = set()
+                        for criterion in task["acceptance"]:
+                            policy = criterion.get("evidence_policy", {})
+                            if isinstance(policy, Mapping):
+                                kind = str(policy.get("evidence_kind") or policy.get("kind") or "").strip()
+                                digest = str(policy.get("required_digest") or policy.get("evidence_digest") or policy.get("digest") or "").strip()
+                                if kind:
+                                    allowed_kinds.add(kind)
+                                if digest:
+                                    required_digests.add(digest)
+                        eligible = []
+                        for record in evidence:
+                            if record["evidence_kind"] not in allowed_kinds and record["digest"] not in required_digests:
+                                continue
+                            created_ms = _parse_iso_ms(str(record["created_at"]))
+                            if created_ms <= 0 or created_ms > int(self._clock_ms()):
+                                continue
+                            evidence_body = record["body"]
+                            if any(evidence_body.get(flag) is True for flag, value in dependency_resolution_receipt().items() if value is False):
+                                continue
+                            if bindings and (
+                                evidence_body.get("task_authority_spec_cid") != spec_cid
+                                or evidence_body.get("source_bindings") != bindings
+                            ):
+                                continue
+                            if evidence_body.get("task_authority_spec_cid") != spec_cid:
+                                continue
+                            if evidence_body.get("dependency_snapshot") != dependency_snapshot:
+                                continue
+                            eligible.append(record)
+                        digests = tuple(str(record["digest"]) for record in eligible)
+                        missing = bound._missing_evidence_on(
+                            connection, cid, eligible_evidence_ids=tuple(str(record["evidence_id"]) for record in eligible),
+                        )
+                        if not task["acceptance"]:
+                            missing = (*missing, "required:explicit_acceptance")
+                        if not eligible:
+                            missing = (*missing, "required:bound_current_evidence")
+                        if decision == "release" and not missing:
+                            receipt = dependency_resolution_receipt()
+                            receipt.update({
+                                "task_authority_spec_cid": spec_cid,
+                                "source_bindings": bindings,
+                                "dependency_snapshot": dependency_snapshot,
+                                "evidence_ids": [record["evidence_id"] for record in eligible],
+                            })
+                            bound.cas_task_status(
+                                task_cid=cid, expected_revision=task["revision"],
+                                new_status="completed", receipt=receipt,
+                                evidence_digests=digests,
+                            )
+                            result["completed"].append({**item, "decision": "completed"})
+                            changed = True
+                            continue
+                        obligations = resolution_obligations(criteria=criteria, body=body)
+                        # Decomposition records remaining work, not satisfaction.
+                        # Do not split source-bound targets into weaker obligations.
+                        if obligations and not bindings and not dependency_bound:
+                            children = []
+                            for index, obligation in enumerate(obligations):
+                                slug = obligation_slug(obligation["obligation"], index)
+                                child_cid = cid + "--" + slug
+                                child_alias = str(task["task_alias"]) + "--" + slug
+                                child = bound.get_task(child_cid)
+                                if child is not None:
+                                    raise IntentRepositoryConflictError("dependency obligation identity already exists")
+                                child_body = {**body, **dependency_resolution_receipt(),
+                                    "resolution_subgoal": True, "parent_task_cid": cid,
+                                    "parent_task_alias": task["task_alias"],
+                                    "obligation_kind": obligation["kind"],
+                                    "blocked_reason": "Recorded obligation remains unresolved.",
+                                }
+                                child_body.pop("completion_receipt", None)
+                                child_body.pop("operation", None)
+                                bound.upsert_task(
+                                    task_cid=child_cid, task_alias=child_alias,
+                                    goal_cid=task["goal_cid"], plan_cid=task["plan_cid"],
+                                    objective_id=task["objective_id"], ordinal=task["ordinal"],
+                                    priority=task["priority"], status="blocked", body=child_body,
+                                    identity=dict(task["identity"]), expected_revision=0,
+                                    dependencies=task["dependencies"],
+                                    acceptance=[{"criterion": obligation["obligation"], "evidence_kind": "validation"}],
+                                )
+                                children.append(child_cid)
+                                result["spawned"].append({"task_cid": child_cid, "task_alias": child_alias})
+                            body["resolution_decomposed"] = True
+                            bound.upsert_task(
+                                task_cid=cid, task_alias=task["task_alias"],
+                                goal_cid=task["goal_cid"], plan_cid=task["plan_cid"],
+                                objective_id=task["objective_id"], ordinal=task["ordinal"],
+                                priority=task["priority"], status="blocked", body=body,
+                                identity=dict(task["identity"]), expected_revision=task["revision"],
+                                dependencies=[*task["dependencies"], *children],
+                            )
+                        if decision == "release":
+                            item["missing"] = list(missing)
+                            pending[cid] = item
+                        else:
+                            held[cid] = item
+                    result["pending"] = list(pending.values())
+                    result["held"] = list(held.values())
+                    if not changed:
+                        break
+            finally:
+                bound.close()
+        return result
+
     def _missing_evidence_on(
         self,
         connection: Any,
@@ -5425,6 +5665,7 @@ class IntentRepository:
         *,
         evidence_digests: Sequence[str] | None = None,
         now_ms: int | None = None,
+        eligible_evidence_ids: Sequence[str] | None = None,
     ) -> tuple[str, ...]:
         task = connection.execute(
             "SELECT body_json, revision FROM tasks WHERE task_cid = ?", [task_cid]
@@ -5448,7 +5689,7 @@ class IntentRepository:
         ).fetchall()
         evidence_rows = connection.execute(
             """
-            SELECT evidence_kind, digest, created_at
+            SELECT evidence_kind, digest, created_at, evidence_id
             FROM evidence_nodes WHERE task_cid = ?
             """,
             [task_cid],
@@ -5459,6 +5700,8 @@ class IntentRepository:
         for row in evidence_rows:
             kind = str(row[0])
             digest = str(row[1])
+            if eligible_evidence_ids is not None and str(row[3]) not in eligible_evidence_ids:
+                continue
             created_at = str(row[2] or "")
             created_ms = _parse_iso_ms(created_at)
             if freshness_ms > 0 and created_ms > 0 and clock - created_ms > freshness_ms:

@@ -44,7 +44,9 @@ def _baseline(tmp_path):
                 "reward": {"reward": 1},
                 "seconds": {"agent_execution": 12},
                 "raw_usage": {
-                    "sessions": [{"session_id": "session", "task_complete_observed": True}],
+                    "sessions": [{"session_id": "session", "task_complete_observed": True,
+                        "usage": {"input_tokens": 100, "cached_input_tokens": 80,
+                                  "output_tokens": 10, "total_tokens": 110}}],
                     "usage": {
                         "input_tokens": 100,
                         "cached_input_tokens": 80,
@@ -70,6 +72,8 @@ def _invocation(identity="call"):
             "rollout_sha256": hashlib.sha256((identity + "-rollout").encode()).hexdigest(),
             "observed_token_count_records": 1,
             "usage_available": True,
+            "latest_usage_snapshot_valid": True,
+            "counter_regression_observed": False,
             "cache_included_in_input": True,
             "task_complete_observed": True,
             "usage": {
@@ -101,6 +105,177 @@ def _grok_invocation(identity="grok-call", complete=None):
     }
 
 
+def _resumed_snapshot(previous, identity="resumed", *, records=2, total=44):
+    """Authored coherent snapshots; no provider observation is implied."""
+    resumed = _invocation(identity)
+    native = resumed["native_rollout_usage"]
+    native["thread_id"] = previous["native_rollout_usage"]["thread_id"]
+    native["observed_token_count_records"] = records
+    native["usage"].update(input_tokens=total - 4, cached_input_tokens=30,
+                           output_tokens=4, total_tokens=total)
+    return resumed
+
+
+def test_resumed_session_snapshots_are_selected_once_within_trial(tmp_path):
+    first = _invocation("first-snapshot")
+    first.update(status="failed", error_type="ResponseDecodeError")
+    resumed = _resumed_snapshot(first)
+    receipt = _receipt(tmp_path, "resumed-one-trial.json", SUPERVISOR, [{
+        "trial": "resumed", "reward": {"reward": 1}, "supervisor": {
+            "provider_invocations": [first, resumed]}}], "full")
+    result = collect(baseline=_baseline(tmp_path), supervisors=[receipt])
+    row = result["rows"][1]
+    assert row["provider_calls"] == 2 and len(row["invocations"]) == 2
+    assert row["invocations"][0]["status"] == "failed"
+    assert row["tokens"]["total_tokens"] == row["known_token_subtotals"]["total_tokens"] == 44
+    assert row["usage_accounting"]["native_usage_accounting"]["native_session_count"] == 1
+    totals = result["arm_totals"]["full"]
+    assert totals["tokens"]["total_tokens"] == 44
+    assert totals["observed_efficiency"]["total_tokens_per_official_pass"] == 44
+
+
+def test_resumed_session_is_reconciled_across_failed_and_passed_trials(tmp_path):
+    first = _invocation("failed-snapshot")
+    first.update(status="failed", error_type="TimeoutExpired")
+    resumed = _resumed_snapshot(first)
+    receipt = _receipt(tmp_path, "resumed-two-trials.json", SUPERVISOR, [
+        {"trial": "failed", "reward": {"reward": 0}, "supervisor": {"provider_invocations": [first]}},
+        {"trial": "passed", "reward": {"reward": 1}, "supervisor": {"provider_invocations": [resumed]}},
+    ], "full")
+    result = collect(baseline=_baseline(tmp_path), supervisors=[receipt])
+    totals = result["arm_totals"]["full"]
+    assert totals["trials"] == 2 and totals["observed_official_passes"] == 1
+    assert [row["tokens"]["total_tokens"] for row in result["rows"][1:]] == [22, 44]
+    # Retain reconciled global observations without assigning a shared session
+    # to trial outcomes. The existing outcome-attribution guard remains active.
+    assert totals["tokens"]["total_tokens"] is None
+    assert totals["known_token_subtotals"]["total_tokens"] is None
+    assert totals["usage_accounting"]["total_tokens"] == 44
+    assert totals["native_session_overlap_detected"] is True
+    assert "native_sessions_shared_across_trials" in totals["observed_efficiency"]["token_ratio_unavailable_reasons"]
+    assert totals["usage_accounting"]["native_usage_accounting"]["supplied_invocation_count"] == 2
+    assert totals["session_usage_attribution_to_trial_verified"] is False
+    assert result["unsuccessful_attempt_costs"]["full"]["trials"] == 1
+
+
+@pytest.mark.parametrize("across_trials", [False, True])
+def test_regressing_shared_session_withholds_aggregate_usage(tmp_path, across_trials):
+    first = _invocation("later-record")
+    first["native_rollout_usage"]["observed_token_count_records"] = 3
+    resumed = _resumed_snapshot(first, records=2)
+    trials = ([{"trial": "one", "supervisor": {"provider_invocations": [first, resumed]}}]
+              if not across_trials else [
+                  {"trial": "one", "supervisor": {"provider_invocations": [first]}},
+                  {"trial": "two", "supervisor": {"provider_invocations": [resumed]}}])
+    receipt = _receipt(tmp_path, "regression.json", SUPERVISOR, trials, "full")
+    result = collect(baseline=_baseline(tmp_path), supervisors=[receipt])
+    totals = result["arm_totals"]["full"]
+    assert totals["trials"] == len(trials)
+    assert totals["tokens"]["total_tokens"] is None
+    assert totals["known_token_subtotals"]["total_tokens"] is None
+    session, = totals["usage_accounting"]["native_usage_accounting"]["sessions"]
+    assert session["status"] == "conflict"
+    assert "native_snapshot_record_regression" in session["reasons"]
+
+
+@pytest.mark.parametrize("missing", ["thread_id", "rollout_sha256", "observed_token_count_records", "model"])
+def test_sparse_legacy_invocation_keeps_observation_without_qualified_total(tmp_path, missing):
+    invocation = _invocation()
+    (invocation if missing == "model" else invocation["native_rollout_usage"]).pop(missing)
+    receipt = _receipt(tmp_path, "sparse.json", SUPERVISOR, [{
+        "trial": "sparse", "reward": {"reward": 1}, "supervisor": {"provider_invocations": [invocation]}}], "full")
+    result = collect(baseline=_baseline(tmp_path), supervisors=[receipt])
+    row = result["rows"][1]
+    assert row["invocations"][0]["known_token_subtotals"]["total_tokens"] == 22
+    assert row["tokens"]["total_tokens"] is None
+    assert result["arm_totals"]["full"]["observed_efficiency"]["total_tokens_per_official_pass"] is None
+    assert "MUST NOT APPEAR" not in json.dumps(result)
+
+
+def test_baseline_shared_session_across_trials_withholds_totals(tmp_path):
+    baseline = _baseline(tmp_path)
+    value = json.loads(baseline.read_text())
+    duplicate = copy.deepcopy(value["trials"][0])
+    duplicate.update(trial="reused-session", reward={"reward": 0})
+    value["trials"].append(duplicate)
+    value["trial_count"] = 2
+    baseline.write_text(json.dumps(value))
+    result = collect(baseline=baseline, supervisors=[])
+    totals = result["arm_totals"]["native-codex"]
+    assert totals["trials"] == 2 and totals["observed_official_passes"] == 1
+    assert totals["tokens"]["total_tokens"] is None
+    assert totals["known_token_subtotals"]["total_tokens"] is None
+    assert "native_baseline_session_overlap_unresolved" in totals["native_usage_unavailable_reasons"]
+    assert totals["observed_efficiency"]["total_tokens_per_official_pass"] is None
+
+
+@pytest.mark.parametrize("across_trials", [False, True])
+def test_baseline_counter_sums_are_bounded_with_raw_observations_retained(tmp_path, across_trials):
+    maximum = (1 << 63) - 1
+    baseline = _baseline(tmp_path)
+    value = json.loads(baseline.read_text())
+    original = value["trials"][0]
+    counts = {"input_tokens": maximum, "cached_input_tokens": 0,
+              "output_tokens": 0, "total_tokens": maximum}
+    original["raw_usage"]["usage"] = dict(counts)
+    original["raw_usage"]["sessions"][0]["usage"] = dict(counts)
+    if across_trials:
+        second = copy.deepcopy(original)
+        second["trial"] = "independent-overflow-trial"
+        second["raw_usage"]["sessions"][0]["session_id"] = "independent-session"
+        value["trials"].append(second)
+        value["trial_count"] = 2
+    else:
+        second = copy.deepcopy(original["raw_usage"]["sessions"][0])
+        second["session_id"] = "independent-session"
+        original["raw_usage"]["sessions"].append(second)
+    baseline.write_text(json.dumps(value))
+    result = collect(baseline=baseline, supervisors=[])
+    totals = result["arm_totals"]["native-codex"]
+    assert all(item is None for item in totals["tokens"].values())
+    assert all(item is None for item in totals["known_token_subtotals"].values())
+    assert "native_baseline_counter_bound" in totals["native_usage_unavailable_reasons"]
+    assert totals["observed_efficiency"]["total_tokens_per_official_pass"] is None
+    assert totals["trials"] == (2 if across_trials else 1)
+    for row in result["rows"]:
+        accounting = row["baseline_usage_accounting"]
+        assert accounting["reported_counter_observations"] == counts
+        assert all(session["tokens"] == counts for session in accounting["sessions"])
+        if across_trials:
+            assert row["tokens"] == counts
+        else:
+            assert all(item is None for item in row["known_token_subtotals"].values())
+            assert "native_baseline_counter_bound" in accounting["reasons"]
+
+
+@pytest.mark.parametrize("mutation", ["top_counter", "missing_session_count", "duplicate_session", "top_completion",
+                                      "unknown_session_identity", "missing_session_inventory"])
+def test_baseline_contradictory_or_sparse_session_census_is_not_a_total(tmp_path, mutation):
+    baseline = _baseline(tmp_path)
+    value = json.loads(baseline.read_text())
+    native = value["trials"][0]["raw_usage"]
+    if mutation == "top_counter": native["usage"]["total_tokens"] = 220
+    elif mutation == "missing_session_count": native["sessions"][0].pop("usage")
+    elif mutation == "duplicate_session": native["sessions"].append(copy.deepcopy(native["sessions"][0]))
+    elif mutation == "unknown_session_identity": native["sessions"][0]["session_id"] = "unidentified:rollout.jsonl"
+    elif mutation == "missing_session_inventory": native.pop("sessions")
+    else:
+        native["task_complete_observed"] = True
+        native["sessions"][0].pop("task_complete_observed")
+    baseline.write_text(json.dumps(value))
+    result = collect(baseline=baseline, supervisors=[])
+    row = result["rows"][0]
+    assert row["tokens"]["total_tokens"] is None
+    accounting = row["baseline_usage_accounting"]
+    assert accounting["reported_counter_observations"]["total_tokens"] == (220 if mutation == "top_counter" else 110)
+    if mutation != "top_completion":
+        assert all(value is None for value in row["known_token_subtotals"].values())
+    totals = result["arm_totals"]["native-codex"]
+    assert totals["tokens"]["total_tokens"] is None
+    assert totals["observed_efficiency"]["total_tokens_per_official_pass"] is None
+    assert "Session observations involving unsuccessful attempts" in markdown(result)
+
+
 def test_observed_efficiency_includes_failed_attempts_and_deduplicates_receipts(tmp_path):
     trials = []
     for index, (reward, cost) in enumerate(((1, 0.5), (0, 0.25), (1, 0.75))):
@@ -116,16 +291,16 @@ def test_observed_efficiency_includes_failed_attempts_and_deduplicates_receipts(
     efficiency = totals["observed_efficiency"]
     assert totals["trials"] == 3 and totals["observed_official_passes"] == 2
     assert totals["tokens"]["total_tokens"] == 66
-    assert totals["reported_cost_usd"] == 1.5
+    assert totals["reported_cost_usd"] is None
     assert efficiency["total_tokens_per_official_pass"] == 33
-    assert efficiency["reported_cost_usd_per_official_pass"] == 0.75
+    assert efficiency["reported_cost_usd_per_official_pass"] is None
     assert efficiency["token_ratio_unavailable_reasons"] == []
-    assert efficiency["cost_ratio_unavailable_reasons"] == []
+    assert efficiency["cost_ratio_unavailable_reasons"] == ["incomplete_reported_provider_cost"]
     assert efficiency["numerator_scope"] == "all_retained_attempts_in_aggregate"
     assert efficiency["cache_included_in_input"] is True
     assert efficiency["causal_claim"] is False and efficiency["billing_total_verified"] is False
     assert result["unsuccessful_attempt_costs"]["full"]["tokens"]["total_tokens"] == 22
-    assert "| Supervisor: full indexed context | 3 | 2 | 0 | 0 | 33.000 | 0.750 |" in markdown(result)
+    assert "| Supervisor: full indexed context | 3 | 2 | 0 | 0 | 33.000 | unknown |" in markdown(result)
     assert "do not establish causal token savings or verified billing" in markdown(result)
 
 
@@ -166,9 +341,12 @@ def test_observed_efficiency_refuses_unknown_denominators_and_incomplete_numerat
     totals = result["arm_totals"]["full"]
     efficiency = totals["observed_efficiency"]
     assert efficiency["token_ratio_unavailable_reasons"] == ([token_reason] if token_reason else [])
-    assert efficiency["cost_ratio_unavailable_reasons"] == ([cost_reason] if cost_reason else [])
+    expected_cost_reasons = ([cost_reason] if cost_reason else [])
+    if "incomplete_reported_provider_cost" not in expected_cost_reasons:
+        expected_cost_reasons.append("incomplete_reported_provider_cost")
+    assert efficiency["cost_ratio_unavailable_reasons"] == expected_cost_reasons
     assert efficiency["total_tokens_per_official_pass"] == (None if token_reason else 22)
-    assert efficiency["reported_cost_usd_per_official_pass"] == (None if cost_reason else 0.25)
+    assert efficiency["reported_cost_usd_per_official_pass"] is None
     assert totals["known_token_subtotals"]["total_tokens"] == (22 if gap == "missing_total" else 44)
     assert "Total tokens / official pass" in markdown(result)
 
@@ -201,9 +379,12 @@ def test_observed_efficiency_preserves_mixed_provider_total_and_cache_semantics(
     result = collect(baseline=_baseline(tmp_path), supervisors=[receipt])
     row = result["rows"][1]
     efficiency = result["arm_totals"]["full"]["observed_efficiency"]
-    assert row["tokens"] == dict(input_tokens=30, cached_input_tokens=45, output_tokens=4, total_tokens=64)
+    assert row["tokens"] == dict(input_tokens=None, cached_input_tokens=45, output_tokens=4, total_tokens=64)
+    assert row["usage_accounting"]["normalized_tokens"]["input_tokens_including_cache"] == 60
     assert efficiency["total_tokens_per_official_pass"] == 64  # Native totals, without adding cache twice.
-    assert efficiency["reported_cost_usd_per_official_pass"] == 0  # Explicit zero is a known cost.
+    # A native cost field has no established additive or cumulative scope.
+    assert efficiency["reported_cost_usd_per_official_pass"] is None
+    assert row["invocations"][0]["observed_reported_cost_usd"] == 0
     assert efficiency["cache_included_in_input"] is None
     assert [call["cache_included_in_input"] for call in row["invocations"]] == [True, False]
     assert [call["token_count_scope"] for call in row["invocations"]] == [
@@ -215,6 +396,7 @@ def test_native_baseline_efficiency_uses_all_failed_session_costs(tmp_path):
     receipt = json.loads(baseline.read_text())
     failed = copy.deepcopy(receipt["trials"][0])
     failed.update(trial="failed-native", reward={"reward": 0})
+    failed["raw_usage"]["sessions"][0]["session_id"] = "distinct-failed-session"
     receipt["trials"].append(failed)
     receipt["trial_count"] = 2
     for trial in receipt["trials"]:
@@ -359,12 +541,113 @@ def test_bounded_stream_usage_survives_comparison_without_replacing_final_accoun
     assert observed["tokens"]["total_tokens"] == 42  # Only the separate final-envelope contract.
     assert "private" not in json.dumps(observed)
     # Existing receipts lack event history; accepting them must not invent it.
-    legacy = dict(progress, schema="native-grok-stream-progress@1")
-    legacy.pop("usage_observations")
+    from ipfs_accelerate_py.cli_runtime.grok_stream_capture import grok_stream_progress_summary
+    legacy = grok_stream_progress_summary(progress)
     invocation["native_grok_progress"] = legacy
     historical, = _invocations({"provider_invocations": [invocation]})
     assert historical["native_grok_progress"] == legacy
     assert "usage_observations" not in historical["native_grok_progress"]
+
+
+def test_terminal_rejection_survives_comparison_without_creating_native_usage():
+    from ipfs_accelerate_py.cli_runtime.grok_stream_capture import GrokStreamParser
+    from benchmarks.agent_supervisor.container_coding.benchmark_comparison import _invocations
+    parser = GrokStreamParser()
+    parser.feed(b'{"type":"max_turns_reached"}\n'
+                b'{"type":"end","stopReason":"max_turn_requests","sessionId":null,"message":"PRIVATE"}\n')
+    progress = parser.snapshot()
+    row = {"invocation_id": "rejected-end", "phase": "coding", "status": "failed",
+           "provider": "grok_cli", "native_grok_progress": progress}
+    observed, = _invocations({"provider_invocations": [row]})
+    assert observed["native_grok_progress"] == progress
+    assert observed["native_grok_progress"]["terminal_rejection"]["reason"] == "unknown_end_fields"
+    assert observed["native_task_complete_observed"] is None
+    assert all(value is None for value in observed["tokens"].values())
+    assert "PRIVATE" not in json.dumps(observed)
+    row["native_grok_progress"]["terminal_rejection"]["raw_end"] = "PRIVATE"
+    assert _invocations({"provider_invocations": [row]})[0]["native_grok_progress"] is None
+
+
+@pytest.mark.parametrize("revision", [1, 2])
+def test_tool_events_reach_comparison_as_separate_byte_channels_without_token_promotion(tmp_path, revision):
+    from ipfs_accelerate_py.cli_runtime.grok_stream_capture import GrokStreamParser
+    parser = GrokStreamParser(tool_event_census=True, tool_event_schema=f"native-grok-tool-events@{revision}")
+    for identity in ("PRIVATE-CALL-1", "PRIVATE-CALL-2"):
+        for event in (
+            {"type": "tool_call", "toolName": "read_file", "toolCallId": identity,
+             "status": "pending", "rawInput": {"path": "PRIVATE-PATH"}},
+            {"type": "tool_call_update", "toolCallId": identity, "status": "completed",
+             "rawOutput": {"text": "PRIVATE-OUTPUT"}, "content": [{"text": "PRIVATE-CONTENT"}]},
+        ):
+            parser.feed((json.dumps(event) + "\n").encode())
+    progress = parser.snapshot()
+    invocation = _grok_invocation("tool-census", True)
+    invocation["native_grok_progress"] = progress
+    receipt = _receipt(tmp_path, "tool-census.json", SUPERVISOR, [{"trial": "tool-census",
+        "supervisor": {"task_completed": False, "provider_invocations": [invocation, invocation]}}], "full")
+    result = collect(baseline=_baseline(tmp_path), supervisors=[receipt])
+    row = result["rows"][1]
+    call, = row["invocations"]
+    census = call["native_grok_progress"]["tool_event_observations"]
+    assert census["retained_events"] == census["observed_events"] == 4
+    assert census["call_identities"] == 2
+    assert census["payloads"]["output"]["cross_call_repeated_events"] == 1
+    assert census["payloads"]["content"]["cross_call_repeated_events"] == 1
+    assert census["provider_request_bytes"] is census["history_resend_bytes"] is None
+    assert census["request_history_complete"] is False
+    assert row["tokens"]["total_tokens"] == call["tokens"]["total_tokens"] == 42
+    rendered = markdown(result)
+    assert "rawOutput bytes retained" in rendered and "content bytes retained" in rendered
+    assert "must not be added as unique output" in rendered
+    assert "do not establish provider history resends" in rendered
+    assert "PRIVATE" not in json.dumps(result) + rendered
+
+
+def test_v2_coverage_reports_aliases_optional_status_and_dense_payload_without_changing_tokens(tmp_path):
+    from ipfs_accelerate_py.cli_runtime.grok_stream_capture import GrokStreamParser
+    parser = GrokStreamParser(tool_event_census=True, tool_event_schema="native-grok-tool-events@2")
+    frames = [
+        {"type": "tool_call", "toolName": "run_terminal_command", "toolCallId": "PRIVATE-CALL",
+         "status": "pending", "rawInput": {"command": "PRIVATE-COMMAND"}},
+        {"type": "tool_call_update", "toolCallId": "PRIVATE-CALL", "rawOutput": [0] * 5000},
+        {"type": "text", "data": "PRIVATE-RESPONSE"},
+        {"type": "end", "stopReason": "end_turn"},
+    ]
+    for frame in frames:
+        parser.feed((json.dumps(frame) + "\n").encode())
+    parser.eof("stdout"); parser.eof("stderr"); parser.process_exit(0, elapsed_seconds=0)
+    progress = parser.snapshot()
+    census = progress["tool_event_observations"]
+    assert census["observation_complete"] is True
+    assert census["rows"][0]["tool"] == "unknown"  # Preserve the original event category.
+    assert census["rows"][0]["resolved_tool"] == "run_terminal_cmd"
+    assert census["rows"][0]["tool_resolution_basis"] == "documented_alias"
+    assert census["rows"][1]["status_present"] is False
+    assert census["payloads"]["output"]["canonical_json_bytes"] == 10001
+    invocation = _grok_invocation("v2-coverage", True)
+    invocation["native_grok_progress"] = progress
+    receipt = _receipt(tmp_path, "v2-coverage.json", SUPERVISOR, [{"trial": "v2-coverage",
+        "supervisor": {"task_completed": False, "provider_invocations": [invocation]}}], "full")
+    result = collect(baseline=_baseline(tmp_path), supervisors=[receipt])
+    rendered = markdown(result)
+    assert "| v2-coverage | v2-coverage | 1 | 0 | 1 | 0 | 0 | 0 | 0 |" in rendered
+    assert "Historical v1 receipts retain their original coverage interpretation" in rendered
+    assert result["rows"][1]["tokens"]["total_tokens"] == 42
+    assert "PRIVATE" not in json.dumps(result) + rendered
+
+
+@pytest.mark.parametrize("with_legacy_progress", [False, True])
+def test_missing_tool_census_does_not_invent_zero_history_or_table(tmp_path, with_legacy_progress):
+    from ipfs_accelerate_py.cli_runtime.grok_stream_capture import GrokStreamParser
+    invocation = _grok_invocation("legacy-tool-census", True)
+    if with_legacy_progress:
+        invocation["native_grok_progress"] = GrokStreamParser().snapshot()
+    receipt = _receipt(tmp_path, "legacy-tool-census.json", SUPERVISOR, [{"trial": "legacy-tool-census",
+        "supervisor": {"task_completed": False, "provider_invocations": [invocation]}}], "full")
+    result = collect(baseline=_baseline(tmp_path), supervisors=[receipt])
+    assert "rawOutput bytes retained" not in markdown(result)
+    call, = result["rows"][1]["invocations"]
+    assert "tool_event_observations" not in (call["native_grok_progress"] or {})
 
 
 def test_symbolic_coding_does_not_invent_provider_calls_or_learned_proof(tmp_path):
@@ -489,12 +772,13 @@ def test_interrupted_or_legacy_usage_is_only_an_observed_subtotal(tmp_path, comp
     assert call["known_token_subtotals"]["total_tokens"] == 244688
     assert call["error_type"] == "TimeoutExpired" and call["timeout_seconds"] == 45
     assert row["reported_cost_usd"] is None
-    assert row["known_reported_cost_subtotal_usd"] == 1
+    assert row["known_reported_cost_subtotal_usd"] is None
+    assert [item["observed_reported_cost_usd"] for item in row["invocations"]] == [0.25, 0.75]
     costs = result["unsuccessful_attempt_costs"]["full"]
     assert costs["tokens"]["total_tokens"] is None
     assert costs["known_token_subtotals"]["total_tokens"] == 265932
     assert costs["unknown_token_trials"]["total_tokens"] == 1
-    assert costs["reported_cost_usd"] is None and costs["known_reported_cost_subtotal_usd"] == 1
+    assert costs["reported_cost_usd"] is None and costs["known_reported_cost_subtotal_usd"] is None
     assert result["arm_totals"]["full"]["tokens"]["total_tokens"] is None
     assert row["runtime_archive_sha256"] == "a" * 64
     assert len(result["comparison_source_sha256"]) == 64
@@ -979,3 +1263,25 @@ def test_instruction_metadata_mode_refuses_missing_foreign_or_conflicting_reques
     observed = _input_observation({"semantic_metadata_view": metadata})["semantic_metadata_view"]
     assert observed["status"] == "unavailable"
     assert "requested_mode" not in observed and "MUST NOT APPEAR" not in json.dumps(observed)
+
+
+@pytest.mark.parametrize("marker", ["absent", "null", "empty_object"])
+def test_missing_attempt_census_cannot_be_inferred_by_usage_bridge(tmp_path, marker):
+    receipt = _receipt(tmp_path, "unknown-census.json", SUPERVISOR, [
+        {"trial": "unknown", "reward": {"reward": 1},
+         "supervisor": {"task_completed": True, "provider_invocations": [_invocation()]}}], "full")
+    value = json.loads(receipt.read_text())
+    report = value["trials"][0]["supervisor"]
+    if marker == "absent":
+        del report["unreceipted_provider_attempt"]
+    else:
+        report["unreceipted_provider_attempt"] = None if marker == "null" else {}
+    receipt.write_text(json.dumps(value))
+    result = collect(baseline=_baseline(tmp_path), supervisors=[receipt])
+    row = result["rows"][1]
+    assert row["tokens"]["total_tokens"] is None
+    assert row["native_usage_complete_observed"] is not True
+    assert row["provider_calls"] is None
+    assert row["observed_provider_invocations"] == 1
+    assert row["usage_accounting"]["unreceipted_provider_attempt"] is (True if marker == "empty_object" else None)
+    assert result["arm_totals"]["full"]["tokens"]["total_tokens"] is None

@@ -1,0 +1,118 @@
+{
+  "schema": "terminal-working-set-owner-qualification@1",
+  "passed": true,
+  "passed_cases": 267,
+  "failures": 0,
+  "errors": 0,
+  "skipped": 0,
+  "source_sha256": {
+    "benchmarks/agent_supervisor/container_coding/benchmark_controls.py": "bc973ff26e9b28876a97556f4b928e54dfdeee0cbd257ef21d0e69750a799d47",
+    "benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py": "6864ba47d71142f3033a74f7b4d5555de5fbd302e65e413c6a007bfd0cd8cee3",
+    "benchmarks/agent_supervisor/container_coding/full_supervisor_harbor_agent.py": "2d68b94a895578c7fedcaf53aca48ef30b27b0e4f2c183a9ccd5699905e62a3a",
+    "benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py": "65914e4759af0a5211745d9ef02bca84344a7a83f789b7f7c32b78532b563aa1",
+    "benchmarks/agent_supervisor/container_coding/terminal_live_metadata_census.py": "a3fde9af38c1301fc50e2c623931fff8b73d56ae3e5d8ca18e46fa8ed046f6de",
+    "benchmarks/agent_supervisor/container_coding/terminal_semantic_working_set_policy.py": "2c07693b02dfe6bc0a8bb8f2d18cde44510147ff67d457c00a7fa4386c9b7c1f",
+    "benchmarks/agent_supervisor/container_coding/terminal_working_set_census.py": "bcd1e08214ed2268b3cc3172aa2d4330a7eb81eb1d43c01efe1cfbb49793f94d",
+    "benchmarks/agent_supervisor/container_coding/terminal_working_set_census_observation.py": "d7818e876963b8d3edf564a662027387f17722f4bb053d3c5ff9964781ef65ee",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_live_metadata_census.py": "d13cec3dbe01f29b6902c8552679ce9fa063e16266773a780ebee4fa7f7c62a8",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_working_set_census_owner.py": "21684c35f163fd1d8a13bdabdb61f5e1d1b973f691b45bfcb571931b659dd5e4",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_formal_status_census.py": "213b61cc56a81a3cb378f46575e0eefbb8893fa074d9a357be652ce7177507ad",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_live_census_cache_profile.py": "910512d19a7fa183331012ad79667155ab10b546d63a43848d0c811b6d28272a",
+    "test/api/test_terminal_working_set_census_replay.py": "aba0223fbb171c8ea973967e3a8b7210fde942266264c014bfe5168e8a58bca3",
+    "benchmarks/agent_supervisor/container_coding/test_benchmark_controls.py": "180e2ac6ea8fa9079040e5d3a23a8bdafc0694ab61bbce9277068669160e05f5",
+    "benchmarks/agent_supervisor/container_coding/test_full_supervisor_harbor_agent.py": "9b7f8c3c58bbe1935135317edfe86faac95611f4ee271ce337c55056747cfd9c",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_semantic_working_set_policy.py": "6ac3e3aca2d48974eca90927ef5a4416cd6cb39d5405aa370ce01c97ae530a0b",
+    "benchmarks/agent_supervisor/container_coding/test_working_set_census_harbor.py": "5547152ad7df90128cc10de785fca80ba29ca06daf6bb1ff9b5a084c6bf527ed",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_live_census_driver.py": "e5557a52d564911218d9e78436f85d74addd3c89bf8ffea740a9ee9db467f6f9",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_working_set_census_driver.py": "1672f73d2c1b0ddf1264941475bb9247eb5b60a13232a175f4fd248c7f4c48a3"
+  },
+  "dependencies": {
+    "ipfs_datasets_py": {
+      "path": "/home/barberb/lift_coding/.worktrees/supervisor-bounded-rounds-datasets-20261014",
+      "commit": "28b9ef1f0b9da51e87b1e68ee565b43681397109",
+      "tracked_status": ""
+    },
+    "ipfs_kit_py": {
+      "path": "/home/barberb/lift_coding/.worktrees/publication-main-20261004/kit",
+      "commit": "8ac00bb1974b1378e12091d546d8425af34049e0",
+      "tracked_status": ""
+    }
+  },
+  "batches": [
+    {
+      "label": "owner-dev02",
+      "passed_cases": 69,
+      "selected_tests": [
+        "benchmarks/agent_supervisor/container_coding/test_terminal_live_metadata_census.py",
+        "benchmarks/agent_supervisor/container_coding/test_terminal_working_set_census_owner.py"
+      ],
+      "artifacts": {
+        "-result.json": "bda65afd2a9b3f4714e355fb6c7d15c3c66a580b163ba5e70023cc8d3bc40ed8",
+        "-source-pins.json": "f0d4862e538d9717279e5e742d4ea9a14e56d0806b24e38546f212a6c4dbc0a1",
+        ".xml": "c8411bb2325a2739ef8986b2145c52c4701dda271638d28ce1bb4a7eae8cbc9d",
+        ".log": "ce0918bc990551b22318f2b93714fcb993aa766b1145cc6d8f3177bf35eebb76"
+      }
+    },
+    {
+      "label": "formal-regression01",
+      "passed_cases": 34,
+      "selected_tests": [
+        "benchmarks/agent_supervisor/container_coding/test_terminal_formal_status_census.py",
+        "benchmarks/agent_supervisor/container_coding/test_terminal_live_census_cache_profile.py"
+      ],
+      "artifacts": {
+        "-result.json": "1257bf487db073b9f7cbe420afd865b03dbe4de25099d163c19ce31ecc5ad30e",
+        "-source-pins.json": "90e531fd83c4ce33046bf66d4f4d062f9473c9e573c697f45a08265751a2ab1d",
+        ".xml": "62e39139857db61e225f1301001c8282a26cd6e0f00ee95b13d6fb3e30de3102",
+        ".log": "e402c46eba328ae2434c7ff8dd07394853f324b035a367ab4be1eaa474f5218a"
+      }
+    },
+    {
+      "label": "replay-final01",
+      "passed_cases": 2,
+      "selected_tests": [
+        "test/api/test_terminal_working_set_census_replay.py"
+      ],
+      "artifacts": {
+        "-result.json": "0c4b79cb2cb500054ed2c6c44f3bf2bd1f555d939526742272fd300eef34cce9",
+        "-source-pins.json": "6f47718b5d1ea36acfd7c861956bdf629481debccca0d78233bbce070e0d679c",
+        ".xml": "adf2e66653b52315dbd79f07486c8930f9e20ad1063f4ec0b351e976def7c14a",
+        ".log": "1e2f2909fb0f70e1a5353106bec2fd9607154d6c250c3624b4788b8577b7c1a5"
+      }
+    },
+    {
+      "label": "harbor-final01",
+      "passed_cases": 102,
+      "selected_tests": [
+        "benchmarks/agent_supervisor/container_coding/test_benchmark_controls.py",
+        "benchmarks/agent_supervisor/container_coding/test_full_supervisor_harbor_agent.py",
+        "benchmarks/agent_supervisor/container_coding/test_terminal_semantic_working_set_policy.py",
+        "benchmarks/agent_supervisor/container_coding/test_working_set_census_harbor.py"
+      ],
+      "artifacts": {
+        "-result.json": "546638e3bbf45ee2f24b7e629c0bc8e8853d5a66c53951c1424b35bd834c5399",
+        "-source-pins.json": "80bbf21f2df18e569b89e296cd3081479e84baea60dfee299c3c0901f4326481",
+        ".xml": "50e80e2b21a1bab8e521c2920a19a4e5179c19ff817ba26e61c9fbd0e6901b78",
+        ".log": "2650324cb9825bef2aeb30d991c8599b8f23ddaec720e844c6a4eabb883b70a1"
+      }
+    },
+    {
+      "label": "driver-final01",
+      "passed_cases": 60,
+      "selected_tests": [
+        "benchmarks/agent_supervisor/container_coding/test_terminal_live_census_driver.py",
+        "benchmarks/agent_supervisor/container_coding/test_terminal_working_set_census_driver.py"
+      ],
+      "artifacts": {
+        "-result.json": "cff6cbbfb73f4978f3ed552fe6a69d17eff5bc70d516480678901f48af9dbdab",
+        "-source-pins.json": "b4c0c55f63d29f2b1c8a7027059c137570e9fc216c9a91f179d1ed808b56fae1",
+        ".xml": "655d5ea6fd35c55695ace7f04faf7c2dfa18defd67d7f51a3f01d9a6b69c8e3a",
+        ".log": "fd0ee7b1546b1db97bcf95421079e55e430de15302141d33daf27109a73a0845"
+      }
+    }
+  ],
+  "production_sources_match_all_batches": true,
+  "selected_test_sources_match_executed_batches": true,
+  "note": "Two authored test fixtures changed between completed batches; each selected test and all production sources match qualification.",
+  "provider_calls": 0
+}

@@ -1,0 +1,43 @@
+{
+  "launcher_adaptation": {
+    "bytes": 398,
+    "path": "/home/barberb/lift_coding/artifacts/grok-cap-end-20261015/reporting-launcher-adaptation.json",
+    "sha256": "c24c79563d587bd3e65f33e1626ba1af017ef2b2da49a3ed0ef9c6fb0ece18df"
+  },
+  "observed_at": "2026-10-15T01:35:58.139346+00:00",
+  "prior_cleanup": {
+    "bytes": 292,
+    "path": "/home/barberb/lift_coding/artifacts/declared-public-planning-20261015/cleanup-observation.json",
+    "sha256": "c56c13604e102bde7ba8028a6768ea91633772590a2f8340040b05866dafc6c0"
+  },
+  "provider_calls": 0,
+  "qualification": {
+    "bytes": 2704,
+    "path": "/home/barberb/lift_coding/artifacts/grok-cap-end-20261015/qualification.json",
+    "sha256": "18f461eb8fe2b2960fcc8d5adebdcd41a7b1b445f8e7105641266a54c63b59f6"
+  },
+  "reader_qualification": {
+    "bytes": 16625,
+    "path": "/home/barberb/lift_coding/artifacts/grok-cap-end-20261015/reader-v2/qualification.json",
+    "sha256": "94868ba337f764e425b05ec8eee7540d1005e2df91fd175becb7a5c6376274a1"
+  },
+  "recipe": {
+    "bytes": 146453,
+    "path": "/home/barberb/lift_coding/artifacts/grok-cap-end-20261015/recipe.json",
+    "sha256": "f03e735a8efe568ffd89ad4eae10a8a829c6535ddd4f44466e3cf0cb089d27f2"
+  },
+  "reporting": {
+    "bytes": 16407,
+    "path": "/home/barberb/lift_coding/artifacts/grok-cap-end-20261015/reporting-freeze-v2.json",
+    "sha256": "ce745ebfd0109fa952527f3eafd224425608cdddbbce535c274839fad84b505d"
+  },
+  "root_authorized_source_freeze": true,
+  "runner": {
+    "bytes": 12934,
+    "path": "/home/barberb/lift_coding/artifacts/grok-cap-end-20261015/run.py",
+    "sha256": "e1904a9213f1810fd3d721422fee1106a5b82bc51a783d1588838ccb50905951"
+  },
+  "schema": "grok-coding-route-source-freeze@1",
+  "source_commit": "9d6ef76c8e2bb6916b68cad3563c6ec530b32736",
+  "worktree_clean": true
+}

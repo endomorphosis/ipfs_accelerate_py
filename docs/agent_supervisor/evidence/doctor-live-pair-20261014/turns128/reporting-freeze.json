@@ -1,0 +1,32 @@
+{
+  "schema": "doctor-dispatch-reporting-freeze@1",
+  "files": [
+    {
+      "bytes": 17644,
+      "path": "/home/barberb/lift_coding/artifacts/doctor-dispatch-live-20261014/read_pilot.py",
+      "sha256": "09b7b5ec3e55bb3a073cc0c92dca9df7d21d35c3b3f53cff614b64fcf1332ff1"
+    },
+    {
+      "bytes": 14815,
+      "path": "/home/barberb/lift_coding/artifacts/doctor-dispatch-live-20261014/readout-preflight-02.json",
+      "sha256": "233f68a92e71829b2743ee98b5c3bac2f6852d395e6fc6e6c8cf6e06795440f3"
+    },
+    {
+      "bytes": 1652,
+      "path": "/home/barberb/lift_coding/artifacts/doctor-dispatch-live-20261014/readout-tests-02.log",
+      "sha256": "2d3094d0511bcb1a85fdebc3218f98b062dc72a60ccc06573dba56e4bffd7666"
+    },
+    {
+      "bytes": 8979,
+      "path": "/home/barberb/lift_coding/artifacts/doctor-dispatch-live-20261014/test_read_pilot.py",
+      "sha256": "5138bafa0cd18c7f955a21eb55c593af46ab884d115bb8869951f7f435c2ca32"
+    },
+    {
+      "path": "/home/barberb/lift_coding/artifacts/doctor-dispatch-live-20261014/readout-qualification-02.json",
+      "bytes": 1082,
+      "sha256": "3d64dc8684bb38612e78118cfd89984be655dd0a5ba91b977f3fe73c37e84398"
+    }
+  ],
+  "tests_passed": 11,
+  "frozen_before_launch": true
+}

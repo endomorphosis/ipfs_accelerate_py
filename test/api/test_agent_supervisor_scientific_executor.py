@@ -1465,3 +1465,464 @@ def test_generation_grant_preserves_an_active_historical_original_request(servic
     with pytest.raises(executor.ExecutorHold,match='original_request_still_active'):
         executor.reconcile_bounded_generation_handover(d['ref'],d['profile_ref'],d['profile'],d['config'],d['opening'])
     assert health._document(health.descriptor(state))==value
+
+
+# Engineering regression only: real ORIGINAL scheduler leases use a private
+# temporary state/policy. Source custody and the Popen below are explicit test
+# fixtures, never a live executor-health, production-grant or activation claim.
+@pytest.fixture
+def orchestration_storage_capacity_case(service_case, tmp_path, monkeypatch):
+    import contextlib
+    import io
+    import os
+    import types
+    import subprocess as fixture_subprocess
+    from unittest import mock
+    from ipfs_accelerate_py.agent_supervisor.rescue import original_embedded_observation_owner as original
+
+    monkeypatch.setenv('IPFS_DATASETS_PY_MINIMAL_IMPORTS', '1')
+    monkeypatch.syspath_prepend(str(original.R))
+    from ipfs_datasets_py.optimizers.logic_theorem_optimizer import autoencoder_daemon_resources as host
+    from ipfs_datasets_py.optimizers.logic_theorem_optimizer import resource_scheduler as native
+    from ipfs_datasets_py.optimizers.logic_theorem_optimizer.existing_resource_scheduler import policy_sha256
+    from ipfs_datasets_py.optimizers.logic_theorem_optimizer.parented_phase_resources import ParentedPhaseResourceReservation
+
+    case = service_case
+    controls = tmp_path / 'private-native-controls'; controls.mkdir(mode=0o700)
+    state_path = controls / 'native.json'
+    config = native.ResourceSchedulerConfig(state_path=state_path,
+        total_cpu_slots=1, total_memory_mb=1536, total_gpu_memory_mb=None,
+        total_unified_memory_mb=None, total_child_process_slots=8,
+        lane_reservations={}, auto_renew_leases=False, lease_ttl_seconds=30,
+        poll_interval_seconds=0.001, proof_safety_enabled=True,
+        proof_resource_sampler=lambda: native.ProofHostResources(
+            cpu_slots=1, total_memory_mb=8192, available_memory_mb=8192,
+            pid_task_limit=4096, available_pid_tasks=4096))
+    scheduler = native.GlobalResourceScheduler(config)
+    selected_policy = policy_sha256(json.loads(state_path.read_text())['config'])
+    ledger = controls / 'disk.json'
+    # A SYNTHETIC private full promise forces the unchanged original 220GB
+    # accounting cutoff without allocating bytes or altering a real claim/cap.
+    blocker = 'f' * 32
+    put(ledger, dict(schema=host.SCHEMA, roots=[host._root_identity(case['root'])],
+        limit_bytes=host.MAX_STORAGE_BYTES, reservations={blocker:dict(
+            reservation_id=blocker, status='retained', storage_bytes=host.MAX_STORAGE_BYTES,
+            owner_pid=os.getpid(), external_charges={})}))
+    ledger_before = ledger.read_bytes()
+    captures = {'grant_pairs': [], 'terminals': [], 'source_closes': [], 'spawns': [],
+        'source_entry_attempts': 0}
+    source_admission = {'timeout_before_entry': False}
+    actual_owner = health.descriptor(Path(original.__file__).resolve())
+    old_owner_path = case['profile']['owner_source']['path']
+    case['profile']['owner_source'] = actual_owner
+    case['profile']['source_descriptors'] = [d for d in case['profile']['source_descriptors']
+        if d['path'] not in (old_owner_path, case['config_ref']['path'])] + [actual_owner]
+    case['request']['source_sha256'].pop(old_owner_path)
+    case['request']['source_sha256'][actual_owner['path']] = actual_owner['sha256']
+    case['request'].update(request_id='fixture-orchestration-storage-capacity',
+        storage_bytes=384*1024**2, cpu_slots=1, memory_mb=1536, child_process_slots=8,
+        timeout_seconds=300, scheduler_state_path=str(state_path),
+        expected_scheduler_policy_sha256=selected_policy, resource_ledger=str(ledger),
+        source_roots=[str(case['root'])], external_files=[])
+    case['plan']['native_metadata_cli']['schema'] = 'native-embedded-scoped-observation-cli/v2'
+    plan_ref = put(Path(case['template']['plan_ref']['path']), case['plan'])
+    case['template']['plan_ref'] = plan_ref
+    case['request']['source_sha256'].pop(next(k for k in case['request']['source_sha256']
+        if k.endswith('/plan.json')))
+    case['request']['source_sha256'][plan_ref['path']] = plan_ref['sha256']
+    case['template']['request_ref'] = put(Path(case['template']['request_ref']['path']), case['request'])
+    case['template_ref'] = put(Path(case['template_ref']['path']), case['template'])
+    case['config']['idle_template_ref'] = case['template_ref']
+    case['config_ref'] = put(Path(case['config_ref']['path']), case['config'])
+    case['profile']['source_descriptors'].append(case['config_ref'])
+    case['profile_ref'] = put(Path(case['profile_ref']['path']), case['profile'])
+    monkeypatch.setattr(original, 'DATABASE', Path(case['config']['catalogue']['database_path']))
+    monkeypatch.setattr(executor, 'ORIGINAL_RESOURCE_LEDGER', ledger)
+    monkeypatch.setattr(original, '_observation_actor', lambda value: Path(value['argv'][2]))
+    monkeypatch.setattr(original, '_open_original_scheduler', lambda value, opener: scheduler)
+
+    class FixtureRead:
+        def __enter__(self):
+            captures['source_entry_attempts'] += 1
+            if source_admission['timeout_before_entry']:
+                from ipfs_datasets_py.optimizers.logic_theorem_optimizer.autoencoder_source_lease import SourceLeaseTimeout
+                raise SourceLeaseTimeout('timed out waiting for admission source lease')
+            return self
+        def __exit__(self, *args): captures['source_closes'].append(True)
+    monkeypatch.setattr(original, 'load_source_lease', lambda: types.SimpleNamespace(
+        source_lease=lambda *args, **kwargs: FixtureRead()))
+    def exact_request(path, expected):
+        raw = Path(path).read_bytes()
+        assert hashlib.sha256(raw).hexdigest() == expected
+        return json.loads(raw), raw
+    monkeypatch.setattr(original, 'request', exact_request)
+    def fixture_source_guard(value, path, raw):
+        assert Path(path).read_bytes() == raw
+    monkeypatch.setattr(original, 'source_guard', fixture_source_guard)
+    def original_parented(value, constructor, *, attempt, parent_lease, timeout_seconds):
+        assert constructor is ParentedPhaseResourceReservation
+        assert type(parent_lease) is native.ResourceLease
+        active = {item['lease_id']: item for item in scheduler.active_leases()}
+        assert set(active) == {parent_lease.parent_lease_id, parent_lease.lease_id}
+        captures['grant_pairs'].append(copy.deepcopy(active))
+        return constructor(ledger, roots=[case['root']], attempt_directory=attempt,
+            parent_lease=parent_lease, storage_bytes=value['storage_bytes'],
+            memory_mb=1536, cpu_slots=1, child_process_slots=8,
+            scheduler_state_path=state_path, expected_scheduler_policy_sha256=selected_policy,
+            timeout_seconds=timeout_seconds, ledger_lock_timeout_seconds=1)
+    # Only the fixture's input selection changes; __enter__/_account and the
+    # actual Root/phase acquisition/release implementation are not replaced.
+    monkeypatch.setattr(original, '_new_original_parented_reservation', original_parented)
+    def no_actor(*args, **kwargs): pytest.fail('capacity refusal must precede any actor Popen')
+    monkeypatch.setattr(original, 'subprocess', types.SimpleNamespace(Popen=no_actor))
+    fixture_handle = object()
+    monkeypatch.setattr(health, 'track_original_cycle', lambda *args, **kwargs: fixture_handle)
+    actual_birth = int(host._process(os.getpid())['birth'])
+    actual_boot = Path('/proc/sys/kernel/random/boot_id').read_text().strip()
+    def fixture_cycle_start_fields(handle):
+        assert handle is fixture_handle and len(captures['spawns']) == 1
+        owner = dict(pid=os.getpid(), birth_ticks=actual_birth, boot_id=actual_boot,
+            argv=captures['spawns'][0])
+        captures['owner_observation'] = copy.deepcopy(owner)
+        return dict(sequence=1,
+            process=dict(pid=os.getpid(), birth_ticks=actual_birth,
+                boot_id=actual_boot, invocation_id='a'*32),
+            owner_observation=owner, started_at=0.0, started_monotonic_ns=0)
+    monkeypatch.setattr(health, 'cycle_start_fields', fixture_cycle_start_fields)
+    # The in-process Popen fixture has no dead owner. Its explicit death premise
+    # is engineering-only; real native ancestry closure is checked separately.
+    def fixture_owner_death(identity, current):
+        return (identity == captures.get('owner_observation')
+            and current.get('boot_id') == actual_boot)
+    monkeypatch.setattr(health, '_definitely_dead_identity', fixture_owner_death)
+    monkeypatch.setattr(health, 'publish_after_native_cycle', lambda *args, **kwargs:
+        pytest.fail('a negative capacity cycle must not publish healthy/task progress'))
+    mutation = {'apply': lambda terminal: terminal}
+    class FixturePopen:
+        def __init__(self, argv, **kwargs):
+            captures['spawns'].append(list(argv)); self.pid = os.getpid(); self.returncode = None
+            request_path = Path(argv[argv.index('--request') + 1])
+            request_pin = argv[argv.index('--expected-request-sha256') + 1]
+            value = json.loads(request_path.read_bytes())
+            attempt = Path(value['attempt_directory'])
+            assert attempt.is_dir() and not any(attempt.iterdir())
+            output = io.StringIO()
+            with mock.patch.dict(os.environ), monkeypatch.context() as local:
+                local.setattr(sys, 'path', list(sys.path))
+                local.setattr(sys, 'dont_write_bytecode', sys.dont_write_bytecode)
+                local.setattr(sys, 'argv', [original.__file__, '--request', str(request_path),
+                    '--expected-request-sha256', request_pin])
+                with contextlib.redirect_stdout(output): self.returncode = original.main()
+            terminal = json.loads(output.getvalue())
+            captures['terminals'].append(copy.deepcopy(terminal))
+            terminal = mutation['apply'](terminal)
+            kwargs['stdout'].write((json.dumps(terminal, sort_keys=True)+'\n').encode())
+            kwargs['stdout'].flush()
+        def poll(self): return self.returncode
+        def wait(self, timeout=None): return self.returncode
+        def terminate(self): pytest.fail('fixture owner is already closed; do not signal it')
+    monkeypatch.setattr(executor, 'subprocess', types.SimpleNamespace(Popen=FixturePopen,
+        DEVNULL=fixture_subprocess.DEVNULL, TimeoutExpired=fixture_subprocess.TimeoutExpired))
+    def run():
+        return executor.run_cycle(case['config'], case['profile_ref'], case['profile'],
+            case['template_ref'], 'genuine_scoped_idle', 1, threading.Event())
+    def assert_closed_original_stage():
+        assert len(captures['grant_pairs']) == 1 and len(captures['grant_pairs'][0]) == 2
+        assert scheduler.active_leases() == [] and ledger.read_bytes() == ledger_before
+        terminal = captures['terminals'][0]
+        assert terminal['owner_birth'] == str(actual_birth)
+        assert terminal['owner_pid'] == os.getpid() and terminal['owner_boot_id'] == actual_boot
+        assert terminal['completed'] is False and terminal['error_type'] == 'DaemonResourceError'
+        assert terminal['error'] == 'storage reservation capacity exceeded'
+        assert terminal['resource_capacity_observation']['storage_capacity_exceeded'] is True
+        assert terminal['reservation']['status'] == 'not_entered'
+        assert terminal['reservation']['record'] is None and terminal['reservation']['resource_lease'] is None
+        assert terminal['child_launch_attempted'] is False and terminal['child_reaped'] is False
+        assert terminal['original_native_compute_closed'] is True and terminal['source_READ_closed'] is True
+        assert terminal['absolute_resource_operation_deadline_closed'] is True and terminal['cleanup_errors'] == []
+        assert len(captures['source_closes']) == 1
+        return terminal
+    def assert_closed_source_timeout():
+        assert captures['grant_pairs'] == [] and scheduler.active_leases() == []
+        assert ledger.read_bytes() == ledger_before
+        assert captures['source_entry_attempts'] == 1 and captures['source_closes'] == []
+        terminal = captures['terminals'][0]
+        assert terminal['owner_pid'] == os.getpid() and terminal['owner_boot_id'] == actual_boot
+        assert 'owner_birth' not in terminal  # Source admission precedes the original birth read.
+        assert terminal['completed'] is False and terminal['error_type'] == 'SourceLeaseTimeout'
+        assert terminal['error'] == 'timed out waiting for admission source lease'
+        assert terminal['storage_status'] == 'not_requested' and 'reservation' not in terminal
+        assert terminal['child_launch_attempted'] is False and terminal['child_reaped'] is False
+        assert terminal['original_native_compute_closed'] is True and terminal['source_READ_closed'] is True
+        assert terminal['absolute_resource_operation_deadline_closed'] is True
+        assert terminal['cleanup_errors'] == [] and terminal['received_signals'] == []
+        return terminal
+    return dict(case=case, run=run, assert_closed=assert_closed_original_stage,
+        captures=captures, mutation=mutation, source_admission=source_admission,
+        assert_source_timeout=assert_closed_source_timeout)
+
+
+def test_closed_original_orchestration_storage_refusal_has_typed_wait_not_persistent_hold(
+        orchestration_storage_capacity_case):
+    fixture = orchestration_storage_capacity_case
+    with pytest.raises(executor.ExecutorHold) as deferred: fixture['run']()
+    terminal = fixture['assert_closed']()
+    # Intended RED contract: current original owner emits only a diagnostic,
+    # so there is no safe native-family receipt for the existing caller yet.
+    witness = terminal.get('storage_admission_capacity_refusal')
+    assert type(witness) is dict, 'missing typed original post-ORCHESTRATION storage-admission receipt'
+    assert witness['schema'] == 'original-orchestration-storage-admission-refusal/v1'
+    assert witness['stage'] == 'parented_storage_open_before_record'
+    assert witness['native_ancestry_closed'] is True
+    assert type(deferred.value).__name__ == 'ResourceCapacityDeferred'
+    assert set(witness['orchestration_lease_ids']) == set(fixture['captures']['grant_pairs'][0])
+    root = fixture['case']['root']
+    assert not (root / 'executor-held.json').exists(), 'known closed capacity wait became a persistent hold'
+    deferred = list(root.glob('cycle-*/capacity-deferred.json'))
+    assert len(deferred) == 1
+    negative = health._document(health.descriptor(deferred[0]))
+    assert negative['health_sequence_advanced'] is False
+    assert negative['health_or_task_completion_authority'] is False
+    assert negative['automatic_retry_of_original_request'] is False
+
+
+@pytest.mark.parametrize('mutation', ['native-unclosed', 'child-attempted', 'source-unclosed', 'partial-record'])
+def test_ambiguous_original_orchestration_capacity_custody_stays_held(
+        orchestration_storage_capacity_case, mutation):
+    fixture = orchestration_storage_capacity_case
+    def change(terminal):
+        if mutation == 'native-unclosed': terminal['original_native_compute_closed'] = False
+        elif mutation == 'child-attempted': terminal['child_launch_attempted'] = True
+        elif mutation == 'source-unclosed': terminal['source_READ_closed'] = False
+        else: terminal['reservation']['record'] = {'status': 'retained'}
+        return terminal
+    fixture['mutation']['apply'] = change
+    with pytest.raises(executor.ExecutorHold): fixture['run']()
+    fixture['assert_closed']()  # Original untouched native result was closed; supplied negative is not.
+    root = fixture['case']['root']
+    assert (root / 'executor-held.json').exists()
+    assert list(root.glob('cycle-*/capacity-deferred.json')) == []
+
+
+def test_source_lease_timeout_before_original_orchestration_grants_uses_existing_deferred_baseline(
+        orchestration_storage_capacity_case):
+    fixture = orchestration_storage_capacity_case
+    fixture['source_admission']['timeout_before_entry'] = True
+    with pytest.raises(executor.SourceAdmissionDeferred) as deferred:
+        fixture['run']()
+    fixture['assert_source_timeout']()
+    root = fixture['case']['root']
+    assert not (root / 'executor-held.json').exists()
+    assert list(root.glob('cycle-*/capacity-deferred.json')) == []
+    receipts = list(root.glob('cycle-*/admission-deferred.json'))
+    assert len(receipts) == 1 and str(deferred.value) == str(receipts[0])
+    negative = health._document(health.descriptor(receipts[0]))
+    assert negative['schema'] == 'agent-supervisor/scientific-source-admission-deferred@1'
+    assert negative['health_sequence_advanced'] is False
+    assert negative['health_or_task_completion_authority'] is False
+    assert negative['automatic_retry_of_original_request'] is False
+
+
+@pytest.mark.parametrize('mutation', [
+    'charged-total', 'boolean-alias', 'owner-birth', 'phase-parent',
+    'wrong-stage', 'ancestry-unreleased', 'missing-witness', 'attempt-not-empty',
+    'source-held-marker', 'owner-unknown-marker',
+    'unexpected-extension', 'deadline-profile', 'resource-profile',
+])
+def test_original_capacity_negative_rejects_mutated_proof_before_deferral(
+        orchestration_storage_capacity_case, mutation):
+    """Exercise the real run_cycle boundary with a closed fixture negative.
+
+    The original private scheduler/storage path remains real. Source, Popen
+    and owner death are the explicitly mocked premises of the existing fixture;
+    this is not a live native-owner or health-qualification test.
+    """
+    fixture = orchestration_storage_capacity_case
+    def change(terminal):
+        witness = terminal['storage_admission_capacity_refusal']
+        if mutation == 'charged-total':
+            terminal['resource_capacity_observation']['charged_bytes'] += 1
+        elif mutation == 'boolean-alias':
+            terminal['resource_capacity_observation']['storage_capacity_exceeded'] = 1
+        elif mutation == 'owner-birth':
+            witness['owner_birth'] = str(int(witness['owner_birth']) + 1)
+        elif mutation == 'phase-parent':
+            witness['phase']['parent_lease_id'] = witness['phase']['lease_id']
+        elif mutation == 'wrong-stage':
+            witness['stage'] = 'after_storage_record'
+        elif mutation == 'ancestry-unreleased':
+            witness['root']['released'] = False
+        elif mutation == 'missing-witness':
+            del terminal['storage_admission_capacity_refusal']
+        elif mutation == 'source-held-marker':
+            terminal['source_READ_held_for_original_owner_cleanup'] = True
+        elif mutation == 'owner-unknown-marker':
+            terminal['owner_handle_held_for_unknown_or_unclosed_custody'] = True
+        elif mutation == 'unexpected-extension':
+            terminal['unsupported_terminal_extension'] = True
+        elif mutation == 'deadline-profile':
+            terminal['resource_deadline_profile']['work_seconds'] += 1
+        elif mutation == 'resource-profile':
+            terminal['resource_profile'] = 'unrecognized_resource_profile'
+        else:
+            root = fixture['case']['root']
+            cycle_request = json.loads(next(root.glob('cycle-*/request.json')).read_bytes())
+            put(Path(cycle_request['attempt_directory']) / 'unknown-effect.json',
+                {'scope': 'adversarial ordinary-file fixture; no completion authority'})
+        return terminal
+    fixture['mutation']['apply'] = change
+    with pytest.raises(executor.ExecutorHold):
+        fixture['run']()
+    original = fixture['assert_closed']()
+    # Ensure this exercised a valid producer witness before the isolated change,
+    # rather than passing because an older producer lacked the new capability.
+    assert original['storage_admission_capacity_refusal']['schema'] == (
+        'original-orchestration-storage-admission-refusal/v1')
+    root = fixture['case']['root']
+    assert (root / 'executor-held.json').exists()
+    assert list(root.glob('cycle-*/capacity-deferred.json')) == []
+    assert list(root.glob('cycle-*/admission-deferred.json')) == []
+    assert not Path(fixture['case']['profile']['receipt_path']).exists()
+
+
+def _capacity_deferral_service_loop_case(case, monkeypatch, *, failures, max_cycles):
+    """Use the existing service fixture; stub only the cycle-result boundary.
+
+    These service-control tests do not authenticate a native terminal. The
+    companion original-owner fixture tests that separate boundary. Here the
+    actual serve loop owns the shared counter, physical cycle and sequence.
+    """
+    case['config']['max_cycles'] = max_cycles
+    case['config_ref'] = put(Path(case['config_ref']['path']), case['config'])
+    case['profile']['source_descriptors'] = [
+        case['config_ref'] if item['path'] == case['config_ref']['path'] else item
+        for item in case['profile']['source_descriptors']]
+    case['profile_ref'] = put(Path(case['profile_ref']['path']), case['profile'])
+    seen = []; polls = []
+    monkeypatch.setattr(executor, 'observe_native', lambda config: case['native'])
+    monkeypatch.setattr(health, 'publish_after_native_cycle', lambda *args, **kwargs:
+        pytest.fail('negative admission cycles must not publish healthy/task progress'))
+    def deferred_cycle(*args, **kwargs):
+        position = len(seen)
+        if position >= len(failures):
+            pytest.fail('service continued beyond its existing shared admission bound')
+        sequence = args[5]
+        cycle_number = kwargs.get('cycle_number', sequence)
+        seen.append((sequence, cycle_number, failures[position]))
+        cycle = case['root'] / ('cycle-%08d-fixture' % cycle_number)
+        cycle.mkdir(mode=0o700)
+        negative = put(cycle / 'fixture-negative.json', {
+            'scope': 'mocked cycle-result boundary; not native-custody evidence',
+            'health_or_task_completion_authority': False})
+        kind = (executor.SourceAdmissionDeferred if failures[position] == 'source'
+                else executor.ResourceCapacityDeferred)
+        raise kind(negative['path'])
+    monkeypatch.setattr(executor, 'run_cycle', deferred_cycle)
+    class NoWait:
+        def is_set(self): return False
+        def wait(self, seconds):
+            polls.append(seconds)
+            return False
+    return NoWait(), seen, polls
+
+
+@pytest.mark.parametrize('failures,reason', [
+    (('capacity', 'capacity', 'capacity'), 'resource_capacity_consecutive_defer_bound'),
+    (('source', 'capacity', 'source'), 'source_admission_consecutive_defer_bound'),
+    (('capacity', 'source', 'capacity'), 'resource_capacity_consecutive_defer_bound'),
+])
+def test_capacity_and_source_deferrals_share_finite_service_counter_without_health_progress(
+        service_case, monkeypatch, failures, reason):
+    case = service_case
+    stop, seen, polls = _capacity_deferral_service_loop_case(
+        case, monkeypatch, failures=failures, max_cycles=5)
+    assert executor.serve(case['config_ref'], stop) == executor.HOLD_EXIT
+    assert seen == [(1, index + 1, kind) for index, kind in enumerate(failures)]
+    assert polls == [case['config']['poll_seconds']] * 2
+    hold = json.loads((case['root'] / 'executor-held.json').read_bytes())
+    assert hold['reason'] == reason
+    assert hold['automatic_retry_admitted'] is False
+    assert len(list(case['root'].glob('cycle-*'))) == 3
+    assert not Path(case['profile']['receipt_path']).exists()
+    assert list(case['root'].glob('cycle-*/closed.json')) == []
+    assert list(case['root'].glob('cycle-*/cycle-proof.json')) == []
+
+
+def test_capacity_deferrals_spend_physical_cycle_budget_before_shared_retry_limit(
+        service_case, monkeypatch):
+    case = service_case
+    stop, seen, polls = _capacity_deferral_service_loop_case(
+        case, monkeypatch, failures=('capacity', 'capacity'), max_cycles=2)
+    assert executor.serve(case['config_ref'], stop) == executor.HOLD_EXIT
+    assert seen == [(1, 1, 'capacity'), (1, 2, 'capacity')]
+    assert polls == [case['config']['poll_seconds']] * 2
+    hold = json.loads((case['root'] / 'executor-held.json').read_bytes())
+    assert hold['reason'] == 'finite_cycle_budget_exhausted'
+    assert hold['automatic_retry_admitted'] is False
+    assert len(list(case['root'].glob('cycle-*'))) == 2
+    assert not Path(case['profile']['receipt_path']).exists()
+    assert list(case['root'].glob('cycle-*/closed.json')) == []
+
+
+@pytest.fixture
+def merged_schema_dispatch_case(tmp_path, monkeypatch):
+    """Explicit dispatch-only metadata; no authorization or health is issued.
+
+    The original normal product module and health reader remain imported above.
+    Configuration admission and reconciliators are private modeled boundaries;
+    the already selected owning tests cover their real validation separately.
+    """
+    root = tmp_path / 'dispatch-proof'; root.mkdir(mode=0o700)
+    profile = dict(proof_root=str(root), receipt_path=str(root / 'absent-health.json'))
+    profile_ref = put(tmp_path / 'dispatch-profile.json', profile)
+    config = dict(max_cycles=10000)
+    config_ref = put(tmp_path / 'dispatch-config.json', config)
+    parser_ref = put(tmp_path / 'explicit-parser-fixture.py', b'# modeled dispatch parser DATA only\n')
+    opening = {'modeled_dispatch_identity': True}
+    monkeypatch.setattr(executor, 'load_configuration', lambda reference: (config, profile_ref, profile))
+    monkeypatch.setattr(executor, 'require_main_process', lambda *args: opening)
+    monkeypatch.setattr(executor, 'catalogue_parser_reference', lambda profile: parser_ref)
+    monkeypatch.setattr(executor, 'load_explicit_catalogue_parser', lambda reference: object())
+    def forbidden(*args, **kwargs):
+        pytest.fail('modeled dispatch must not run a cycle, observe Native or call an unrelated recovery owner')
+    for name in ('run_cycle', 'observe_native', 'reconcile_known_nonstarted',
+                 'reconcile_source_admission_recovery', 'reconcile_closed_catalogue_race_recovery'):
+        monkeypatch.setattr(executor, name, forbidden)
+    stop = threading.Event(); stop.set()
+    return dict(root=root, config_ref=config_ref, parser_ref=parser_ref, stop=stop, forbidden=forbidden)
+
+
+@pytest.mark.parametrize('mode', ['legacy13', 'closed_idle', 'closed200'])
+def test_merged_recovery_schema_dispatch_is_exclusive(merged_schema_dispatch_case, monkeypatch, mode):
+    """A schema chooses only its existing owner; this grants no authority."""
+    case = merged_schema_dispatch_case; seen = []
+    owners = {
+        'legacy13': ('reconcile_known_unselected_capacity_handover', executor.CAPACITY_SCHEMA, 13),
+        'closed_idle': ('reconcile_known_closed_idle', executor.CLOSED_IDLE_SCHEMA, 2),
+        'closed200': ('reconcile_closed_capacity_continuation', executor.CLOSED_CAPACITY_SCHEMA, (200, [])),
+    }
+    for name, _, _ in owners.values():
+        monkeypatch.setattr(executor, name, case['forbidden'])
+    name, schema, result = owners[mode]
+    def selected(*args, **kwargs):
+        seen.append((name, 'executor_lock' in kwargs))
+        return result
+    monkeypatch.setattr(executor, name, selected)
+    recovery_ref = put(case['root'].parent / 'modeled-recovery.json', dict(schema=schema))
+    options = {'catalogue_parser_ref': case['parser_ref']} if mode == 'closed200' else {}
+    assert executor.serve(case['config_ref'], case['stop'], recovery_ref=recovery_ref, **options) == 0
+    assert seen == [(name, mode == 'closed200')]
+    assert not (case['root'] / 'absent-health.json').exists()
+    assert not list(case['root'].glob('cycle-*'))
+
+
+def test_merged_unknown_recovery_schema_refuses_all_owner_paths(merged_schema_dispatch_case, monkeypatch):
+    case = merged_schema_dispatch_case
+    for name in ('reconcile_known_unselected_capacity_handover', 'reconcile_known_closed_idle',
+                 'reconcile_closed_capacity_continuation'):
+        monkeypatch.setattr(executor, name, case['forbidden'])
+    recovery_ref = put(case['root'].parent / 'unknown-recovery.json', dict(schema='fixture:unknown-recovery'))
+    with pytest.raises(executor.ExecutorHold, match='unknown_typed_recovery'):
+        executor.serve(case['config_ref'], case['stop'], recovery_ref=recovery_ref)
+    assert not (case['root'] / 'absent-health.json').exists()
+    assert not list(case['root'].glob('cycle-*'))

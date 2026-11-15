@@ -1,0 +1,64 @@
+{
+  "authored_home_contents_included": false,
+  "canonical_configuration_included": false,
+  "credentials_included": false,
+  "files": [
+    {
+      "bytes": 8507,
+      "path": "pruning-config-protocol-audit.json",
+      "sha256": "92476114e39744a7eb3f4144fd24c6d23ef333f1d9621aa1082f6f000de6b534"
+    },
+    {
+      "bytes": 5027,
+      "path": "inspect-authored-config.py",
+      "sha256": "1dfad2fd7efa7f7c14f94a02a0f22ef71ced8519a21d2620dff1b0c1b94955c4"
+    },
+    {
+      "bytes": 777,
+      "path": "inspect-authored-result-01.json",
+      "sha256": "cb432500c5f17d75082ddae3a4fdce23263990401c1b50cd655145805ed2ae5e"
+    },
+    {
+      "bytes": 7399,
+      "path": "inspect-authored-docker.py",
+      "sha256": "a3b74e7c79c3b4fceaa823e51fa940f9b0f600b6f6e7f047437e4590542e2e7d"
+    },
+    {
+      "bytes": 2195,
+      "path": "inspect-authored-docker-result-01.json",
+      "sha256": "9150ebb2a8018c546e3fcb1b6b7c069d559e9f0168e5e93283915d399972dd94"
+    },
+    {
+      "bytes": 8424,
+      "path": "inspect-authored-docker-fields.py",
+      "sha256": "2d03e4d40dd8862b56be9905a3198d34712736456903a214bf80351bceeeb576"
+    },
+    {
+      "bytes": 3203,
+      "path": "inspect-authored-docker-fields-result-01.json",
+      "sha256": "338ce3ff45d017478b43b3de84e5ae2fa5b7c961c77010799ddde71a283a88d7"
+    },
+    {
+      "bytes": 9212,
+      "path": "inspect-authored-docker-schema.py",
+      "sha256": "66aebf448b2aecabaac2c9983dec3056f1bf21dff129908ef846da5788dee2be"
+    },
+    {
+      "bytes": 7037,
+      "path": "inspect-authored-docker-schema-result-01.json",
+      "sha256": "c0d81861016296c89a1e84dfdb7df2a8c102872a65b852a3d9f431572132d0d8"
+    },
+    {
+      "bytes": 9514,
+      "path": "inspect-authored-docker-identity.py",
+      "sha256": "01d0a5c84f4e580eb26b87a9b85894958db5af3021af62f42cda3f54295e5f23"
+    },
+    {
+      "bytes": 355,
+      "path": "inspect-authored-docker-identity-refusal-01.json",
+      "sha256": "3a6e0bcd14cd2cef5f96c9281b01f2c234d433a70e9b5124a6f755dc4032760f"
+    }
+  ],
+  "raw_native_reports_included": false,
+  "schema": "grok-pruning-closed-audit-inventory@1"
+}

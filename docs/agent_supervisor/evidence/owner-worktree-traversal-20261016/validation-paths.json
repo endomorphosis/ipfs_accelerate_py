@@ -1,0 +1,20 @@
+{
+  "tmpdir": "/home/barberb/.p",
+  "runs": {
+    "traversal-focused-v01": {
+      "basetemp": "/home/barberb/.p16t01",
+      "orchestration": "/home/barberb/lift_coding/artifacts/owner-worktree-traversal-20261016-01/traversal-focused-v01-orchestration"
+    },
+    "traversal-wiring-v01": {
+      "basetemp": "/home/barberb/.p16w01",
+      "orchestration": "/home/barberb/lift_coding/artifacts/owner-worktree-traversal-20261016-01/traversal-wiring-v01-orchestration"
+    },
+    "traversal-archive-regression-v01": {
+      "basetemp": "/home/barberb/.p16r01",
+      "orchestration": "/home/barberb/lift_coding/artifacts/owner-worktree-traversal-20261016-01/traversal-archive-regression-v01-orchestration"
+    }
+  },
+  "basetemp_initially_absent": true,
+  "existing_permissions_changed": false,
+  "focused_fixture_note": "New traversal tests may make only their freshly created pytest basetemp/tmp_path containers750, to model already-searchable outer ancestry. Authenticated managed parents are created700 and changed only by production helper."
+}

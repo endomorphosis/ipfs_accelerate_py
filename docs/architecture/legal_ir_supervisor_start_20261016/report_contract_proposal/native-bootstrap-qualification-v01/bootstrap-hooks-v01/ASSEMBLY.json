@@ -1,0 +1,47 @@
+{
+  "actual_native_admission_qualified": false,
+  "modules": [
+    {
+      "composed_base_sha256": "56126c1bfb8db68750909559b76deee2ae61bf6f82636f1e170a339941d253f2",
+      "definition": "_agent_git_output",
+      "original_function_AST_sha256": "a908aa2b9806e9499a1eb7fe1887fefa17b142f7ea715c4a61be08a63030e277",
+      "original_sha256": "56126c1bfb8db68750909559b76deee2ae61bf6f82636f1e170a339941d253f2",
+      "path": "ipfs_accelerate_py/agent_implementation_route.py",
+      "proposed_bytes": 343271,
+      "proposed_sha256": "0bb287dfb858778e85f1e38d44db84b49f37bb7fcce77704d0d1e1e3c940b3f1"
+    },
+    {
+      "composed_base_sha256": "8e0820ac71147059c76a81e1c0281e932e2c800838169f8392a89522c40ed87f",
+      "definition": "git_common_dir",
+      "original_function_AST_sha256": "560c08c136daf46fc986534ba0118667401c7b2688de9539b1dc93540b0d939b",
+      "original_sha256": "8e0820ac71147059c76a81e1c0281e932e2c800838169f8392a89522c40ed87f",
+      "path": "ipfs_accelerate_py/agent_supervisor/merge/checkout_lock.py",
+      "proposed_bytes": 54164,
+      "proposed_sha256": "20c59f70a1d45d2628c540da3188ab4cd5e6082823cbbb65b241c9c82939a2b1"
+    },
+    {
+      "composed_base_sha256": "863d7c16d193cf13fd37ca49f7fc34ce01b0d3c814b8e29be1397ed419eb22c1",
+      "definition": "control_plane_git_common_dir",
+      "original_function_AST_sha256": "3d3d035accc2f417346acb9b3a99f96486221c516df6d99ee59bfee96bc85f9c",
+      "original_sha256": "863d7c16d193cf13fd37ca49f7fc34ce01b0d3c814b8e29be1397ed419eb22c1",
+      "path": "ipfs_accelerate_py/agent_supervisor/task_sources/board_control_plane.py",
+      "proposed_bytes": 99822,
+      "proposed_sha256": "30e4fca1e4e7cdce9cf13a91fe1a9d38dd4237b1ec1ca1aa1dd1815a27974b28"
+    },
+    {
+      "composed_base_sha256": "67f4959c391776a1361a98f2a5f8d137e86ea5651e9ced0ab96fca3eb91f15a0",
+      "definition": "PortalImplementationDaemon._git_ref_exists",
+      "original_function_AST_sha256": "ed16eea639bcebcd641a0c4d233b0e2109e8560409dda34011f0d74fc7d952f8",
+      "original_sha256": "23addb0dfc23e2cb093e7f74abbb7dc84a5308c24259e1eb0e25d721c0a80bed",
+      "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+      "proposed_bytes": 3310299,
+      "proposed_sha256": "39fc698864435ad9668ee88fcf86390ab2b34d048663a1096d08851b7abcca9d"
+    }
+  ],
+  "original_four_unbound_branches_preserved": true,
+  "qualification": "disabled source proposal only; no product import, execution or authority",
+  "runtime_enabled": false,
+  "runtime_module": "ipfs_accelerate_py.agent_supervisor.runtime.native_admin_execution",
+  "schema": "legal-ir-native-bootstrap-hook-source-assembly@1",
+  "tests_executed": false
+}

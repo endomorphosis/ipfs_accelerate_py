@@ -1343,7 +1343,7 @@ def _repair_scientific_configuration(config: dict, binding: dict, release: Path,
     need(declared_git is None or declared_git == git_binding,
          "existing scientific Git binding cannot be silently changed or removed")
     if git_binding is not None:
-        need(declared_git is None or board.get("native_executor_binding") in (None, binding),
+        need(board.get("native_executor_binding") in (None, binding),
              "scientific Git binding cannot replace another producer profile")
         board["native_executor_git_binding"] = json.loads(json.dumps(git_binding))
     catalogue = board.get("native_catalogue_binding")
@@ -1568,6 +1568,690 @@ def prepare_repair_upgrade(source: Path, contract: dict, source_commitment: str,
     return plan
 
 
+HELD_SCIENTIFIC_RETENTION_SCHEMA = "agent-supervisor/held-scientific-profile-source-only-retention@1"
+
+
+def _repair_retained_policy_rebinding_history(plan, raw, before, old_anchor):
+    """Authenticate bounded prior closed code-only transitions as historical DATA.
+
+    These integrity/custody joins neither recreate a Popen wait nor constitute
+    cryptographic execution attestation. Historical policies are never rendered
+    against today's mutable source files. Current-policy validation remains in
+    the ordinary owner after the complete original maintenance checks.
+    """
+    import math
+    from ipfs_accelerate_py.agent_supervisor.rescue.repair_authorization import canonical, checked_descriptor, json_object
+    from ipfs_accelerate_py.agent_supervisor.rescue.repair_candidate_owners import need, _bootstrap_config_projection
+    cache, seen, total = {}, set(), 0
+    def same(a, b): return canonical(a) == canonical(b)
+    def blob(reference):
+        nonlocal total
+        need(type(reference) is dict and set(reference) == {'path', 'bytes', 'sha256'}
+             and type(reference['path']) is str and type(reference['bytes']) is int
+             and 0 < reference['bytes'] <= 8 * 1024**2 and type(reference['sha256']) is str,
+             'exact bounded prior policy-rebinding descriptor required')
+        key = (reference['path'], reference['bytes'], reference['sha256'])
+        if key not in cache:
+            need(total + reference['bytes'] <= 8 * 1024**2,
+                 'prior policy-rebinding history exceeds aggregate byte bound')
+            cache[key] = checked_descriptor(reference); total += reference['bytes']
+        return cache[key]
+    def obj(reference): return json_object(blob(reference))
+    def commands(config, selected, value):
+        """Authenticate the fixed historical v1 ABI without rereading old external sources."""
+        control = value.get('control_release')
+        need(type(control) is dict and set(control) == {'root', 'manifest'}
+             and type(control['root']) is str, 'closed historical control release required')
+        root = Path(control['root']); manifest = obj(control['manifest'])
+        need(root.is_absolute() and '..' not in root.parts and Path(control['manifest']['path']).parent == root
+             and not Path(control['manifest']['path']).lstat().st_mode & 0o222
+             and set(manifest) == {'schema', 'root', 'files', 'namespace_profiles'}
+             and manifest['schema'] == 'agent-supervisor/repair-control-source-release@1'
+             and manifest['root'] == str(root), 'historical immutable control manifest differs')
+        rows = manifest['files']
+        need(type(rows) is list and 0 < len(rows) <= 4096
+             and all(type(r) is dict and set(r) == {'path', 'bytes', 'sha256'} and type(r['path']) is str for r in rows)
+             and [r['path'] for r in rows] == sorted({r['path'] for r in rows})
+             and all(root in Path(r['path']).parents for r in rows), 'historical control source population differs')
+        owner = root / 'ipfs_accelerate_py/agent_supervisor/rescue/repair_candidate_owners.py'
+        owned = [r for r in rows if r['path'] == str(owner)]
+        need(len(owned) == 1, 'historical immutable control owner missing')
+        blob(owned[0]); need(not owner.lstat().st_mode & 0o222, 'historical control owner must be immutable')
+        pins = value.get('source_descriptors')
+        need(type(pins) is list and 0 < len(pins) <= 128
+             and all(type(r) is dict and set(r) == {'path', 'bytes', 'sha256'}
+                 and type(r['path']) is str and type(r['bytes']) is int and 0 <= r['bytes'] <= 4 * 1024**2
+                 and type(r['sha256']) is str and re.fullmatch(r'[0-9a-f]{64}', r['sha256']) for r in pins)
+             and len({r['path'] for r in pins}) == len(pins)
+             and owned[0] in pins, 'historical declared owner/source roles differ')
+        merged = {r['path']: r for r in [*pins, selected, control['manifest']]}
+        need(len(merged) <= 128 and type(value.get('python')) is str,
+             'bounded historical owner command inputs required')
+        expected_pins = [merged[path] for path in sorted(merged)]
+        prefix = [value['python'], '-I', '-B', str(owner)]
+        arguments = ['--policy', selected['path'], '--policy-sha256', selected['sha256'],
+            '--candidate-root', '{candidate_root}', '--freeze-path', '{freeze_path}',
+            '--receipt-path', '{receipt_path}', '--source-commitment', '{source_commitment}',
+            '--invocation-root', '{invocation_root}']
+        for role, action, verify in (('validation_owner', 'validate', 'verify-validation'),
+                                    ('adoption_owner', 'adopt', 'verify-adoption')):
+            row = config['repair_worker']['candidate_runtime'][role]
+            args = arguments + (['--validation-path', '{validation_path}'] if action == 'adopt' else [])
+            need(type(row) is dict and set(row) == {'argv', 'verify_argv', 'source_descriptors', 'timeout_seconds'}
+                 and same(row['argv'], prefix + [action] + args)
+                 and same(row['verify_argv'], prefix + [verify] + args)
+                 and same(row['source_descriptors'], expected_pins)
+                 and type(row['timeout_seconds']) is int and 0 < row['timeout_seconds'] <= 1200,
+                 'historical v1 executable/arguments/source-role map differs')
+    def policy(config):
+        selected = None
+        for role in ('validation_owner', 'adoption_owner'):
+            row = config['repair_worker']['candidate_runtime'][role]
+            for command in ('argv', 'verify_argv'):
+                argv = row[command]
+                need(type(argv) is list and all(type(v) is str for v in argv)
+                     and argv.count('--policy') == argv.count('--policy-sha256') == 1
+                     and not any(v.startswith(('--policy=', '--policy-sha256=')) for v in argv),
+                     'four exact historical policy command references required')
+                pi, hi = argv.index('--policy') + 1, argv.index('--policy-sha256') + 1
+                need(pi < len(argv) and hi < len(argv), 'historical policy argument missing')
+                path = Path(argv[pi]); info = path.lstat()
+                reference = {'path': str(path), 'bytes': info.st_size, 'sha256': argv[hi]}
+                blob(reference)
+                need(not info.st_mode & 0o222 and (selected is None or selected == reference),
+                     'historical policy must be one immutable exact artifact')
+                selected = reference
+        value = obj(selected); anchor = obj(value['adoption'])
+        need(not Path(value['adoption']['path']).lstat().st_mode & 0o222,
+             'historical bootstrap must be immutable')
+        need(anchor.get('schema') == 'agent-supervisor/repair-initial-profile-bootstrap@1'
+             and anchor.get('owner_policy_path') == selected['path'],
+             'historical bootstrap/policy path differs')
+        commands(config, selected, value)
+        return selected, value, anchor
+    def source_roles(rows, root):
+        need(type(rows) is list and len(rows) <= 128, 'finite historical source roles required')
+        result = []
+        for row in rows:
+            need(type(row) is dict and type(row.get('path')) is str, 'typed historical source role required')
+            path = Path(row['path'])
+            result.append(('control', path.relative_to(root).as_posix()) if root in path.parents else ('external', str(path)))
+        need(len(result) == len(set(result)), 'duplicate historical source roles')
+        return result
+    def relative_tests(value, root, checks=False):
+        result = []
+        for row in value:
+            spelling = row if checks else row['path']; path, sep, node = spelling.partition('::')
+            target = Path(path); need(root in target.parents, 'historical trusted test escaped control')
+            result.append(target.relative_to(root).as_posix() + sep + node if checks else
+                          {'relative_path': target.relative_to(root).as_posix(), 'bytes': row['bytes'], 'sha256': row['sha256']})
+        return result
+    original_raw, original_before = raw, before
+    current_plan, current_raw, current_anchor = plan, raw, old_anchor
+    maintenance_copy = None
+    for depth in range(8):
+        scope = current_plan.get('retained_policy_rebinding')
+        need(type(scope) is dict and set(scope) == {'schema', 'maintenance_config_copy', 'prior_cutover', 'prior_readback'}
+             and scope['schema'] == 'agent-supervisor/retained-policy-rebinding-history@1',
+             'closed explicit retained policy-rebinding history required')
+        need(current_anchor['expected_config_projection']['runtime_release'] == current_plan['release'],
+             'prior policy-rebinding history requires an already maintained anchor')
+        copy_raw = blob(scope['maintenance_config_copy'])
+        need(not Path(scope['maintenance_config_copy']['path']).lstat().st_mode & 0o222,
+             'maintenance configuration copy must be immutable')
+        need(maintenance_copy is None or maintenance_copy == copy_raw,
+             'prior policy-rebinding histories disagree on original maintenance bytes')
+        maintenance_copy = copy_raw
+        blob(scope['prior_cutover'])
+        key = (scope['prior_cutover']['path'], scope['prior_cutover']['sha256'])
+        need(key not in seen, 'prior policy-rebinding history cycle'); seen.add(key)
+        actual, retired = obj(scope['prior_cutover']), obj(scope['prior_readback'])
+        need(actual.get('schema') == 'held-scientific-existing-owner-code-only-cutover/v1'
+             and all(actual.get(k) is True for k in ('completed', 'source_READ_closed', 'installer_apply_observe_completed'))
+             and actual.get('error') is None
+             and all(type(actual.get(k)) is int and actual[k] == 0 for k in ('native_admissions', 'scientific_commands', 'productive_epoch_budget_attempt_route_expiry_changes'))
+             and all(actual.get(k) is False for k in ('V5_selector_enabled', 'automatic_preparer_enabled', 'live_top_runtime_changed'))
+             and actual.get('original_external_owner_exit_not_yet_observed') is True,
+             'prior original code-only cutover did not close without authority changes')
+        selection = obj(actual['selection'])
+        need(selection.get('schema') == 'held-scientific-code-only-cutover-exact-selection/v1'
+             and selection.get('Root_selected') is True
+             and all(selection.get(k) is False for k in ('future_V5_selector_enabled', 'automatic_preparer_enabled', 'productive_repair_renewal_or_dispatch_granted')),
+             'prior original code-only selection differs')
+        need(actual.get('nested_consumer_generation_sha256') == selection['normal_canonical_sources']['consumer']['sha256'],
+             'prior cutover consumer generation differs from selected owner')
+        prior = obj(selection['full_stage'])
+        need(prior.get('schema') == 'agent-supervisor/repair-profile-upgrade-stage@1'
+             and prior.get('source_successor') is None and prior.get('initial_bindings') is None
+             and type(prior.get('files')) is list and len(prior['files']) == 3
+             and all(same(prior.get(k), current_plan.get(k)) for k in ('release', 'source_commitment', 'release_commitment', 'release_sources', 'selected_release_sources', 'state_dir', 'scientific_executor_binding', 'scientific_executor_git_binding')),
+             'prior stage changed retained release/science/source generation')
+        contract, earlier = current_plan['contract'], prior['contract']
+        need(set(earlier) == set(contract) and earlier['schema'] == contract['schema'] and earlier['profile'] == contract['profile']
+             and earlier['source_successor'] is None and earlier['initial_release'] == contract['initial_release']
+             and earlier['job_unit'] == contract['job_unit'] and earlier['config']['path'] == contract['config']['path']
+             and earlier['inventory'] == contract['inventory'] and earlier['prior_job']['path'] == contract['prior_job']['path'],
+             'prior stage changed base grant or state/job/config targets')
+        hold = prior['held_scientific_profile_retention']
+        need(set(hold) == set(current_plan['held_scientific_profile_retention']) and all(same(hold[k], current_plan['held_scientific_profile_retention'][k]) for k in ('schema', 'profile', 'git_binding', 'hold')),
+             'prior stage changed full scientific hold/profile')
+        earlier_raw = blob(hold['config_preimage']); earlier_before = json_object(earlier_raw)
+        need(not Path(hold['config_preimage']['path']).lstat().st_mode & 0o222,
+             'prior complete config copy must be immutable')
+        old_config_ref = {'path': earlier['config']['path'], 'bytes': len(earlier_raw), 'sha256': hashlib.sha256(earlier_raw).hexdigest()}
+        need(old_config_ref == earlier['config'] == prior['files'][-1]['before']
+             and type(prior['files'][-1]['mode']) is int and prior['files'][-1]['mode'] == current_plan['files'][-1]['mode']
+             and type(prior['files'][-1]['postimage_utf8']) is str
+             and prior['files'][-1]['postimage_utf8'].encode() == current_raw,
+             'prior original config before/postimage does not join current bytes')
+        current = json_object(current_raw)
+        new_pin, new_policy, new_anchor = policy(current)
+        old_pin, old_policy, historical_anchor = policy(earlier_before)
+        need(same(new_anchor, current_anchor) and same(new_anchor['original_contract'], earlier)
+             and same(new_anchor['source_snapshot'], historical_anchor['source_snapshot'])
+             and historical_anchor['original_contract']['initial_release'] == contract['initial_release'],
+             'prior/current policy bootstrap or genuine source snapshot differs')
+        need(set(earlier_before) == set(current) and all(same(earlier_before[k], current[k]) for k in earlier_before if k != 'repair_worker')
+             and earlier_before['runtime_release'] == current['runtime_release'] == prior['release'],
+             'prior transition changed boards/epochs/top runtime')
+        ow, nw = earlier_before['repair_worker'], current['repair_worker']
+        need(set(ow) == set(nw) and all(same(ow[k], nw[k]) for k in ow if k != 'candidate_runtime'),
+             'prior transition changed worker route/budget')
+        ot, nt = ow['candidate_runtime'], nw['candidate_runtime']; roles = {'validation_owner', 'adoption_owner'}
+        need(set(ot) == set(nt) and roles <= set(ot) and all(same(ot[k], nt[k]) for k in ot if k not in roles),
+             'prior transition changed outer runtime authority')
+        need(set(old_policy) == set(new_policy)
+             and all(same(old_policy[k], new_policy[k]) for k in old_policy if k not in {'control_release', 'source_descriptors', 'validation', 'adoption'}),
+             'prior policy changed schema/python/datasets root')
+        ov, nv = old_policy['validation'], new_policy['validation']; sf = {'import_sources', 'trusted_tests', 'selected_checks'}
+        need(set(ov) == set(nv) and all(same(ov[k], nv[k]) for k in ov if k not in sf),
+             'prior policy changed validation budgets or authority')
+        oc, nc = Path(old_policy['control_release']['root']), Path(new_policy['control_release']['root'])
+        need(source_roles(old_policy['source_descriptors'], oc) == source_roles(new_policy['source_descriptors'], nc)
+             and source_roles(ov['import_sources'], oc) == source_roles(nv['import_sources'], nc)
+             and same(relative_tests(ov['trusted_tests'], oc), relative_tests(nv['trusted_tests'], nc))
+             and relative_tests(ov['selected_checks'], oc, True) == relative_tests(nv['selected_checks'], nc, True),
+             'prior policy changed source roles or trusted checks')
+        for role in roles:
+            need(set(ot[role]) == set(nt[role]) and all(same(ot[role][k], nt[role][k]) for k in ot[role] if k not in {'argv', 'verify_argv', 'source_descriptors'}),
+                 'prior nested owner timeout or extra authority changed')
+        expected_units = {}
+        for row in prior['files'][:-1]:
+            unit = row['before']; body = row['postimage_utf8'].encode()
+            need(unit in earlier['units'].values() and len(body) == unit['bytes'] and hashlib.sha256(body).hexdigest() == unit['sha256']
+                 and any(unit == p for p in contract['units'].values())
+                 and any(r['before']['path'] == unit['path'] and type(row['mode']) is int and row['mode'] == r['mode'] for r in current_plan['files'][:-1]),
+                 'prior policy-only transition changed unit bytes/roles')
+            expected_units[next(k for k, v in earlier['units'].items() if v == unit)] = {**unit, 'mode': row['mode']}
+        need(len(expected_units) == 2 and same(new_anchor['expected_unit_postimages'], expected_units),
+             'prior current bootstrap unit images/modes differ')
+        projected = _bootstrap_config_projection(current, new_policy, new_pin, new_pin['path'])
+        need(same(new_anchor['expected_config_projection'], projected), 'prior current bootstrap config projection differs')
+        install, observed = actual['installation'], actual['observed']
+        need(install.get('schema') == 'agent-supervisor/repair-profile-upgrade-installation@1'
+             and all(install.get(k) is True for k in ('completed', 'source_WRITE_closed', 'postwrite_source_READ_closed', 'config_units_CAS_closed'))
+             and install['source_successor'].get('source_WRITE_entered') is False
+             and all(install['source_successor'].get(k) is True for k in ('completed', 'source_WRITE_closed', 'postwrite_source_READ_closed'))
+             and same(install['commands'], [dict(argv=a, returncode=0) for a in (
+                 ['systemctl', '--user', 'daemon-reload'], ['systemctl', '--user', 'restart', 'ipfs-taskboard-legal-ir-watchdog.service'],
+                 ['systemctl', '--user', 'restart', 'ipfs-taskboard-legal-ir-repair.service'])])
+             and observed.get('runtime_unit_config_CAS_closed') is True and observed.get('read_only_readiness_wait_closed') is True,
+             'prior original installation/readiness did not close')
+        clock, envelope = actual['cutover_clock'], actual['outer_envelope']
+        unit = actual['original_external_unit']; group = envelope['control_group']
+        need(type(unit) is str and re.fullmatch(r'ipfs-taskboard-legal-ir-cutover-[A-Za-z0-9_-]+\.service', unit)
+             and selection.get('original_external_unit') == unit and type(group) is str
+             and Path(group).is_absolute() and '..' not in Path(group).parts and str(Path(group)) == group
+             and Path(group).name == unit and envelope['cgroup_root'] == str(Path('/sys/fs/cgroup') / group.lstrip('/')),
+             'prior selected unit/cgroup identity differs')
+        need(type(clock['existing_kernel_runtime_seconds']) is int and clock['existing_kernel_runtime_seconds'] == 120
+             and all(type(x) in (int, float) and math.isfinite(x) for x in (clock['started_monotonic'], clock['deadline_monotonic'], actual['completed_monotonic']))
+             and clock['deadline_monotonic'] - clock['started_monotonic'] == 120
+             and clock['started_monotonic'] <= actual['completed_monotonic'] <= clock['deadline_monotonic']
+             and envelope['unit'] == actual['original_external_unit'] and envelope['invocation_id'] == clock['invocation_id']
+             and type(envelope['runtime_max_seconds']) in (int, float) and math.isfinite(envelope['runtime_max_seconds'])
+             and 0 < envelope['runtime_max_seconds'] <= 120 and type(envelope['memory_max_bytes']) is int
+             and 0 < envelope['memory_max_bytes'] <= 256 * 1024**2 and type(envelope['tasks_max']) is int
+             and 0 < envelope['tasks_max'] <= 32 and type(envelope['cpu_max']) is list and len(envelope['cpu_max']) == 2
+             and all(type(x) is int for x in envelope['cpu_max']) and 0 < envelope['cpu_max'][0] <= envelope['cpu_max'][1]
+             and type(clock['owner']['pid']) is int and clock['owner']['pid'] > 0 and type(clock['owner']['birth']) is str
+             and clock['owner']['birth'].isdigit() and type(clock['invocation_id']) is str
+             and re.fullmatch(r'[0-9a-f]{32}', clock['invocation_id'])
+             and type(envelope['active_enter_monotonic_usec']) is int and envelope['active_enter_monotonic_usec'] > 0
+             and clock['started_monotonic'] <= envelope['active_enter_monotonic_usec'] / 1000000 <= actual['completed_monotonic']
+             and type(observed['readiness_deadline_monotonic']) in (int, float) and math.isfinite(observed['readiness_deadline_monotonic'])
+             and actual['completed_monotonic'] <= observed['readiness_deadline_monotonic'] == clock['deadline_monotonic']
+             and actual['completed_monotonic'] <= envelope['active_enter_monotonic_usec'] / 1000000 + envelope['runtime_max_seconds'],
+             'prior original clock/envelope identity differs')
+        need(retired.get('schema') == 'independent-actual-runtime-cutover-original-cgroup-retirement-readback/v1'
+             and retired['actual_runtime'] == scope['prior_cutover']
+             and all(retired.get(k) is True for k in ('verified_apply_and_readiness', 'Source_READs_closed', 'same_invocation_manager_terminal_success',
+                 'original_PID_proc_entry_independently_absent', 'original_cgroup_root_independently_absent', 'scientific_full_stop_full9_unchanged',
+                 'all_boards_epochs_attempts_budgets_routes_and_other_config_unchanged', 'prior_job_inventory_initial_release_and_all_live_top_source_refs_unchanged',
+                 'original_immutable_preexit_owner_exit_not_yet_observed_flag_preserved'))
+             and all(retired.get(k) is False for k in ('external_genuine_wait_or_returncode_invented', 'TasksCurrent_coerced_to_zero',
+                 'canonical_strict_TasksCurrent_zero_validator_claimed_pass', 'productive_authorization_or_V5_selector_renewed', 'future_admin_hook_qualified',
+                 'reviewer_Source_Product_API_service_Native_test_or_process_actions'))
+             and same(retired['original_clock'], clock) and same(retired['exact_original_envelope'], envelope)
+             and same(retired['completed_monotonic'], actual['completed_monotonic'])
+             and same(retired['elapsed_seconds'], actual['completed_monotonic'] - clock['started_monotonic']),
+             'independent prior external closeout differs or invents authority')
+        manager = obj(retired['exact_Root_manager_observation']); props = manager['manager_properties_exact']
+        lines = manager['manager_stdout'].splitlines()
+        fields = {'MainPID', 'InvocationID', 'Result', 'ExecMainStatus', 'SubState', 'ControlGroup', 'TasksCurrent', 'KillMode'}
+        need(len(lines) == len(fields) and all('=' in line for line in lines)
+             and {line.split('=', 1)[0] for line in lines} == fields,
+             'one exact raw terminal observation per property required')
+        parsed = dict(line.split('=', 1) for line in lines)
+        need(manager.get('schema') == 'Root-original-runtime-manager-kernel-terminal-observation/v1'
+             and manager['actual_runtime'] == scope['prior_cutover'] and type(manager['manager_returncode']) is int and manager['manager_returncode'] == 0
+             and manager.get('manager_argv') == ['systemctl', '--user', 'show', actual['original_external_unit'],
+                 '--property=MainPID,InvocationID,Result,ExecMainStatus,SubState,ControlGroup,TasksCurrent,KillMode']
+             and manager.get('manager_stderr') == ''
+             and type(manager.get('Source_Native_service_or_budget_actions')) is int and manager['Source_Native_service_or_budget_actions'] == 0
+             and same(parsed, props) and same(props, retired['exact_manager_properties'])
+             and props.get('SubState') in ('exited', 'dead') and props.get('ControlGroup') in ('', envelope['control_group'])
+             and props.get('TasksCurrent') in ('0', '[not set]')
+             and props.get('MainPID') == '0' and props.get('Result') == 'success' and props.get('ExecMainStatus') == '0'
+             and props.get('InvocationID') == clock['invocation_id'] and props.get('KillMode') == 'control-group'
+             and manager.get('observed_process') is None and manager.get('original_pid_birth_absent') is True
+             and manager.get('original_cgroup_path_exists') is False and manager.get('TasksCurrent_coerced_to_zero') is False
+             and manager.get('canonical_strict_TasksCurrent_zero_validator_claimed_pass') is False
+             and manager['recorded_original_cgroup_root'] == envelope['cgroup_root']
+             and manager['external_owner'] == {'unit': actual['original_external_unit'], 'owner': clock['owner'], 'invocation_id': clock['invocation_id']},
+             'prior raw terminal/PID/cgroup observation differs')
+        post_ref = {'path': earlier['config']['path'], 'bytes': len(current_raw), 'sha256': hashlib.sha256(current_raw).hexdigest()}
+        rows = retired['exact_three_current_postimages']
+        need(type(rows) is list and len(rows) == 3 and len({r['current']['path'] for r in rows}) == 3,
+             'three exact prior current postimages required')
+        expected_posts = {r['before']['path']: {'path': r['before']['path'], 'bytes': len(r['postimage_utf8'].encode()),
+                         'sha256': hashlib.sha256(r['postimage_utf8'].encode()).hexdigest()} for r in prior['files']}
+        need({r['current']['path']: r['current'] for r in rows} == expected_posts
+             and all(r['exact_selected_stage_postimage'] is True and r['full9']['st_size'] == r['current']['bytes']
+                     and set(r['full9']) == {'st_dev', 'st_ino', 'st_mode', 'st_nlink', 'st_uid', 'st_gid', 'st_size', 'st_mtime_ns', 'st_ctime_ns'}
+                     and all(type(x) is int for x in r['full9'].values()) and stat.S_ISREG(r['full9']['st_mode'])
+                     and r['full9']['st_nlink'] == 1 and r['full9']['st_uid'] == os.getuid()
+                     and r['full9']['st_dev'] > 0 and r['full9']['st_ino'] > 0
+                     and all(r['full9'][k] >= 0 for k in ('st_gid', 'st_size', 'st_mtime_ns', 'st_ctime_ns')) and stat.S_IMODE(r['full9']['st_mode']) == next(x['mode'] for x in prior['files'] if x['before']['path'] == r['current']['path']) for r in rows),
+             'prior independent stage postimage identity differs')
+        ready = retired['actual_two_new_loaded_readiness']; need(set(ready) == set(observed['loaded_runtime']) == {'watchdog', 'repair'},
+             'both original loaded receipt roles required')
+        loaded_identities, loaded_invocations = set(), set()
+        for role, reference in observed['loaded_runtime'].items():
+            loaded = obj(reference); row = ready[role]
+            identity = loaded['owner']; invocation = loaded['invocation_id']
+            need(type(identity) is dict and set(identity) == {'pid', 'birth'} and type(identity['pid']) is int and identity['pid'] > 0
+                 and type(identity['birth']) is str and identity['birth'].isdigit() and type(invocation) is str
+                 and re.fullmatch(r'[0-9a-f]{32}', invocation)
+                 and reference['path'] == str(Path(prior['state_dir']) / 'runtime-loaded' / (invocation + '-' + role + '.json'))
+                 and not Path(reference['path']).lstat().st_mode & 0o222
+                 and (identity['pid'], identity['birth']) not in loaded_identities and invocation not in loaded_invocations,
+                 'prior loaded receipt path/owner/invocation identity differs')
+            loaded_identities.add((identity['pid'], identity['birth'])); loaded_invocations.add(invocation)
+            need(loaded.get('schema') == 'agent-supervisor/repair-actual-activation@1' and loaded['service'] == role
+                 and loaded['release'] == prior['release'] and loaded['source_commitment'] == prior['source_commitment']
+                 and loaded['config'] == post_ref and loaded['loaded_module'] == prior['release_sources']['fleet_' + role]
+                 and row['receipt'] == reference and row['current_birth_matches'] is True and row['owner'] == loaded['owner']
+                 and row['invocation_id'] == loaded['invocation_id'] and row['exact_new_config'] == post_ref
+                 and row['exact_live_top_module'] == loaded['loaded_module'], 'prior original loaded config/module/owner receipt differs')
+        if 'retained_policy_rebinding' not in prior:
+            need(earlier_raw == maintenance_copy, 'prior history did not terminate at exact maintenance config bytes')
+            base_root = str(Path(contract['initial_release']['path']).parent)
+            token = json.dumps(prior['release']).encode(); replacement = json.dumps(base_root).encode()
+            need(earlier_raw.count(token) == 1, 'one original maintenance release token required')
+            historical_before = json_object(earlier_raw.replace(token, replacement, 1))
+            need(same(historical_anchor['expected_config_projection'], _bootstrap_config_projection(
+                historical_before, old_policy, old_pin, old_pin['path'])), 'original base bootstrap projection differs')
+            return earlier_raw, earlier_before, historical_anchor, original_before
+        need(same(historical_anchor['expected_config_projection'], _bootstrap_config_projection(
+            earlier_before, old_policy, old_pin, old_pin['path'])), 'prior maintained bootstrap projection differs')
+        current_plan, current_raw, current_anchor = prior, earlier_raw, historical_anchor
+    need(False, 'prior policy-rebinding history exceeds finite depth bound')
+
+
+def _repair_retained_runtime_projection(plan: dict, raw: bytes, before: dict, old_anchor: dict) -> dict:
+    """Join a retained initial release to its exact prior code-only maintenance.
+
+    Historical config/unit bytes are reconstructed only by the authenticated
+    release-root token substitution. No past receipt becomes current health,
+    a new source snapshot, productive enrollment, or a repair grant.
+    """
+    from ipfs_accelerate_py.agent_supervisor.rescue.repair_authorization import canonical, checked_descriptor, json_object
+    from ipfs_accelerate_py.agent_supervisor.rescue.repair_candidate_owners import need
+    release = Path(plan["release"])
+    current_ref = plan["release_commitment"]
+    need(Path(current_ref["path"]) == release / "repair-source-commitment.json",
+         "current retained release commitment path differs")
+    current = json_object(checked_descriptor(current_ref))
+    need(current.get("source_commitment") == plan["source_commitment"]
+         and canonical(current.get("sources")) == canonical(plan["release_sources"])
+         and canonical(current.get("selected_sources")) == canonical(plan["selected_release_sources"]),
+         "retained current release source generation differs")
+    expected_units = {role: {**pin, "mode": row["mode"]}
+        for role, pin in plan["contract"]["units"].items()
+        for row in plan["files"][:-1] if row["before"] == pin}
+    need(len(expected_units) == 2, "two retained existing unit images required")
+    before_rebinding = None
+    if 'retained_policy_rebinding' in plan:
+        need(current.get('schema') == 'agent-supervisor/operator-runtime-maintenance-release@1',
+             'policy-rebinding history is only valid for a retained maintenance release')
+        raw, before, old_anchor, before_rebinding = _repair_retained_policy_rebinding_history(plan, raw, before, old_anchor)
+    if current.get("schema") == "agent-supervisor/repair-source-release@1":
+        need(current_ref == plan["contract"]["initial_release"]
+             and old_anchor["expected_config_projection"]["runtime_release"] == str(release)
+             and canonical(old_anchor["expected_unit_postimages"]) == canonical(expected_units),
+             "ordinary retained initial release/unit generation differs")
+        return before
+    need(set(current) == {"schema", "source_commitment", "sources", "selected_sources", "operator_maintenance"}
+         and current["schema"] == "agent-supervisor/operator-runtime-maintenance-release@1",
+         "unsupported retained runtime release history")
+    maintenance = current["operator_maintenance"]
+    need(type(maintenance) is dict and set(maintenance) == {"basis", "source_peer", "actual18_peer", "actual18_root_closeout", "published_patch", "published_patch_commit", "base_release_commitment", "base_genuine_snapshot_commit", "base_genuine_snapshot_tree", "new84_file_Git_snapshot_claimed", "productive_repair_enrollment_or_successor_or_new_grant"}
+         and maintenance["new84_file_Git_snapshot_claimed"] is False
+         and maintenance["productive_repair_enrollment_or_successor_or_new_grant"] is False,
+         "maintenance history cannot grant source snapshots/enrollment/repair")
+    base_ref = maintenance["base_release_commitment"]
+    need(base_ref == plan["contract"]["initial_release"] == old_anchor["original_contract"]["initial_release"],
+         "maintenance history belongs to another initial source grant")
+    base = json_object(checked_descriptor(base_ref)); base_root = Path(base_ref["path"]).parent
+    need(base.get("schema") == "agent-supervisor/repair-source-release@1"
+         and base_root != release
+         and old_anchor["expected_config_projection"]["runtime_release"] == str(base_root)
+         and maintenance["base_genuine_snapshot_commit"] == base.get("snapshot_commit") == old_anchor["source_snapshot"]["new_commit"]
+         and maintenance["base_genuine_snapshot_tree"] == base.get("snapshot_tree") == old_anchor["source_snapshot"]["new_tree"]
+         and base["source_commitment"] == old_anchor["source_snapshot"]["source_commitment"],
+         "maintenance historical genuine snapshot identity differs")
+    documents = {key: json_object(checked_descriptor(maintenance[key])) for key in
+        ("basis", "source_peer", "actual18_peer", "actual18_root_closeout", "published_patch")}
+    basis, peer, actual, closure, publication = (documents[key] for key in
+        ("basis", "source_peer", "actual18_peer", "actual18_root_closeout", "published_patch"))
+    need(basis.get("schema") == "operator-runtime-maintenance-stage-basis/v1"
+         and basis.get("source_only") is True and basis.get("expected_release") == str(release)
+         and basis.get("expected_source_commitment") == current["source_commitment"]
+         and basis.get("old_release_commitment") == base_ref
+         and basis.get("actual18_peer") == maintenance["actual18_peer"]
+         and basis.get("actual18_root_closeout") == maintenance["actual18_root_closeout"]
+         and basis.get("publication") == maintenance["published_patch"],
+         "maintenance source-only basis/ref chain differs")
+    need(peer.get("schema") == "independent-operator-code-only-maintenance-stage-SOURCE-peer/v1"
+         and peer.get("basis") == maintenance["basis"]
+         and peer.get("accepted_for_metadata_stage_preparation") is True
+         and peer.get("blocking_findings") == [], "maintenance source peer did not accept this exact basis")
+    need(actual.get("schema") == "independent-actual-normal82-scope18-source-qualification-acceptance/v1"
+         and actual.get("root_closeout") == maintenance["actual18_root_closeout"]
+         and actual.get("accepted_actual_source_qualification") is True
+         and type(actual.get("selected_cases")) is int and actual["selected_cases"] == 18
+         and type(actual.get("pytest_testcase_rows")) is int and actual["pytest_testcase_rows"] == 18
+         and all(type(actual.get(key)) is int and actual[key] == 0 for key in ("errors", "failures", "skipped"))
+         and all(actual.get(key) is True for key in ("actual18collection_matches_sealed_scope", "original_Native_compute_closed", "original_R_A_READ_closed", "original_processes_reaped_and_absent", "storage_released_and_artifacts_durable"))
+         and actual.get("live_runtime_upgrade_or_SCI_recovery_or_legal_Lean_authority") is False,
+         "maintenance exact original source qualification closure differs")
+    need(closure.get("schema") == "legal-ir-native-executor-health-original-capture/v1"
+         and closure.get("completed") is True and type(closure.get("returncode")) is int and closure["returncode"] == 0
+         and all(closure.get(key) is True for key in ("child_reaped", "original_CLI_exit_observed", "original_native_compute_closed", "source_READ_closed", "source_custody_closed", "source_pins_unchanged"))
+         and closure.get("cleanup_errors") == [] and closure.get("received_signals") == []
+         and closure.get("native_task_or_service_mutations") is False
+         and closure.get("automatic_retry_or_storage_cleanup") is False,
+         "maintenance original owner did not close without task/runtime mutation")
+    need(publication.get("schema") == "Root-qualified18-existing-PR321-actual-readback-publication/v2"
+         and publication.get("completed") is True and type(publication.get("cases")) is int and publication["cases"] == 18
+         and all(type(publication.get(key)) is int and publication[key] == 0 for key in ("errors", "failures", "skipped"))
+         and publication.get("commit") == maintenance["published_patch_commit"]
+         and type(publication["commit"]) is str and re.fullmatch(r"[0-9a-f]{40}", publication["commit"])
+         and publication.get("forced_update") is False
+         and publication.get("no_local_checkout_or_live_service_or_epoch_or_hold_or_task_mutations") is True,
+         "maintenance publication/source-only history differs")
+    substitutions = basis.get("substitutions")
+    need(type(substitutions) is dict and 0 < len(substitutions) <= 128
+         and set(actual.get("qualified_source_hashes", {})) == set(substitutions),
+         "finite exact qualified maintenance source population required")
+    for field in ("sources", "selected_sources"):
+        old_rows, new_rows = base.get(field), current.get(field)
+        need(type(old_rows) is dict and type(new_rows) is dict and set(old_rows) == set(new_rows)
+             and 0 < len(new_rows) <= 4096
+             and sum(row["bytes"] for row in new_rows.values()) <= 128 * 1024**2,
+             "maintenance retained source role population differs")
+        changed = set()
+        for key, row in new_rows.items():
+            old_row = old_rows[key]; path, old_path = Path(row["path"]), Path(old_row["path"])
+            need(release in path.parents and base_root in old_path.parents
+                 and path.relative_to(release) == old_path.relative_to(base_root),
+                 "maintenance source role escaped its original release")
+            checked_descriptor(row); checked_descriptor(old_row)
+            if (row["bytes"], row["sha256"]) != (old_row["bytes"], old_row["sha256"]):
+                relative = path.relative_to(release).as_posix(); changed.add(relative)
+                expected = substitutions.get(relative)
+                need(type(expected) is dict and (expected.get("bytes"), expected.get("sha256")) == (row["bytes"], row["sha256"])
+                     and actual["qualified_source_hashes"].get(relative) == row["sha256"],
+                     "maintenance changed source lacks exact original qualification")
+        need(changed == set(substitutions), "maintenance changed source population differs from qualified substitutions")
+    current_config = {"path": plan["contract"]["config"]["path"], "bytes": len(raw), "sha256": hashlib.sha256(raw).hexdigest()}
+    token = json.dumps(str(release)).encode(); replacement = json.dumps(str(base_root)).encode()
+    need(raw.count(token) == 1, "one exact historical runtime-release config slot required")
+    historical_raw = raw.replace(token, replacement, 1)
+    historical_ref = {"path": current_config["path"], "bytes": len(historical_raw), "sha256": hashlib.sha256(historical_raw).hexdigest()}
+    need(basis.get("exact_raw_config_postimage") == current_config and basis.get("config") == historical_ref,
+         "maintenance changed config outside the exact historical runtime-release token")
+    historical = json_object(historical_raw)
+    for role, row in expected_units.items():
+        unit_raw = checked_descriptor({key: row[key] for key in ("path", "bytes", "sha256")})
+        need(unit_raw.count(str(release).encode()) > 0
+             and peer.get("unit_postimages", {}).get(role) == {"bytes": row["bytes"], "sha256": row["sha256"]},
+             "maintenance current unit differs from its reviewed source-only stage")
+        old_raw = unit_raw.replace(str(release).encode(), str(base_root).encode())
+        old_unit = {"path": row["path"], "bytes": len(old_raw), "sha256": hashlib.sha256(old_raw).hexdigest(), "mode": row["mode"]}
+        need(old_anchor["expected_unit_postimages"].get(role) == old_unit,
+             "maintenance old unit changed outside exact release-root tokens")
+    return before_rebinding if before_rebinding is not None else historical
+
+
+def _repair_held_scientific_profile(plan: dict) -> dict:
+    """Authenticate unchanged historical science during one code-only cutover.
+
+    This explicit route never claims current scientific health. The normal
+    profile parser and every execution/dispatch path remain unchanged.
+    """
+    from ipfs_accelerate_py.agent_supervisor.rescue.repair_authorization import canonical, checked_descriptor, descriptor, json_object
+    from ipfs_accelerate_py.agent_supervisor.rescue.repair_candidate_owners import need
+    value = plan.get("held_scientific_profile_retention")
+    need(type(value) is dict and set(value) == {"schema", "config_preimage", "profile", "git_binding", "hold"}
+         and value["schema"] == HELD_SCIENTIFIC_RETENTION_SCHEMA,
+         "closed explicit held-scientific retention binding required")
+    need(plan.get("source_successor") is None and plan.get("initial_bindings") is None
+         and plan.get("schema") == "agent-supervisor/repair-profile-upgrade-stage@1"
+         and type(plan.get("files")) is list and len(plan["files"]) == 3,
+         "held scientific retention is code/config-only, not a source or epoch grant")
+    contract = plan["contract"]
+    need(type(contract) is dict and set(contract) == {"schema", "profile", "config", "inventory", "units", "prior_job", "expected_loaded_before", "job_unit", "source_successor", "initial_release"}
+         and contract["schema"] == "agent-supervisor/repair-profile-upgrade-contract@1"
+         and contract["profile"] == REPAIR_PROFILE and contract["source_successor"] is None,
+         "exact original legal-ir source-only contract required")
+    copy_ref = value["config_preimage"]
+    raw = checked_descriptor(copy_ref)
+    need(copy_ref["path"] != contract["config"]["path"]
+         and (copy_ref["bytes"], copy_ref["sha256"]) == (contract["config"]["bytes"], contract["config"]["sha256"])
+         and not Path(copy_ref["path"]).lstat().st_mode & 0o222,
+         "immutable complete original config preimage required")
+    before = json_object(raw)
+    need(type(before.get("boards")) is list and len(before["boards"]) == 2
+         and all(type(board) is dict for board in before["boards"])
+         and {board.get("id") for board in before["boards"]} == {"legal-ir", "legal-ir-scientific"},
+         "two exact original boards required for held-profile source-only retention")
+    def same(a, b):
+        return canonical(a) == canonical(b)
+    need(plan["files"][-1]["before"] == contract["config"], "original config CAS target differs")
+    post = json_object(plan["files"][-1]["postimage_utf8"].encode())
+    need(set(before) == set(post) and all(same(before[k], post[k]) for k in before if k != "repair_worker")
+         and before["runtime_release"] == post["runtime_release"] == plan["release"],
+         "held source-only transition changed boards/epoch/runtime/other config")
+    old_worker, new_worker = before["repair_worker"], post["repair_worker"]
+    need(set(old_worker) == set(new_worker)
+         and all(same(old_worker[k], new_worker[k]) for k in old_worker if k != "candidate_runtime"),
+         "held source-only transition changed worker route/policy/budget")
+    old_runtime, new_runtime = old_worker["candidate_runtime"], new_worker["candidate_runtime"]
+    roles = {"validation_owner", "adoption_owner"}
+    need(set(old_runtime) == set(new_runtime) and roles <= set(old_runtime)
+         and all(same(old_runtime[k], new_runtime[k]) for k in old_runtime if k not in roles),
+         "held source-only transition changed runtime authority outside nested owners")
+    def owner_policy(runtime):
+        found = None
+        for role in ("validation_owner", "adoption_owner"):
+            row = runtime[role]
+            for command in ("argv", "verify_argv"):
+                argv = row[command]
+                need(type(argv) is list and all(type(v) is str for v in argv)
+                     and argv.count("--policy") == argv.count("--policy-sha256") == 1
+                     and not any(v.startswith(("--policy=", "--policy-sha256=")) for v in argv),
+                     "four separate exact owner-policy command references required")
+                pi, hi = argv.index("--policy") + 1, argv.index("--policy-sha256") + 1
+                need(pi < len(argv) and hi < len(argv), "owner-policy argument missing")
+                pin = descriptor(Path(argv[pi]))
+                need(pin["sha256"] == argv[hi] and (found is None or found == pin),
+                     "four nested commands disagree on immutable owner policy")
+                found = pin
+        return found, json_object(checked_descriptor(found))
+    old_pin, old_policy = owner_policy(old_runtime)
+    new_pin, new_policy = owner_policy(new_runtime)
+    mutable_policy_fields = {"control_release", "source_descriptors", "validation", "adoption"}
+    need(set(old_policy) == set(new_policy)
+         and all(same(old_policy[k], new_policy[k]) for k in old_policy if k not in mutable_policy_fields),
+         "held source-only transition changed policy schema/python/datasets root")
+    from ipfs_accelerate_py.agent_supervisor.rescue.repair_candidate_owners import (
+        _bootstrap_config_projection, INITIAL_PROFILE_BOOTSTRAP_SCHEMA)
+    anchor_keys = {"schema", "owner_policy_path", "original_contract", "source_snapshot", "expected_config_projection", "expected_unit_postimages"}
+    anchors = []
+    for policy in (old_policy, new_policy):
+        anchor_ref = policy["adoption"]
+        anchor = json_object(checked_descriptor(anchor_ref))
+        need(type(anchor) is dict and set(anchor) == anchor_keys
+             and anchor["schema"] == INITIAL_PROFILE_BOOTSTRAP_SCHEMA
+             and not Path(anchor_ref["path"]).lstat().st_mode & 0o222,
+             "immutable original/new bootstrap source-only DATA required")
+        anchors.append(anchor)
+    old_anchor, new_anchor = anchors
+    need(old_anchor["owner_policy_path"] == old_pin["path"] and new_anchor["owner_policy_path"] == new_pin["path"]
+         and same(old_anchor["source_snapshot"], new_anchor["source_snapshot"])
+         and type(new_anchor["source_snapshot"]) is dict
+         and set(new_anchor["source_snapshot"]) == {"prior_policy", "new_commit", "new_tree", "source_commitment", "manifest"},
+         "bootstrap source generation/owner-policy target changed")
+    historical_before = _repair_retained_runtime_projection(plan, raw, before, old_anchor)
+    need(same(old_anchor["expected_config_projection"], _bootstrap_config_projection(historical_before, old_policy, old_pin, old_pin["path"]))
+         and same(new_anchor["expected_config_projection"], _bootstrap_config_projection(post, new_policy, new_pin, new_pin["path"])),
+         "bootstrap projection changed boards/authority or differs from exact nested-command transition")
+    old_contract, new_contract = old_anchor["original_contract"], new_anchor["original_contract"]
+    refresh = {"config", "units", "prior_job", "expected_loaded_before"}
+    need(type(old_contract) is dict and type(new_contract) is dict
+         and set(old_contract) == set(new_contract) == set(contract)
+         and same(new_contract, contract)
+         and all(same(old_contract[k], new_contract[k]) for k in old_contract if k not in refresh)
+         and old_contract["config"]["path"] == contract["config"]["path"]
+         and old_contract["prior_job"]["path"] == contract["prior_job"]["path"]
+         and set(old_contract["units"]) == set(contract["units"]) == {"watchdog", "repair"}
+         and all(old_contract["units"][role]["path"] == contract["units"][role]["path"] for role in contract["units"]),
+         "bootstrap contract changed authority/state/job/unit targets")
+    expected_units = {role: {**pin, "mode": row["mode"]}
+        for role, pin in contract["units"].items()
+        for row in plan["files"][:-1] if row["before"] == pin}
+    need(len(expected_units) == 2 and same(new_anchor["expected_unit_postimages"], expected_units),
+         "bootstrap unit postimages differ from the unchanged two units")
+    need(plan["state_dir"] == before["state_dir"] and contract["job_unit"] == old_worker["job_unit"],
+         "source-only stage changed original state/job custody target")
+    old_validation, new_validation = old_policy["validation"], new_policy["validation"]
+    source_fields = {"import_sources", "trusted_tests", "selected_checks"}
+    need(set(old_validation) == set(new_validation)
+         and all(same(old_validation[k], new_validation[k]) for k in old_validation if k not in source_fields),
+         "held source-only transition changed validation selector/budget/expiry")
+    old_control = Path(old_policy["control_release"]["root"])
+    new_control = Path(new_policy["control_release"]["root"])
+    def trusted(policy, control):
+        result = []
+        for pin in policy["validation"]["trusted_tests"]:
+            path = Path(pin["path"])
+            need(control in path.parents, "trusted test escaped immutable control root")
+            result.append({"relative_path": path.relative_to(control).as_posix(), "bytes": pin["bytes"], "sha256": pin["sha256"]})
+        return result
+    def checks(policy, control):
+        result = []
+        for node in policy["validation"]["selected_checks"]:
+            path, separator, test = node.partition("::")
+            selected = Path(path)
+            need(control in selected.parents, "selected check escaped immutable control root")
+            result.append(selected.relative_to(control).as_posix() + (separator + test if separator else ""))
+        return result
+    def source_paths(rows, control):
+        need(type(rows) is list and len(rows) <= 128, "finite original source-descriptor population required")
+        result = []
+        for row in rows:
+            need(type(row) is dict and type(row.get("path")) is str, "typed source descriptor required")
+            path = Path(row["path"])
+            result.append(("control", path.relative_to(control).as_posix()) if control in path.parents else ("external", str(path)))
+        need(len(result) == len(set(result)), "duplicate source-descriptor population")
+        return result
+    need(same(source_paths(old_policy.get("source_descriptors", []), old_control), source_paths(new_policy.get("source_descriptors", []), new_control))
+         and same(source_paths(old_validation["import_sources"], old_control), source_paths(new_validation["import_sources"], new_control)),
+         "held source-only transition changed declared source roles/population")
+    need(same(trusted(old_policy, old_control), trusted(new_policy, new_control))
+         and same(checks(old_policy, old_control), checks(new_policy, new_control)),
+         "held source-only transition changed trusted checks or acceptance")
+    for role in roles:
+        need(same(old_runtime[role]["timeout_seconds"], new_runtime[role]["timeout_seconds"]),
+             "held source-only transition changed nested owner deadline")
+    rendered = render_control_owner_commands(new_pin,
+        validation_timeout_seconds=new_runtime["validation_owner"]["timeout_seconds"],
+        adoption_timeout_seconds=new_runtime["adoption_owner"]["timeout_seconds"])
+    need(roles <= set(rendered) <= roles | {"validation_admission_retry"}
+         and all(same(new_runtime.get(key), row) for key, row in rendered.items()),
+         "new nested commands/source descriptors differ from actual immutable renderer")
+    units = contract["units"]
+    need(set(units) == {"watchdog", "repair"}
+         and {row["before"]["path"] for row in plan["files"][:-1]} == {pin["path"] for pin in units.values()},
+         "held source-only transition requires exact two existing units")
+    for row in plan["files"][:-1]:
+        need(row["before"] in units.values()
+             and descriptor(Path(row["before"]["path"])) == row["before"]
+             and checked_descriptor(row["before"]) == row["postimage_utf8"].encode()
+             and stat.S_IMODE(Path(row["before"]["path"]).lstat().st_mode) == row["mode"],
+             "held source-only transition changed an existing unit")
+    old_science = [b for b in before["boards"] if b.get("id") == "legal-ir-scientific"]
+    need(len(old_science) == 1, "one original scientific board required")
+    board = old_science[0]
+    need(value["profile"] == board.get("native_executor_binding") == plan.get("scientific_executor_binding")
+         and value["git_binding"] == board.get("native_executor_git_binding") == plan.get("scientific_executor_git_binding")
+         and type(value["profile"]) is dict and type(value["git_binding"]) is dict,
+         "held scientific profile/Git binding changed")
+    hold = value["hold"]
+    keys = {"st_dev", "st_ino", "st_mode", "st_nlink", "st_uid", "st_gid", "st_size", "st_mtime_ns", "st_ctime_ns"}
+    need(type(hold) is dict and set(hold) == {"file", "identity"}
+         and type(hold["identity"]) is dict and set(hold["identity"]) == keys
+         and all(type(value) is int for value in hold["identity"].values()),
+         "exact existing full-stop hold identity required")
+    path = Path(hold["file"]["path"])
+    need(str(path) in board.get("hold_files", [])
+         and str(path) not in board.get("launch_only_hold_files", []),
+         "scientific retention requires a configured full-stop, not launch-only hold")
+    def held():
+        try:
+            checked_descriptor(hold["file"])
+            info = path.lstat()
+        except FileNotFoundError as error:
+            raise ValueError("original full-stop hold is missing") from error
+        need({key: getattr(info, key) for key in keys} == hold["identity"],
+             "original full-stop hold changed or was replaced")
+    held()
+    profile = json_object(checked_descriptor(value["profile"]))
+    _repair_scientific_git_binding(value["profile"], value["git_binding"], profile, Path(plan["release"]))
+    roles = {"main_entrypoint": "scientific_executor.py", "health_module": "native_executor_health.py",
+             "owner_source": "original_embedded_observation_owner.py", "driver_source": "native_embedded_observation_driver.py"}
+    for role in roles:
+        checked_descriptor(profile[role])
+    verifier = descriptor(Path(plan["release"]) / "ipfs_accelerate_py/agent_supervisor/rescue/native_executor_health.py")
+    need((verifier["bytes"], verifier["sha256"]) == (profile["health_module"]["bytes"], profile["health_module"]["sha256"]),
+         "held scientific verifier differs from retained original release")
+    held()
+    need(checked_descriptor(copy_ref) == raw, "original config preimage changed during retention read")
+    return profile
+
+
 def verify_repair_upgrade(plan: dict, *, installed: bool = False) -> None:
     from ipfs_accelerate_py.agent_supervisor.rescue.repair_authorization import checked_descriptor, descriptor, json_object
     from ipfs_accelerate_py.agent_supervisor.rescue.repair_candidate_owners import need, proc_identity
@@ -1580,13 +2264,16 @@ def verify_repair_upgrade(plan: dict, *, installed: bool = False) -> None:
         checked_descriptor(pin)
     post = json_object(plan["files"][-1]["postimage_utf8"].encode())
     science = next((board for board in post["boards"] if board["id"] == "legal-ir-scientific"), {})
-    need(science.get("native_executor_git_binding") == plan.get("scientific_executor_git_binding")
-         and (plan.get("scientific_executor_git_binding") is None or
-              science.get("native_executor_binding") == plan.get("scientific_executor_binding")),
-         "staged scientific Git/profile binding differs from the full configuration")
-    if plan.get("scientific_executor_binding") is not None:
-        need(_repair_scientific_configuration(post, plan["scientific_executor_binding"], Path(plan["release"]),
-             plan.get("scientific_executor_git_binding")) == post, "staged scientific profile/probe join differs")
+    if "held_scientific_profile_retention" in plan:
+        _repair_held_scientific_profile(plan)
+    else:
+        need(science.get("native_executor_git_binding") == plan.get("scientific_executor_git_binding")
+             and (plan.get("scientific_executor_git_binding") is None or
+                  science.get("native_executor_binding") == plan.get("scientific_executor_binding")),
+             "staged scientific Git/profile binding differs from the full configuration")
+        if plan.get("scientific_executor_binding") is not None:
+            need(_repair_scientific_configuration(post, plan["scientific_executor_binding"], Path(plan["release"]),
+                 plan.get("scientific_executor_git_binding")) == post, "staged scientific profile/probe join differs")
     for row in plan["files"]:
         path = Path(row["before"]["path"])
         if installed:
@@ -1616,7 +2303,9 @@ def apply_repair_upgrade(plan: dict, runner, *, deadline=None) -> dict:
         cutover_remaining(deadline)
         from ipfs_accelerate_py.agent_supervisor.rescue.repair_authorization import checked_descriptor
         checked_descriptor(row["before"])
-        if plan.get("scientific_executor_binding") is not None:
+        if "held_scientific_profile_retention" in plan:
+            _repair_held_scientific_profile(plan)
+        elif plan.get("scientific_executor_binding") is not None:
             _repair_scientific_profile(plan["scientific_executor_binding"], Path(plan["release"]),
                 plan.get("scientific_executor_git_binding"))
         cutover_remaining(deadline)
@@ -1646,6 +2335,8 @@ def observe_repair_upgrade(plan: dict, runner, *, deadline=None) -> dict:
     for suffix in ("watchdog", "repair"):
         unit = "ipfs-taskboard-" + REPAIR_PROFILE + "-" + suffix + ".service"
         while True:
+            if "held_scientific_profile_retention" in plan:
+                _repair_held_scientific_profile(plan)
             left = cutover_remaining(deadline)
             result = runner({"argv": ["systemctl", "--user", "show", unit,
                 "--property=MainPID,InvocationID,ActiveState,Result"]}, cwd="/", timeout=min(10, left))
@@ -1694,6 +2385,8 @@ def observe_repair_upgrade(plan: dict, runner, *, deadline=None) -> dict:
             time.sleep(min(0.05, cutover_remaining(deadline)))
     # One service cannot restart unnoticed while the other finishes readiness.
     for suffix, identity in identities.items():
+        if "held_scientific_profile_retention" in plan:
+            _repair_held_scientific_profile(plan)
         unit = "ipfs-taskboard-" + REPAIR_PROFILE + "-" + suffix + ".service"
         result = runner({"argv": ["systemctl", "--user", "show", unit,
             "--property=MainPID,InvocationID,ActiveState,Result"]}, cwd="/", timeout=min(10, cutover_remaining(deadline)))
@@ -1704,6 +2397,8 @@ def observe_repair_upgrade(plan: dict, runner, *, deadline=None) -> dict:
              and props.get("Result") == "success" and proc_identity(identity["owner"]["pid"]) == identity["owner"],
              "actual fleet identity changed before readiness closed")
         need(descriptor(Path(observed[suffix]["path"])) == observed[suffix], "readiness attestation changed")
+    if "held_scientific_profile_retention" in plan:
+        _repair_held_scientific_profile(plan)
     return {"loaded_runtime": observed, "runtime_unit_config_CAS_closed": True,
             "read_only_readiness_wait_closed": True, "readiness_deadline_monotonic": deadline}
 

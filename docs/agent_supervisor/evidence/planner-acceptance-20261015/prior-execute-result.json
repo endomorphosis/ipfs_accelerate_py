@@ -1,0 +1,16 @@
+{
+  "exit_code": 0,
+  "seconds": 348.85899063700344,
+  "source_pins_unchanged": true,
+  "stderr": {
+    "bytes": 0,
+    "path": "/home/barberb/lift_coding/artifacts/doctor-public-validation-20261014/execute.stderr",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "stdout": {
+    "bytes": 60761,
+    "path": "/home/barberb/lift_coding/artifacts/doctor-public-validation-20261014/execute.stdout",
+    "sha256": "35bb3e235ec98786d68ea952c44c8020075a520e77d12d5e1756725d5897d82a"
+  },
+  "step": "execute"
+}

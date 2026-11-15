@@ -1,0 +1,19 @@
+{
+  "base_commit": "3a7ec1c97be93dab918f005c93a9bbdb42409512",
+  "files": {
+    "benchmarks/agent_supervisor/container_coding/terminal_context_audit.py": "cf1fb606552145698976a5b6cbfbe064f4c81367a39a1dce882b83491908bf24",
+    "docs/agent_supervisor/evidence/doctor-live-pair-20261014/turns128/read_pilot.py": "09b7b5ec3e55bb3a073cc0c92dca9df7d21d35c3b3f53cff614b64fcf1332ff1",
+    "docs/agent_supervisor/evidence/doctor-live-pair-20261014/turns128/run.py": "7314d5322516e47ee3b5751ff8f2f4d33305cc46e81748d6534dd1c88dd3d769",
+    "docs/agent_supervisor/evidence/doctor-live-pair-20261014/turns128/test_read_pilot.py": "5138bafa0cd18c7f955a21eb55c593af46ab884d115bb8869951f7f435c2ca32",
+    "docs/agent_supervisor/evidence/doctor-live-pair-20261014/turns8/read_pilot.py": "b6a390fa0c92d624ee77afa98aeb34e50e43a1021ce1abf5cc342ad7a9d76a1e",
+    "docs/agent_supervisor/evidence/doctor-live-pair-20261014/turns8/run.py": "1ead2d3e1cb2d1db73f06ba89a02b0decd7af73e1c942527d7f5630e2c44efbc",
+    "docs/agent_supervisor/evidence/doctor-live-pair-20261014/turns8/test_read_pilot.py": "5138bafa0cd18c7f955a21eb55c593af46ab884d115bb8869951f7f435c2ca32",
+    "ipfs_accelerate_py/cli_runtime/grok_stream_capture.py": "edb0f89da6e57c385a2713119a5caa9e849978d74243bcb5750b4c76b73835ce",
+    "test/api/test_doctor_candidate_dispatch.py": "dddf403737d86b79ef0025d4a946564548f57ad3dbcaab4977b250be64cb369b",
+    "test/api/test_doctor_router_budget_capability.py": "d1234e6bc7762a43393fad92ffffcfdd897abc934b225941c9e0ec3fcb7731d8",
+    "test/api/test_grok_nonstream_outcome.py": "a9eb81007646deb9e6bb8138a71439ba788d41b5f308b66cf6c24f21e1ea1787",
+    "test/api/test_grok_stream_capture.py": "b64a559e9c76083ca727bcd9f8ee586f8b324b8e1fbde6bc5a637879adad5f93",
+    "test/api/test_grok_stream_router.py": "86f66848758616874ab6cb8b8a453e24576cbfdf5cfc2de5a8a918ef391fa797",
+    "test/api/test_grok_stream_usage.py": "d35b26cf12d42253622c271f18fe2ba0f1f43cffc8c11299e9a0771271285d6d"
+  }
+}

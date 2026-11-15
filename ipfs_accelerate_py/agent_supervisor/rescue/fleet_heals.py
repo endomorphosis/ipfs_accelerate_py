@@ -2189,10 +2189,13 @@ def bind_schema_serve_in_place(
     if not Path(cwd).is_dir():
         return _mirror_schema({**empty, "reason": "source_root_absent", "live_owner_unit": unit})
     from .runtime_assets import schema_runtime_assets
-    assets = schema_runtime_assets(overlay, board_id=board_id)
+    assets = schema_runtime_assets(overlay, board_id=board_id, source_root=cwd)
     if assets.get("valid") is not True:
-        return {**empty, "reason": assets.get("reason", "schema_runtime_assets_unavailable"),
-                "missing_assets": assets.get("missing_assets", [])}
+        result = {**empty, "reason": assets.get("reason", "schema_runtime_assets_unavailable"),
+                  "missing_assets": assets.get("missing_assets", [])}
+        if "missing_source_assets" in assets:
+            result["missing_source_assets"] = assets["missing_source_assets"]
+        return result
     user_dir = systemd_user_dir or (Path.home() / ".config/systemd/user")
     dropin_dir = user_dir / f"{unit}.d"
     dropin_dir.mkdir(parents=True, exist_ok=True, mode=0o700)

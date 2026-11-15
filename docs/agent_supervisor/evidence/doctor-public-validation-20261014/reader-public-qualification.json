@@ -1,0 +1,195 @@
+{
+  "artifact_files": {
+    "/home/barberb/lift_coding/artifacts/doctor-public-validation-20261014/diagnostic_bridge_contract.py": {
+      "bytes": 7356,
+      "sha256": "ec13f500fab51e13dacc81bea07eabeca7d134807a7826e74d0186db26b59237"
+    },
+    "/home/barberb/lift_coding/artifacts/doctor-public-validation-20261014/diagnostic_custody_contract.py": {
+      "bytes": 3278,
+      "sha256": "6c847721cf37d44ce622aceaf80d25077debaeaf9d43880c854d2a4b945d0736"
+    },
+    "/home/barberb/lift_coding/artifacts/doctor-public-validation-20261014/diagnostic_doctor_dispatch_contract.py": {
+      "bytes": 3404,
+      "sha256": "bda1de9250d39d276e76c72fad2f9d7e3171f1d4c83dfbc7ebc7d421a37e3e03"
+    },
+    "/home/barberb/lift_coding/artifacts/doctor-public-validation-20261014/diagnostic_doctor_policy_contract.py": {
+      "bytes": 255,
+      "sha256": "b1da173085700a43c283613faf4054016751efb171c1a3e82bc486d38143014b"
+    },
+    "/home/barberb/lift_coding/artifacts/doctor-public-validation-20261014/diagnostic_grok_progress_contract.py": {
+      "bytes": 11055,
+      "sha256": "3ba416938805c63c2d430fd6f816e2781918eb443f9809b5275246d1dfeaa762"
+    },
+    "/home/barberb/lift_coding/artifacts/doctor-public-validation-20261014/diagnostic_grok_usage_contract.py": {
+      "bytes": 5303,
+      "sha256": "7e908afa1956dcaa83eb4844d649a01b6c24aa3c11b7f02b2dd38364a7ea2e91"
+    },
+    "/home/barberb/lift_coding/artifacts/doctor-public-validation-20261014/diagnostic_json_contract.py": {
+      "bytes": 433,
+      "sha256": "15b97c3abd1030efc96dafcb2edd2c44351d25f987a77ab1085f57ff012500ce"
+    },
+    "/home/barberb/lift_coding/artifacts/doctor-public-validation-20261014/diagnostic_owner_rounds_contract.py": {
+      "bytes": 4304,
+      "sha256": "7f6fb26d8d29f50723eba549223e3537deb4c25a39cbf1ec11186859e12c9e1c"
+    },
+    "/home/barberb/lift_coding/artifacts/doctor-public-validation-20261014/diagnostic_public_check_contract.py": {
+      "bytes": 4324,
+      "sha256": "2c62a6986e228ca76750feea9341894369a86ffc1e51f59536f3b6af4e2e2351"
+    },
+    "/home/barberb/lift_coding/artifacts/doctor-public-validation-20261014/diagnostic_public_validation_contract.py": {
+      "bytes": 4202,
+      "sha256": "12be75bb7dbe039132ef4d97049bceeb11e5ac1d0cacff232f555f9120195118"
+    },
+    "/home/barberb/lift_coding/artifacts/doctor-public-validation-20261014/diagnostic_residual_budget_contract.py": {
+      "bytes": 1273,
+      "sha256": "e50660459094c196bce9b111858ef2419ae2c755fc2d7521dbcd9e5ae302826f"
+    },
+    "/home/barberb/lift_coding/artifacts/doctor-public-validation-20261014/diagnostic_runner_contract.py": {
+      "bytes": 4337,
+      "sha256": "c1fca837796dfec38c2e05e7f40a4a79998159ff494f1d059b1440c9b8323ad3"
+    },
+    "/home/barberb/lift_coding/artifacts/doctor-public-validation-20261014/diagnostic_source_digest_contract.py": {
+      "bytes": 236,
+      "sha256": "42e4aaccd33868b7b75aaf36626e3f1c11228484a4b12400dea25e59f97620f3"
+    },
+    "/home/barberb/lift_coding/artifacts/doctor-public-validation-20261014/extract_reader_contracts.py": {
+      "bytes": 5882,
+      "sha256": "00dd15d40e9af685cb802bfc1730ed3cf9c23d7bd255dbce8090243a836e87ac"
+    },
+    "/home/barberb/lift_coding/artifacts/doctor-public-validation-20261014/qualify_reader.py": {
+      "bytes": 3860,
+      "sha256": "e1c3d59217ad11fbd46989783725f04b3d15216d53c911a4dce159938294acbb"
+    },
+    "/home/barberb/lift_coding/artifacts/doctor-public-validation-20261014/read_pilot.py": {
+      "bytes": 18711,
+      "sha256": "df230edb68d7eb582a388902a07a7a085426b6e089c64a6ad5e4baac25803ce3"
+    },
+    "/home/barberb/lift_coding/artifacts/doctor-public-validation-20261014/reader-contract-provenance.json": {
+      "bytes": 9317,
+      "sha256": "59cc146e77da0ff87430b844403bf11234b725cdc87c3fa0ad675aa276725510"
+    },
+    "/home/barberb/lift_coding/artifacts/doctor-public-validation-20261014/safe_diagnostics.py": {
+      "bytes": 3123,
+      "sha256": "71364ee7757f901db953ec4a4858ad7112b807c99feeffeeab29319a903c5c86"
+    },
+    "/home/barberb/lift_coding/artifacts/doctor-public-validation-20261014/safe_public_validation.py": {
+      "bytes": 4566,
+      "sha256": "ad1585978aa55b34e38108cd51ae4654b15a544c61f60f86b3a53d0bf3ac411d"
+    },
+    "/home/barberb/lift_coding/artifacts/doctor-public-validation-20261014/test_public_validation_reader.py": {
+      "bytes": 9931,
+      "sha256": "2a71c7984ea73e31b60107587594e09479a6898cea3f3fe90d1cc08e2803f2b1"
+    },
+    "/home/barberb/lift_coding/artifacts/doctor-public-validation-20261014/test_read_pilot.py": {
+      "bytes": 9478,
+      "sha256": "295bbd6201c006d971d23f8142f5f4ce0fd64f1edf1846480fcb6133e6e97446"
+    },
+    "/home/barberb/lift_coding/artifacts/doctor-public-validation-20261014/test_safe_diagnostics.py": {
+      "bytes": 4680,
+      "sha256": "ce955e5bdf00fc77b30d2b168b7e59f8978cb6140e243d9dbb236d1e21a899da"
+    },
+    "/home/barberb/lift_coding/artifacts/doctor-public-validation-20261014/test_terminal_rejection_reader.py": {
+      "bytes": 6139,
+      "sha256": "2fc9596ce0d6e587e910e919f63f5d5f60243ca2fe9ab78a6578bc0edff63849"
+    }
+  },
+  "artifact_pins_unchanged": true,
+  "benchmark_owned_files": {
+    "/home/barberb/lift_coding/.worktrees/supervisor-public-validation-20261014/benchmarks/agent_supervisor/container_coding/benchmark_controls.py": {
+      "bytes": 27967,
+      "sha256": "170382deaa2a47dd0600eb118cce25e29b3ca0aa82a5c4b545eb01e019820d43"
+    },
+    "/home/barberb/lift_coding/.worktrees/supervisor-public-validation-20261014/benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py": {
+      "bytes": 67402,
+      "sha256": "2381ae4cd4820d7aecb1866ce70800d94a7b1d463973f8c1566ee9d187962c42"
+    },
+    "/home/barberb/lift_coding/.worktrees/supervisor-public-validation-20261014/benchmarks/agent_supervisor/container_coding/full_supervisor_harbor_agent.py": {
+      "bytes": 54911,
+      "sha256": "f571910f6ebd98c6e36779cae6e4192df0b90f1331b86e2ad830d24badec6224"
+    },
+    "/home/barberb/lift_coding/.worktrees/supervisor-public-validation-20261014/benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py": {
+      "bytes": 98198,
+      "sha256": "1b45e25e7b3a6129511420594ae890a9cd4a1bbbd2077fb1cf266e96ed81fa6d"
+    },
+    "/home/barberb/lift_coding/.worktrees/supervisor-public-validation-20261014/benchmarks/agent_supervisor/container_coding/terminal_doctor_coding_policy.py": {
+      "bytes": 7793,
+      "sha256": "74ba1fbc14735029ee941ea2ec899b27bb9ef09cba886e1661d0fa30660aeed0"
+    },
+    "/home/barberb/lift_coding/.worktrees/supervisor-public-validation-20261014/benchmarks/agent_supervisor/container_coding/terminal_source_view_observation.py": {
+      "bytes": 29728,
+      "sha256": "9e44d6692c35127c39aacc718df4a82415b01480954aa113ccd89e861677fd44"
+    },
+    "/home/barberb/lift_coding/.worktrees/supervisor-public-validation-20261014/benchmarks/agent_supervisor/container_coding/test_terminal_public_validation_policy.py": {
+      "bytes": 16863,
+      "sha256": "bd811058c9d00f29d4840e74adc357866770f95e479b18ae8b8a38e4534c4a25"
+    }
+  },
+  "benchmark_owned_files_match_public_wiring03": true,
+  "errors": 0,
+  "failures": 0,
+  "live_launcher_created": false,
+  "old_c_evidence_unchanged": true,
+  "passed": true,
+  "provider_calls": 0,
+  "retained_c_projection_identical": true,
+  "runtime_modules_imported": [],
+  "schema": "public-validation-reader-qualification@2",
+  "seconds": 0.03288861899636686,
+  "skipped": 0,
+  "source_files": {
+    "/home/barberb/lift_coding/.worktrees/supervisor-public-validation-20261014/ipfs_accelerate_py/agent_supervisor/runtime/candidate_doctor_dispatch.py": {
+      "bytes": 14073,
+      "sha256": "5cfdb23552baadcbd052edb03f6ad5e3d6eb014960a76d1507175f9ab6c70c4f"
+    },
+    "/home/barberb/lift_coding/.worktrees/supervisor-public-validation-20261014/ipfs_accelerate_py/agent_supervisor/runtime/candidate_public_validation.py": {
+      "bytes": 28903,
+      "sha256": "e8c5d72bded0b62c8463d4edd0101fa981c308df76347e5bd6e2139ce2e592f0"
+    },
+    "/home/barberb/lift_coding/.worktrees/supervisor-public-validation-20261014/ipfs_accelerate_py/agent_supervisor/runtime/candidate_round_lifecycle.py": {
+      "bytes": 14975,
+      "sha256": "41d0f21cc5c173045cebaa9d046e850d339e5df77dd61afb12a150f45ec10661"
+    },
+    "/home/barberb/lift_coding/.worktrees/supervisor-public-validation-20261014/ipfs_accelerate_py/agent_supervisor/runtime/candidate_round_policy.py": {
+      "bytes": 10655,
+      "sha256": "3ec078f8621972a455d92732530f959029fcb1a74dd812a3665cf67081c17f4c"
+    },
+    "/home/barberb/lift_coding/.worktrees/supervisor-public-validation-20261014/ipfs_accelerate_py/agent_supervisor/runtime/doctor_residual_budget.py": {
+      "bytes": 3351,
+      "sha256": "47e623fb25673225ac0179c84582d1f8cb156c3a9e870c65e0ca820e10e84a53"
+    },
+    "/home/barberb/lift_coding/.worktrees/supervisor-public-validation-20261014/ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py": {
+      "bytes": 93141,
+      "sha256": "a3803c6b6d4ad0c381684f1f0a27473313d1ce25c4ed5936653a8a79a939488f"
+    },
+    "/home/barberb/lift_coding/.worktrees/supervisor-public-validation-20261014/ipfs_accelerate_py/agent_supervisor/runtime/source_formalization_context.py": {
+      "bytes": 20874,
+      "sha256": "d8cd26f02dd40d60334febc55582f22950ed06eb4005582b918af87e7adb42ef"
+    },
+    "/home/barberb/lift_coding/.worktrees/supervisor-public-validation-20261014/ipfs_accelerate_py/agent_supervisor/runtime/terminal_task_profile.py": {
+      "bytes": 36492,
+      "sha256": "8cbfba2173b3bc1a60d158b9c6953788ef0e4d4bac7e48273647987d3a6bf53c"
+    },
+    "/home/barberb/lift_coding/.worktrees/supervisor-public-validation-20261014/ipfs_accelerate_py/agent_supervisor/runtime/worker_source_views.py": {
+      "bytes": 29798,
+      "sha256": "08cd587a17ba5b94fc46b096f9522e9d2ce833f38d3780ec350212682cd4857d"
+    },
+    "/home/barberb/lift_coding/.worktrees/supervisor-public-validation-20261014/ipfs_accelerate_py/agent_supervisor/todo_daemon/bridge_failure_diagnostics.py": {
+      "bytes": 17791,
+      "sha256": "4e627295fd16a87138005f18e47b19e704938d912e9e77522cf60c325a0486aa"
+    },
+    "/home/barberb/lift_coding/.worktrees/supervisor-public-validation-20261014/ipfs_accelerate_py/agent_supervisor/todo_daemon/native_provider_custody_observation.py": {
+      "bytes": 4348,
+      "sha256": "377a04c212d08cc39e9a24b5b61a8aa40d19e92e524c9ab1fbc06e62f2d06eaa"
+    },
+    "/home/barberb/lift_coding/.worktrees/supervisor-public-validation-20261014/ipfs_accelerate_py/cli_runtime/grok_stream_capture.py": {
+      "bytes": 32751,
+      "sha256": "606c63c97c402c2bfca065c82d5619957840cc8634e7320f159540664288493c"
+    },
+    "/home/barberb/lift_coding/.worktrees/supervisor-public-validation-20261014/ipfs_accelerate_py/cli_runtime/grok_stream_usage.py": {
+      "bytes": 7739,
+      "sha256": "e0a30b1c7acfb45c47c8510093b21ffa650380646247c23963026e0a06831c06"
+    }
+  },
+  "source_pins_unchanged": true,
+  "tests_run": 28
+}

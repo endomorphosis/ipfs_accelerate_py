@@ -169,12 +169,13 @@ class RuntimePolicy:
     bounds: dict[str, int]
     checkout_timeout_seconds: int
     validation_admission_retry: dict[str, Any] | None = None
+    validation_ledger_busy_retry: dict[str, Any] | None = None
 
 
 def parse_runtime_policy(worker: Mapping[str, Any], policy: candidate.CandidatePolicy) -> RuntimePolicy:
     value = worker.get("candidate_runtime")
     fields = {"schema", "source_descriptors", "validation_owner", "adoption_owner", "resource_bounds", "checkout_timeout_seconds"}
-    _need(type(value) is dict and set(value) in (fields, fields | {"validation_admission_retry"}) and value["schema"] == SCHEMA,
+    _need(type(value) is dict and set(value) in (fields, fields | {"validation_admission_retry"}, fields | {"validation_ledger_busy_retry"}) and value["schema"] == SCHEMA,
         "original candidate runtime owners are not configured")
     refs = value["source_descriptors"]
     _need(type(refs) is list and len(refs) == len(policy.source_paths)
@@ -214,8 +215,25 @@ def parse_runtime_policy(worker: Mapping[str, Any], policy: candidate.CandidateP
               and "external_fixture_profile" in owner_policy["validation"]
               and validation.timeout_seconds >= retry["source_probe_timeout_seconds"] + owner_policy["validation"]["timeout_seconds"] + 60,
               "validation retry owner/runtime authority or original deadline differs")
+    ledger_retry = None
+    if "validation_ledger_busy_retry" in value:
+        from .repair_candidate_owners import checked_validation_ledger_busy_retry
+        ledger_retry = checked_validation_ledger_busy_retry(value["validation_ledger_busy_retry"])
+        argv = validation.argv
+        _need(argv.count("--policy") == argv.count("--policy-sha256") == 1,
+              "ledger-busy retry requires one original public owner policy")
+        selected = argv[argv.index("--policy") + 1]
+        policies = [ref for ref in validation.source_descriptors if ref["path"] == selected]
+        _need(len(policies) == 1 and policies[0]["sha256"] == argv[argv.index("--policy-sha256") + 1],
+              "ledger-busy retry owner policy is unpinned")
+        owner_policy = _json(_checked(policies[0]))
+        _need(owner_policy["validation"].get("validation_ledger_busy_retry") == ledger_retry
+              and owner_policy["validation"].get("ordinary_scratch_profile") == {"schema":"owned-validation-ordinary-scratch-live/v1"}
+              and "validation_admission_retry" not in owner_policy["validation"]
+              and validation.timeout_seconds >= owner_policy["validation"]["timeout_seconds"] + 60,
+              "ledger-busy original owner/runtime profile or deadline differs")
     return RuntimePolicy(tuple(refs), validation, adoption, dict(bounds),
-                         _integer(value["checkout_timeout_seconds"], 30, "checkout wait"), retry)
+                         _integer(value["checkout_timeout_seconds"], 30, "checkout wait"), retry, ledger_retry)
 
 
 def candidate_runtime_preflight(config: Mapping[str, Any]) -> str | None:
@@ -361,6 +379,30 @@ def _checked_negative_observation(value, *, binding, freeze_sha256,
     return negative
 
 
+
+OPERATIONAL_LEDGER_BUSY_SCHEMA = 'agent-supervisor/closed-operational-ledger-busy@1'
+OPERATIONAL_TERMINAL = 'validation_needs_new_authorization'
+
+
+def _checked_operational_ledger_busy_observation(value, *, binding, freeze_sha256, source_commitment):
+    """A separately configured original verifier's operational DATA, not negative acceptance."""
+    _need(type(value)is dict and set(value)=={'schema','operational','disposition','read_only','retry_authorized',
+        'storage_release_authorized'} and value['schema']=='agent-supervisor/verified-operational-ledger-busy@1'
+        and value['read_only']is True and value['retry_authorized']is False
+        and value['storage_release_authorized']is False, 'typed original operational verifier result required')
+    pin=value['operational'];body=_json(_checked(pin))
+    _need(not Path(pin['path']).lstat().st_mode & 0o222 and _wire(body)==_wire(value['disposition'])
+        and body['schema']==OPERATIONAL_LEDGER_BUSY_SCHEMA and body['reason']=='pregrant_ledger_busy'
+        and _wire(body['binding'])==_wire(binding) and body['freeze_sha256']==freeze_sha256
+        and body['source_commitment']==source_commitment and body['storage_status']=='not_entered'
+        and all(body[name]is True for name in ('source_closed','native_closed'))
+        and all(body[name]is False for name in ('record_created','native_grant_created','productive_child_created',
+            'semantic_negative','retry_authorized','storage_release_authorized')),
+        'operational refusal is not exact same-candidate no-record/no-grant/no-child DATA')
+    for name in ('policy','plan','request','parent_source_closeout'):_checked(body[name])
+    return body
+
+
 class CandidateRuntime:
     """Concrete authority adapter held inside one original repair-job invocation."""
     def __init__(self, config: dict[str, Any], board: dict[str, Any], job_path: Path,
@@ -398,9 +440,16 @@ class CandidateRuntime:
 
     def _job(self, *, execution: bool = True) -> dict[str, Any]:
         job = _json(_read(self.job_path))
-        require_current_authorization(self.config, self.board, job=job)
+        if execution or not (hasattr(self, "known_operational_validation") or getattr(self,"operational_terminal_metadata",False)):
+            require_current_authorization(self.config, self.board, job=job)
+        else:
+            from .repair_authorization import parse_authorization_epoch
+            epoch = parse_authorization_epoch(self.config["state_dir"], self.board)
+            _need((epoch is None and job.get("repair_authorization_sha256") is None) or
+                  (epoch is not None and job.get("repair_authorization_sha256") == epoch.commitment),
+                  "closed operational metadata cannot mint or replace an authorization epoch")
         _need(job.get("board_id") == self.board["id"] and job.get("repair_unit_token") == self.token
-              and job.get("status") in {"running", *PENDING}, "current original job/token was replaced")
+              and job.get("status") in ({"running", *PENDING} if execution else {"running", *PENDING, OPERATIONAL_TERMINAL}), "current original job/token was replaced")
         _need(os.environ.get("IPFS_TASKBOARD_REPAIR_BOARD_ID") == self.board["id"]
               and os.environ.get("IPFS_TASKBOARD_REPAIR_JOB_TOKEN") == self.token,
               "job cgroup environment does not carry the original attempt")
@@ -508,9 +557,204 @@ class CandidateRuntime:
             job.update(status=stage, candidate_runtime={"receipt": ref,
                 "candidate_metadata": str(self.session.metadata_root) if self.session else getattr(self, "retained_candidate_metadata", ""),
                 "attempt_token": self.token, "attempt_number": self.attempt_number})
+            if stage == OPERATIONAL_TERMINAL:
+                job["candidate_operational_reason"] = details.get("reason")
             self.fleet.write_json(self.job_path, job)
         return value
 
+
+
+    def _closed_operational_validation(self, command, invocation, terminal):
+        """Once-only read-only verifier; no original validation request is replayed."""
+        path=invocation/'operational-ledger-busy.json'
+        if not path.exists() or type(terminal.get('command_returncode'))is not int or terminal['command_returncode']!=1:
+            return None
+        if terminal.get('verifier_returncode')is not None:return None
+        values={'{candidate_root}':str(self.session.candidate_root),
+            '{freeze_path}':str(self.session.metadata_root/'candidate-ready.json'),
+            '{receipt_path}':str(invocation/'receipt.json'),'{source_commitment}':self.session.freeze['source_commitment'],
+            '{validation_path}':str(self.session.metadata_root/'adoption-pending.json'),'{invocation_root}':str(invocation)}
+        intent_ref=_pin(invocation/'intent.json');intent=_json(_checked(intent_ref))
+        expected=[values.get(v,v)for v in command.argv];verify=[values.get(v,v)for v in command.verify_argv]
+        _need(intent['schema']==SCHEMA and intent['stage']=='validate' and intent['argv']==expected
+            and intent['verify_argv']==verify and intent['owner_source_descriptors']==list(command.source_descriptors)
+            and intent['runtime_policy_sha256']==candidate.digest(self.config['repair_worker']['candidate_runtime'])
+            and intent['attempt_token']==self.token and type(intent['attempt_number'])is int
+            and intent['attempt_number']==self.attempt_number and intent['freeze_sha256']==self.session.freeze['freeze_sha256']
+            and intent['source_commitment']==self.session.freeze['source_commitment'],
+            'operational observer is not bound to original configured validation invocation')
+        _need(verify.count('verify-validation')==1,'one configured original operational verifier action required')
+        argv=['verify-operational-validation'if v=='verify-validation'else v for v in verify]
+        record=invocation/'operational-observer.json'
+        observer_intent_path=invocation/'operational-observer-intent.json'
+        if record.exists():
+            observation=_json(_read(record))
+        else:
+            if observer_intent_path.exists():
+                self.validation_operational_wait={'reason':'ledger_busy_operational_observer_interrupted','verified_operational':False,'retry_authorized':False}
+                return None
+            if self._remaining_seconds()<command.timeout_seconds+30:
+                self.validation_operational_wait={'reason':'ledger_busy_operational_verifier_window_insufficient','verified_operational':False,'retry_authorized':False}
+                return None
+            for source in command.source_descriptors:_checked(source)
+            try:
+                self.authority.require_current('validate',self.session.binding)
+            except ValueError:
+                self.validation_operational_wait={'reason':'ledger_busy_operational_verifier_authority_not_current','verified_operational':False,'retry_authorized':False}
+                return None
+            observer_intent_ref=_new(observer_intent_path,{'schema':'agent-supervisor/operational-observer-intent@1',
+                'argv':argv,'original_intent':intent_ref,'original_terminal':_pin(invocation/'terminal.json'),
+                'started_at':time.time(),'timeout_seconds':command.timeout_seconds,
+                'retry_authorized':False,'coding_attempts_incremented':False})
+            result=self.command_runner(argv,cwd=self.policy.repository_root,timeout_seconds=command.timeout_seconds)
+            observation={'schema':'agent-supervisor/operational-validation-observer-wait@1','argv':argv,
+                'returncode':result.returncode,'stdout':result.stdout,'stderr':result.stderr,
+                'original_intent':intent_ref,'original_terminal':_pin(invocation/'terminal.json'),
+                'observed_at':time.time(),'observer_intent':observer_intent_ref,
+                'coding_attempts_incremented':False,'provider_started':False}
+            _new(record,observation)
+        _need(type(observation)is dict and set(observation)=={'schema','argv','returncode','stdout','stderr',
+            'original_intent','original_terminal','observed_at','observer_intent','coding_attempts_incremented','provider_started'}
+            and observation['schema']=='agent-supervisor/operational-validation-observer-wait@1'
+            and type(observation['observed_at'])in(int,float) and 0<observation['observed_at']<float('inf')
+            and observation['observed_at']<=time.time()
+            and not record.lstat().st_mode & 0o222 and observation['argv']==argv
+            and observation['original_intent']==intent_ref and observation['original_terminal']==_pin(invocation/'terminal.json')
+            and observation['coding_attempts_incremented']is False and observation['provider_started']is False,
+            'immutable operational observer record changed')
+        observer_intent=_json(_checked(observation['observer_intent']))
+        _need(observation['observer_intent']==_pin(observer_intent_path)
+            and not observer_intent_path.lstat().st_mode & 0o222
+            and observer_intent['schema']=='agent-supervisor/operational-observer-intent@1'
+            and observer_intent['argv']==argv and observer_intent['original_intent']==intent_ref
+            and observer_intent['original_terminal']==_pin(invocation/'terminal.json')
+            and type(observer_intent['started_at'])in(int,float)
+            and 0<observer_intent['started_at']<=observation['observed_at']
+            and type(observer_intent['timeout_seconds'])is int and observer_intent['timeout_seconds']==command.timeout_seconds
+            and observation['observed_at']<=observer_intent['started_at']+command.timeout_seconds+30
+            and observer_intent['retry_authorized']is False and observer_intent['coding_attempts_incremented']is False,
+            'original operational verifier intent/clock differs')
+        if type(observation['returncode'])is not int or observation['returncode']!=0:
+            self.validation_operational_wait={'reason':'ledger_busy_operational_verifier_refused','verified_operational':False,'retry_authorized':False}
+            return None
+        material=_checked_operational_ledger_busy_observation(_json(observation['stdout'].encode()),
+            binding=self.session.binding,freeze_sha256=self.session.freeze['freeze_sha256'],
+            source_commitment=self.session.freeze['source_commitment'])
+        _need(material['invocation_root']==str(invocation),'operational proof belongs to another invocation')
+        self.known_operational_validation=(material,_pin(record),_pin(path),observation)
+        return material
+
+    def _failed_validation_disposition(self, command, invocation, terminal):
+        material=self._closed_operational_validation(command,invocation,terminal)
+        if material is not None:return material
+        if (invocation/'operational-ledger-busy.json').exists():
+            if not hasattr(self,'validation_operational_wait'):
+                self.validation_operational_wait={'reason':'ledger_busy_operational_marker_unverified',
+                    'verified_operational':False,'retry_authorized':False}
+            return None
+        return self._closed_negative_validation(command,invocation,terminal)
+
+    def _ledger_busy_decision(self, *, next_index, now=None):
+        """Read existing finite authority; no expiry, cap or old request is renewed."""
+        now=time.time()if now is None else now
+        _need(type(now)in(int,float)and 0<now<float('inf'),'finite operational decision clock required')
+        material,observer_ref,proof_ref,observation=self.known_operational_validation
+        profile=getattr(self.runtime_policy,'validation_ledger_busy_retry',None)
+        result={'reason':'ledger_busy_profile_not_authorized','retry_authorized':False,
+            'operational':proof_ref,'observer':observer_ref,'eligible_after':None}
+        if profile is None:return result
+        from .repair_candidate_owners import checked_validation_ledger_busy_retry
+        from .repair_authorization import parse_authorization_epoch
+        profile=checked_validation_ledger_busy_retry(profile)
+        epoch=parse_authorization_epoch(self.config['state_dir'],self.board)
+        if (epoch is None or profile['authorization_epoch_sha256']!=epoch.commitment
+                or profile['expires_at']!=epoch.value['expires_at']):
+            return dict(result,reason='ledger_busy_epoch_or_original_expiry_changed')
+        if not epoch.value['not_before_observed_at']<=now<epoch.value['expires_at']:
+            return dict(result,reason='ledger_busy_original_authorization_expired')
+        job=self._job(execution=False);spent=self.fleet._repair_budget_spent(job)
+        limit=self.fleet._repair_limits(self.config)[self.board['id']]
+        if type(spent)is not int or type(limit)is not int or spent>=min(limit,epoch.value['max_attempts']):
+            return dict(result,reason='ledger_busy_original_global_attempt_slots_exhausted')
+        if type(next_index)is not int or not 1<=next_index<=profile['max_additional_invocations']:
+            return dict(result,reason='ledger_busy_fixed_validation_slots_exhausted')
+        full_window=self.runtime_policy.validation_owner.timeout_seconds*2+30
+        if now+full_window>=epoch.value['expires_at'] or self._remaining_seconds()<full_window:
+            return dict(result,reason='ledger_busy_original_remaining_window_insufficient')
+        _need(type(observation['observed_at'])in(int,float)and 0<observation['observed_at']<=now,
+              'original operational observation time is invalid or in the future')
+        eligible=observation['observed_at']+profile['cooldown_seconds']
+        _need(type(eligible)in(int,float)and eligible<float('inf'),'finite original operational cooldown required')
+        return dict(result,reason='ledger_busy_cooldown'if now<eligible else'ledger_busy_fresh_slot_eligible',
+            eligible_after=eligible,next_index=next_index,epoch_sha256=epoch.commitment,
+            expires_at=epoch.value['expires_at'],fresh_slot_eligible=now>=eligible)
+
+    def _reserve_ledger_busy_generation(self,index,invocation):
+        """Consume one original global slot before creating a fresh invocation."""
+        from .repair_candidate_owners import ledger_busy_request_attempt_id
+        decision=self._ledger_busy_decision(next_index=index)
+        _need(decision.get('fresh_slot_eligible')is True,'fresh ledger-busy slot is not authorized now')
+        self.authority.require_current('validate',self.session.binding)
+        request_id=ledger_busy_request_attempt_id(self.session.freeze,decision['epoch_sha256'],index)
+        material,observer_ref,proof_ref,_=self.known_operational_validation
+        context={'schema':'agent-supervisor/validation-ledger-busy-generation@1','index':index,
+            'authorization_epoch_sha256':decision['epoch_sha256'],'expires_at':decision['expires_at'],
+            'freeze_sha256':self.session.freeze['freeze_sha256'],'source_commitment':self.session.freeze['source_commitment'],
+            'request_attempt_id':request_id,'prior_operational_ref':proof_ref}
+        with self.fleet.lock(self.job_path.parent/'queue.lock')as acquired:
+            _need(acquired,'original repair queue lock busy')
+            job=self._job()
+            _checked(self.config_ref)
+            locked_decision=self._ledger_busy_decision(next_index=index)
+            _need(locked_decision.get('fresh_slot_eligible')is True
+                and locked_decision['epoch_sha256']==decision['epoch_sha256']
+                and locked_decision['expires_at']==decision['expires_at'],
+                'original ledger-busy epoch/window changed while waiting for queue lock')
+            spent_at=time.time()
+            _need(spent_at<locked_decision['expires_at'],'original ledger-busy epoch expired before slot charge')
+            history=job.get('validation_ledger_busy_invocations',[])
+            _need(type(history)is list and len(history)<2
+                and all(row['request_attempt_id']!=request_id for row in history),'ledger-busy generation was already spent')
+            spent=self.fleet._repair_budget_spent(job);limit=self.fleet._repair_limits(self.config)[self.board['id']]
+            _need(type(spent)is int and spent<limit,'original global attempt slot unavailable')
+            row={'schema':'agent-supervisor/spent-validation-ledger-busy-slot@1','index':index,
+                'expires_at':decision['expires_at'],'freeze_sha256':self.session.freeze['freeze_sha256'],
+                'source_commitment':self.session.freeze['source_commitment'],
+                'attempt_number':self.attempt_number,'attempt_token':self.token,
+                'authorization_epoch_sha256':decision['epoch_sha256'],'request_attempt_id':request_id,
+                'invocation':str(invocation),'prior_operational_ref':proof_ref,'spent_at':spent_at}
+            ticket_path=self.session.metadata_root/('ledger-busy-slot-%02d.json'%index)
+            ticket_ref=_new(ticket_path,row) # O_EXCL+fsync BEFORE mirror or any invocation/Popen.
+            context['spent_slot_ref']=ticket_ref
+            job['validation_ledger_busy_invocations']=[*history,dict(row,spent_slot_ref=ticket_ref)]
+            self.fleet.write_json(self.job_path,job)
+        return context
+
+    def _ledger_busy_invocation(self):
+        """Three explicit fresh slots maximum; an uncertain slot stays spent."""
+        names=['original-validate-invocation','original-validate-ledger-busy-01','original-validate-ledger-busy-02']
+        base=self.session.metadata_root;self.ledger_busy_selected_context=None
+        for index,name in enumerate(names):
+            invocation=base/name
+            if not invocation.exists():
+                if index==0:return invocation
+                job=self._job(execution=False)
+                if (base/('ledger-busy-slot-%02d.json'%index)).exists() or any(row.get('invocation')==str(invocation)for row in job.get('validation_ledger_busy_invocations',[])):
+                    self.validation_operational_wait={'reason':'ledger_busy_spent_slot_custody_unknown','retry_authorized':False}
+                    return None
+                decision=self._ledger_busy_decision(next_index=index)
+                self.validation_operational_wait=decision
+                if decision.get('fresh_slot_eligible')is not True:return None
+                self.ledger_busy_selected_context=self._reserve_ledger_busy_generation(index,invocation)
+                return invocation
+            terminal_path=invocation/'terminal.json'
+            if not terminal_path.exists():return invocation # existing owner handler preserves UNKNOWN, never relaunches
+            terminal=_json(_read(terminal_path))
+            if terminal.get('command_returncode')==0:return invocation
+            material=self._closed_operational_validation(self.runtime_policy.validation_owner,invocation,terminal)
+            if material is None:return invocation
+        self.validation_operational_wait=self._ledger_busy_decision(next_index=3)
+        return None
 
     def _closed_negative_validation(self, command, invocation, terminal):
         """Read-only authentication after a genuine nonzero owner terminal.
@@ -799,7 +1043,7 @@ class CandidateRuntime:
     def _validation_command_wait(self, argv, invocation, timeout):
         from .repair_candidate_owners import original_runner_wait
         _need(self.command_runner is run_command,
-              "validation admission retry requires the original actual process runner")
+              "validation wait requires the original actual process runner")
         started = time.monotonic()
         completed, witness = original_runner_wait({"source_descriptors": list(self.runtime_policy.sources)},
             argv, self.policy.repository_root, timeout)
@@ -814,11 +1058,20 @@ class CandidateRuntime:
 
     def _owner_command(self, stage: str) -> dict[str, Any] | None:
         command = self.runtime_policy.validation_owner if stage == "validate" else self.runtime_policy.adoption_owner
-        self.authority.require_current(stage, self.session.binding)
         retry = stage == "validate" and getattr(self.runtime_policy, "validation_admission_retry", None) is not None
-        invocation = self._validation_invocation() if retry else self.session.metadata_root / ("original-" + stage + "-invocation")
+        ledger_retry = stage == "validate" and getattr(self.runtime_policy,"validation_ledger_busy_retry",None) is not None
+        invocation = (self._ledger_busy_invocation() if ledger_retry else self._validation_invocation() if retry
+                      else self.session.metadata_root / ("original-" + stage + "-invocation"))
         if invocation is None:
             return None
+        if stage != "validate" or not (invocation/"operational-ledger-busy.json").exists():
+            try:
+                self.authority.require_current(stage, self.session.binding)
+            except ValueError:
+                if not ledger_retry or self.ledger_busy_selected_context is None:raise
+                self.validation_operational_wait={'reason':'ledger_busy_original_authorization_expired',
+                    'retry_authorized':False,'verified_operational':False}
+                return None
         if invocation.exists():
             # Never repeat an owner operation after an ambiguous or interrupted write.
             terminal = invocation / "terminal.json"
@@ -828,7 +1081,7 @@ class CandidateRuntime:
             if type(previous.get("command_returncode")) is not int:
                 return None
             if previous["command_returncode"] != 0:
-                return self._closed_negative_validation(command, invocation, previous) if stage == "validate" else None
+                return self._failed_validation_disposition(command, invocation, previous) if stage == "validate" else None
             if type(previous.get("verifier_returncode")) is not int or previous["verifier_returncode"] != 0:
                 return None  # A refused positive verifier never becomes a negative result.
         else:
@@ -853,28 +1106,50 @@ class CandidateRuntime:
             if retry:
                 intent["validation_admission_retry"] = self.validation_admission_selected_context
                 intent["validation_admission_invocation_started_at"] = time.time()
+            if ledger_retry and self.ledger_busy_selected_context is not None:
+                _new(invocation/"ledger-busy-generation.json",self.ledger_busy_selected_context)
             _new(invocation / "intent.json", intent)
+            if ledger_retry and self.ledger_busy_selected_context is not None:
+                # The slot stays spent if publication consumed its unchanged window.
+                try:
+                    self.authority.require_current(stage,self.session.binding)
+                except ValueError:
+                    self.validation_operational_wait={'reason':'ledger_busy_original_authorization_expired',
+                        'retry_authorized':False,'verified_operational':False}
+                    return None
+                from .repair_authorization import parse_authorization_epoch
+                epoch=parse_authorization_epoch(self.config['state_dir'],self.board)
+                current=time.time()
+                if (epoch is None or epoch.commitment!=self.ledger_busy_selected_context['authorization_epoch_sha256']
+                    or epoch.value['expires_at']!=self.ledger_busy_selected_context['expires_at']
+                    or not epoch.value['not_before_observed_at']<=current<epoch.value['expires_at']
+                    or self._remaining_seconds()<command.timeout_seconds*2+30
+                    or current+command.timeout_seconds*2+30>=self.ledger_busy_selected_context['expires_at']):
+                    self.validation_operational_wait={'reason':'ledger_busy_original_remaining_window_insufficient',
+                        'retry_authorized':False,'verified_operational':False}
+                    return None
             owner_wait = None
-            if retry:
+            if retry or ledger_retry:
                 result, owner_wait = self._validation_command_wait(argv, invocation, command.timeout_seconds)
             else:
                 result = self.command_runner(argv, cwd=self.policy.repository_root, timeout_seconds=command.timeout_seconds)
             if result.returncode != 0:
                 terminal = {"command_returncode": result.returncode, "verifier_returncode": None}
-                if retry:
+                if retry or ledger_retry:
                     terminal["original_owner_wait"] = owner_wait
                 _new(invocation / "terminal.json", terminal)
                 if retry and type(result.returncode) is int and result.returncode == 75:
                     self._validation_admission_observation(command, invocation, terminal, create=True)
                     return None
-                return self._closed_negative_validation(command, invocation, terminal) if stage == "validate" else None
+                return self._failed_validation_disposition(command, invocation, terminal) if stage == "validate" else None
             self.authority.require_current(stage, self.session.binding)
             # The configured source-pinned original verifier, not an agent's passed flag,
             # authenticates its own original native/source/process/storage closeout.
             check = self.command_runner(verify, cwd=self.policy.repository_root,
                 timeout_seconds=command.timeout_seconds)
             _new(invocation / "terminal.json", {"command_returncode": result.returncode,
-                "verifier_returncode": check.returncode})
+                "verifier_returncode": check.returncode,
+                **({"original_owner_wait": owner_wait} if ledger_retry else {})})
             if check.returncode != 0:
                 return None
             self.authority.require_current(stage, self.session.binding)
@@ -1069,14 +1344,27 @@ class CandidateRuntime:
 
     def advance(self) -> dict[str, Any]:
         if self.session.stage == "candidate_ready":
+            if hasattr(self.session,"metadata_root") and any((self.session.metadata_root/name/"operational-ledger-busy.json").exists()
+                    for name in ("original-validate-invocation","original-validate-ledger-busy-01","original-validate-ledger-busy-02")):
+                self.operational_terminal_metadata=True # metadata retention only, not eligibility or custody proof
             self._stage("validation_pending", freeze_sha256=self.session.freeze["freeze_sha256"])
             receipt = self._owner_command("validate")
             if receipt is None:
+                operational = getattr(self,"validation_operational_wait",None)
+                if operational is not None:
+                    if operational['reason']=='ledger_busy_cooldown':
+                        return self._stage("validation_pending",reason=operational['reason'],operational_disposition=operational)
+                    self.operational_terminal_metadata=True
+                    return self._stage(OPERATIONAL_TERMINAL,reason=operational['reason'],operational_disposition=operational)
                 admission = getattr(self, "validation_admission_wait", None)
                 if admission is not None:
                     return self._stage("validation_pending", reason="validation_source_admission_" + admission["status"],
                         validation_admission_retry=admission)
                 return self._stage("validation_pending", reason="original_validation_pending_or_unknown")
+            if receipt.get("schema") == OPERATIONAL_LEDGER_BUSY_SCHEMA:
+                decision=self._ledger_busy_decision(next_index=1)
+                return self._stage("validation_pending" if decision.get("fresh_slot_eligible") or decision["reason"]=="ledger_busy_cooldown"
+                    else OPERATIONAL_TERMINAL,reason=decision["reason"],operational_disposition=decision)
             if receipt.get("schema") == NEGATIVE_VALIDATION_SCHEMA:
                 return self._stage("validation_pending", reason="known_negative_waiting_original_checkout_closeout",
                     known_negative_validation=self.known_negative_validation[1])

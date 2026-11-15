@@ -1,0 +1,159 @@
+{
+  "credentials_included": false,
+  "files": [
+    {
+      "bytes": 5243,
+      "path": "assemble-evidence.py",
+      "sha256": "b27474bf9bee0bc691ca5e6ac59428b8ca6ec97fbdaa21128319c467ab3ae848"
+    },
+    {
+      "bytes": 6619,
+      "path": "authored-e2e/test_pruning_preflight.py",
+      "sha256": "9383b4411d49ed586e65e404b5bfb4864acd94782c5e6d12af55fa0cd7a34f14"
+    },
+    {
+      "bytes": 2112,
+      "path": "closed-audit-files-inventory-draft01.json",
+      "sha256": "85a91c9b6e7c255f8e24ca002b9a5a53a64a0c8b2642f82547ee90c97ae9f96a"
+    },
+    {
+      "bytes": 2201,
+      "path": "core-router-dev01-result.json",
+      "sha256": "099d1b47d78046e3fae3cc4a5633a186ee58b4f8a079348b2669deca37a53854"
+    },
+    {
+      "bytes": 2179,
+      "path": "core-router-dev01-source-pins.json",
+      "sha256": "c742d42102781cfc9afe9794b0e7032a3e0a8e6b41db1d11ec3ed06f2118d792"
+    },
+    {
+      "bytes": 2203,
+      "path": "core-router-final01-result.json",
+      "sha256": "148822529d0d20dbf69dd427719da5ac0e7a4b8b0aa31046738e205757fd2b12"
+    },
+    {
+      "bytes": 2301,
+      "path": "core-router-final01-source-pins.json",
+      "sha256": "7ec88fbc2e7039297e4888f20a033c28f8c422353389bffe75f7d0556043f7f6"
+    },
+    {
+      "bytes": 2193,
+      "path": "core-router-final02-result.json",
+      "sha256": "ea095ca0ed23893d1c1b17a13bbf527fbc5f7dbe703c987c21a27dafa0b1b7af"
+    },
+    {
+      "bytes": 2301,
+      "path": "core-router-final02-source-pins.json",
+      "sha256": "946e1e3587b54160e00b7a96f4aa8c419b8cc4ff418c62a2f9d355ab4818e71b"
+    },
+    {
+      "bytes": 2177,
+      "path": "core-router-final03-result.json",
+      "sha256": "97c85338ffe57e0a5e0e8c8e7e928342539588a4c8882aa4f64cda2c6fabb34d"
+    },
+    {
+      "bytes": 2301,
+      "path": "core-router-final03-source-pins.json",
+      "sha256": "128073fa3fe1691e33af256ae9c385bbddba30f4dd0e342be9ad08f999978bfd"
+    },
+    {
+      "bytes": 5027,
+      "path": "inspect-authored-config.py",
+      "sha256": "1dfad2fd7efa7f7c14f94a02a0f22ef71ced8519a21d2620dff1b0c1b94955c4"
+    },
+    {
+      "bytes": 3203,
+      "path": "inspect-authored-docker-fields-result-01.json",
+      "sha256": "338ce3ff45d017478b43b3de84e5ae2fa5b7c961c77010799ddde71a283a88d7"
+    },
+    {
+      "bytes": 8424,
+      "path": "inspect-authored-docker-fields.py",
+      "sha256": "2d03e4d40dd8862b56be9905a3198d34712736456903a214bf80351bceeeb576"
+    },
+    {
+      "bytes": 355,
+      "path": "inspect-authored-docker-identity-refusal-01.json",
+      "sha256": "3a6e0bcd14cd2cef5f96c9281b01f2c234d433a70e9b5124a6f755dc4032760f"
+    },
+    {
+      "bytes": 9514,
+      "path": "inspect-authored-docker-identity.py",
+      "sha256": "01d0a5c84f4e580eb26b87a9b85894958db5af3021af62f42cda3f54295e5f23"
+    },
+    {
+      "bytes": 2195,
+      "path": "inspect-authored-docker-result-01.json",
+      "sha256": "9150ebb2a8018c546e3fcb1b6b7c069d559e9f0168e5e93283915d399972dd94"
+    },
+    {
+      "bytes": 7037,
+      "path": "inspect-authored-docker-schema-result-01.json",
+      "sha256": "c0d81861016296c89a1e84dfdb7df2a8c102872a65b852a3d9f431572132d0d8"
+    },
+    {
+      "bytes": 9212,
+      "path": "inspect-authored-docker-schema.py",
+      "sha256": "66aebf448b2aecabaac2c9983dec3056f1bf21dff129908ef846da5788dee2be"
+    },
+    {
+      "bytes": 7399,
+      "path": "inspect-authored-docker.py",
+      "sha256": "a3b74e7c79c3b4fceaa823e51fa940f9b0f600b6f6e7f047437e4590542e2e7d"
+    },
+    {
+      "bytes": 777,
+      "path": "inspect-authored-result-01.json",
+      "sha256": "cb432500c5f17d75082ddae3a4fdce23263990401c1b50cd655145805ed2ae5e"
+    },
+    {
+      "bytes": 2077,
+      "path": "metadata-doctor-final01-result.json",
+      "sha256": "f4e4197ee5e3525e516982c90197f05527c7816310dbbcbb86ef4c8f9cd2fb98"
+    },
+    {
+      "bytes": 1994,
+      "path": "metadata-doctor-final01-source-pins.json",
+      "sha256": "32dcac08b1dcd9b118640b5a98f9456eefa2df27df1a0925e952d98756fb99ce"
+    },
+    {
+      "bytes": 2686,
+      "path": "outer-final01-result.json",
+      "sha256": "e9c5aaa490925e6646f9557efc52f3e94e04a2d2e1cfc06e1a7408e4ce9700db"
+    },
+    {
+      "bytes": 3011,
+      "path": "outer-final01-source-pins.json",
+      "sha256": "477b84def9424de9b0b0e2cc90cb94b4536b0b9bf7faef5ce81a0b0ecf4a11f7"
+    },
+    {
+      "bytes": 8507,
+      "path": "pruning-config-protocol-audit.json",
+      "sha256": "92476114e39744a7eb3f4144fd24c6d23ef333f1d9621aa1082f6f000de6b534"
+    },
+    {
+      "bytes": 7134,
+      "path": "qualification-final01.json",
+      "sha256": "6f006f75d4b3028a6d3e377589586cf850c3307de4a993f5d845bba82e32f1f5"
+    },
+    {
+      "bytes": 4808,
+      "path": "run-tests.py",
+      "sha256": "b31b882385d0fca6ef2ae174264bdd09a3f92a63b68c4549c7dcc7b52d2c4c53"
+    },
+    {
+      "bytes": 2027,
+      "path": "subprocess-final01-result.json",
+      "sha256": "0a641ae1f46639276905af53f4858ead93870b64b698388b035ea3d8963c3cea"
+    },
+    {
+      "bytes": 1804,
+      "path": "subprocess-final01-source-pins.json",
+      "sha256": "0423eda3cdd9cb368bf0dd4e8864beb43ded61b6e194d881d58e88e529047880"
+    }
+  ],
+  "private_owner_artifacts_included": false,
+  "raw_native_reports_included": false,
+  "raw_prompts_included": false,
+  "schema": "grok-pruning-closed-evidence-manifest@1"
+}

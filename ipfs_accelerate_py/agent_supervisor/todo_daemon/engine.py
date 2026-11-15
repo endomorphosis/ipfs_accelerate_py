@@ -15,6 +15,7 @@ import uuid
 from contextlib import contextmanager
 from dataclasses import dataclass, field, is_dataclass, replace
 from datetime import datetime, timezone
+from math import isfinite
 from pathlib import Path
 from typing import Any, Callable, Iterable, Iterator, Mapping, Optional, Sequence
 
@@ -101,11 +102,63 @@ class Task:
 
 
 @dataclass(frozen=True)
+class CommandExecutionObservation:
+    """Same-runner wait/capture facts only; never process-tree or Source proof."""
+
+    schema: str
+    completion_kind: str
+    process_pid: int | None
+    process_returncode: int | None
+    leader_waited: bool | None
+    output_capture: str
+    work_deadline_monotonic: float | None
+    cleanup_deadline_monotonic: float | None
+    observed_at_monotonic: float
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "schema": self.schema,
+            "completion_kind": self.completion_kind,
+            "process_pid": self.process_pid,
+            "process_returncode": self.process_returncode,
+            "leader_waited": self.leader_waited,
+            "output_capture": self.output_capture,
+            "work_deadline_monotonic": self.work_deadline_monotonic,
+            "cleanup_deadline_monotonic": self.cleanup_deadline_monotonic,
+            "observed_at_monotonic": self.observed_at_monotonic,
+        }
+
+
+@dataclass(frozen=True, init=False)
 class CommandResult:
     command: tuple[str, ...]
     returncode: int
     stdout: str
     stderr: str
+
+    def __init__(
+        self,
+        command: tuple[str, ...],
+        returncode: int,
+        stdout: str,
+        stderr: str,
+        *,
+        execution_observation: CommandExecutionObservation | None = None,
+    ) -> None:
+        if execution_observation is not None and type(execution_observation) is not CommandExecutionObservation:
+            raise TypeError("execution_observation must be a CommandExecutionObservation")
+        object.__setattr__(self, "command", command)
+        object.__setattr__(self, "returncode", returncode)
+        object.__setattr__(self, "stdout", stdout)
+        object.__setattr__(self, "stderr", stderr)
+        if execution_observation is not None:
+            object.__setattr__(self, "_execution_observation", execution_observation)
+
+    @property
+    def execution_observation(self) -> CommandExecutionObservation | None:
+        # Not a dataclass field: preserve the four-field wire/equality/repr ABI.
+        # Older pickles and dataclasses.replace therefore safely yield unknown.
+        return self.__dict__.get("_execution_observation")
 
     @property
     def ok(self) -> bool:
@@ -146,6 +199,9 @@ def command_result_from_object(result: Any) -> CommandResult:
         returncode=normalized_returncode,
         stdout=str(stdout or ""),
         stderr=str(stderr or ""),
+        execution_observation=(
+            result.execution_observation if type(result) is CommandResult else None
+        ),
     )
 
 
@@ -696,17 +752,41 @@ def run_command(
     stdin: Optional[str] = None,
     environment: Optional[Mapping[str, object]] = None,
     preserve_output_newlines: bool = False,
+    work_deadline_monotonic: float | None = None,
+    cleanup_deadline_monotonic: float | None = None,
 ) -> CommandResult:
     """Capture a command with process-group timeout cleanup.
 
     Patch collectors can request exact UTF-8 stdout without universal-newline
     translation. Undecodable patch bytes fail closed instead of being replaced.
     The ordinary text runner remains unchanged unless this option is requested.
+    Optional paired absolute deadlines bound cooperative work and the existing
+    cleanup waits. Spawn, decode and handle-close operations are not preemptible;
+    the observation reports actual return-side time without promising a hard cap.
     """
 
     effective_timeout = timeout_seconds if timeout_seconds is not None else timeout
     if effective_timeout is None:
         raise TypeError("run_command() requires timeout or timeout_seconds")
+    deadline_mode = work_deadline_monotonic is not None or cleanup_deadline_monotonic is not None
+    if deadline_mode:
+        deadlines: list[float] = []
+        for name, value in (
+            ("work_deadline_monotonic", work_deadline_monotonic),
+            ("cleanup_deadline_monotonic", cleanup_deadline_monotonic),
+        ):
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                raise ValueError(f"{name} deadline must be a finite number")
+            try:
+                normalized = float(value)
+            except (OverflowError, TypeError, ValueError) as exc:
+                raise ValueError(f"{name} deadline must be a finite number") from exc
+            if not isfinite(normalized):
+                raise ValueError(f"{name} deadline must be a finite number")
+            deadlines.append(normalized)
+        work_deadline_monotonic, cleanup_deadline_monotonic = deadlines
+        if cleanup_deadline_monotonic < work_deadline_monotonic:
+            raise ValueError("cleanup deadline must not precede work deadline")
     process_environment = (
         None
         if environment is None
@@ -715,6 +795,33 @@ def run_command(
     if command and Path(command[0]).name == "git":
         process_environment = git_subprocess_environment(process_environment)
     process: subprocess.Popen[str] | subprocess.Popen[bytes] | None = None
+
+    def observed_result(
+        returncode: int, stdout: str, stderr: str, *, completion_kind: str,
+        leader_waited: bool | None, output_capture: str,
+    ) -> CommandResult:
+        pid = getattr(process, "pid", None)
+        actual_returncode = getattr(process, "returncode", None)
+        return CommandResult(
+            tuple(command), returncode, stdout, stderr,
+            execution_observation=CommandExecutionObservation(
+                schema="command-execution-observation/v1",
+                completion_kind=completion_kind,
+                process_pid=pid if type(pid) is int else None,
+                process_returncode=actual_returncode if type(actual_returncode) is int else None,
+                leader_waited=leader_waited,
+                output_capture=output_capture,
+                work_deadline_monotonic=work_deadline_monotonic,
+                cleanup_deadline_monotonic=cleanup_deadline_monotonic,
+                observed_at_monotonic=time.monotonic(),
+            ),
+        )
+
+    if work_deadline_monotonic is not None and time.monotonic() >= work_deadline_monotonic:
+        return observed_result(
+            124, "", "Command not spawned: work deadline exhausted.",
+            completion_kind="not_spawned", leader_waited=None, output_capture="unknown",
+        )
     try:
         process = subprocess.Popen(
             list(command),
@@ -727,12 +834,24 @@ def run_command(
             start_new_session=True,
         )
         input_value = stdin.encode("utf-8") if preserve_output_newlines and stdin is not None else stdin
-        stdout, stderr = process.communicate(input=input_value, timeout=effective_timeout)
+        work_timeout = effective_timeout
+        if work_deadline_monotonic is not None:
+            # Popen and stdin encoding may already have consumed the work window.
+            work_timeout = min(effective_timeout, max(0.0, work_deadline_monotonic - time.monotonic()))
+        stdout, stderr = process.communicate(input=input_value, timeout=work_timeout)
         if preserve_output_newlines:
             stdout = stdout.decode("utf-8") if isinstance(stdout, bytes) else stdout
             stderr = stderr.decode("utf-8", errors="replace") if isinstance(stderr, bytes) else stderr
-        return CommandResult(tuple(command), process.returncode, stdout or "", stderr or "")
+        return observed_result(
+            process.returncode, stdout or "", stderr or "",
+            completion_kind="completed", leader_waited=True, output_capture="complete",
+        )
     except subprocess.TimeoutExpired as exc:
+        stdout, stderr = exc.stdout, exc.stderr
+        capture_incomplete = False
+        capture_complete = False
+        leader_waited = None
+        leader_reap_unknown = False
         if process is not None:
             try:
                 os.killpg(process.pid, signal.SIGTERM)
@@ -744,8 +863,17 @@ def run_command(
                 except ProcessLookupError:
                     pass
             try:
-                stdout_after, stderr_after = process.communicate(timeout=5)
-            except subprocess.TimeoutExpired:
+                term_timeout = 5
+                if cleanup_deadline_monotonic is not None:
+                    term_timeout = max(0.0, min(5.0, cleanup_deadline_monotonic - time.monotonic()))
+                stdout_after, stderr_after = process.communicate(timeout=term_timeout)
+                capture_complete = True
+                leader_waited = True
+            except subprocess.TimeoutExpired as term_exc:
+                if term_exc.stdout is not None:
+                    stdout = term_exc.stdout
+                if term_exc.stderr is not None:
+                    stderr = term_exc.stderr
                 try:
                     os.killpg(process.pid, signal.SIGKILL)
                 except ProcessLookupError:
@@ -755,19 +883,59 @@ def run_command(
                         process.kill()
                     except ProcessLookupError:
                         pass
-                stdout_after, stderr_after = process.communicate()
-            stdout = stdout_after or exc.stdout or ""
-            stderr = stderr_after or exc.stderr or ""
-        else:
-            stdout = exc.stdout or ""
-            stderr = exc.stderr or ""
-        stdout = stdout if isinstance(stdout, str) else stdout.decode(
+                cleanup_cutoff = time.monotonic() + 5.0
+                if cleanup_deadline_monotonic is not None:
+                    cleanup_cutoff = min(cleanup_cutoff, cleanup_deadline_monotonic)
+                try:
+                    stdout_after, stderr_after = process.communicate(
+                        timeout=max(0.0, cleanup_cutoff - time.monotonic())
+                    )
+                    capture_complete = True
+                    leader_waited = True
+                except subprocess.TimeoutExpired as drain_exc:
+                    capture_incomplete = True
+                    stdout_after, stderr_after = drain_exc.stdout, drain_exc.stderr
+                    # Closing our capture handles does not terminate descendants.
+                    for stream in (process.stdin, process.stdout, process.stderr):
+                        if stream is not None:
+                            try:
+                                stream.close()
+                            except (OSError, ValueError):
+                                pass
+                    try:
+                        process.wait(
+                            timeout=max(0.0, cleanup_cutoff - time.monotonic())
+                        )
+                        leader_waited = True
+                    except (subprocess.TimeoutExpired, OSError):
+                        leader_reap_unknown = True
+            if stdout_after is not None:
+                stdout = stdout_after
+            if stderr_after is not None:
+                stderr = stderr_after
+        stdout = stdout if isinstance(stdout, str) else (stdout or b"").decode(
             "utf-8", errors="strict" if preserve_output_newlines else "replace"
         )
-        stderr = stderr if isinstance(stderr, str) else stderr.decode("utf-8", errors="replace")
+        stderr = stderr if isinstance(stderr, str) else (stderr or b"").decode(
+            "utf-8", errors="replace"
+        )
         timeout_message = f"Command timed out after {effective_timeout}s"
-        return CommandResult(
-            tuple(command), 124, stdout or "", (stderr + "\n" + timeout_message).strip()
+        if capture_incomplete:
+            if not preserve_output_newlines:
+                stdout = stdout.replace("\r\n", "\n").replace("\r", "\n")
+                stderr = stderr.replace("\r\n", "\n").replace("\r", "\n")
+            diagnostic = (
+                "Output capture incomplete: EOF not observed; descendant cleanup UNKNOWN."
+            )
+            if leader_reap_unknown:
+                diagnostic += " Direct child reap UNKNOWN."
+            stderr = diagnostic + "\n" + (stderr + "\n" if stderr else "") + timeout_message
+        else:
+            stderr = (stderr + "\n" + timeout_message).strip()
+        return observed_result(
+            124, stdout or "", stderr, completion_kind="timeout",
+            leader_waited=leader_waited,
+            output_capture=("incomplete" if capture_incomplete else "complete" if capture_complete else "unknown"),
         )
 
 

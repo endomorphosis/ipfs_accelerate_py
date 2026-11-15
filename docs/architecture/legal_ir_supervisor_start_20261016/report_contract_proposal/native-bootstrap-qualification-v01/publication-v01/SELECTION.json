@@ -1,0 +1,40 @@
+{
+  "awaiting": [],
+  "directories": [
+    "native-admin-v01",
+    "bootstrap-hooks-v01",
+    "native-host-v06",
+    "entry-gate-v02",
+    "full-host-fixture-v01",
+    "full-host-fixture-v02",
+    "evidence"
+  ],
+  "files": [
+    "READINESS.md",
+    "TASKS.json",
+    "PHASE_PLAN.json",
+    "native-admin-controls-root-observation-r01.json",
+    "bootstrap-hook-controls-root-observation-r01.json",
+    "preparation-root-observation-r01.json",
+    "full-host-root-observation-r01.json",
+    "publication-v01/CONTRACT.json",
+    "publication-v01/EXISTING_REPORT_INVENTORY.json",
+    "publication-v01/README.txt",
+    "publication-v01/SELECTION.json",
+    "publication-v01/SOURCE_MANIFEST.json",
+    "publication-v01/build_manifest.py",
+    "publication-v01/build_packet.py",
+    "publication-v01/build_request.py",
+    "publication-v01/parent_attachment_gate.py",
+    "publication-v01/publish_docs.py"
+  ],
+  "instructions": "Root reviewed exact final documents after actual62 controls, immutable preparation and genuine same-PID37-query bootstrap/full constructor/configured-cap2 refusal passed and native finalization was independently verified. Preserve V01 final-owner as unexecuted/superseded and all previous724 published documents unchanged. V02 failure safeguards remain unqualified by actual faults. All evidence copies/historical requests are inert documentation, never capability/admission or acceptance. Publish this exact additive owned draft branch generation only; no runtime installation, PR merge, CI/GitHub qualification, canonical cap/counter/board mutation, Docker/provider/model work, or legal/logic/Lean/training claim.",
+  "root_observations": [
+    "native-admin-controls-root-observation-r01.json",
+    "bootstrap-hook-controls-root-observation-r01.json",
+    "preparation-root-observation-r01.json",
+    "full-host-root-observation-r01.json"
+  ],
+  "schema": "legal-ir-native-bootstrap-publication-selection@1",
+  "status": "root_finalized"
+}

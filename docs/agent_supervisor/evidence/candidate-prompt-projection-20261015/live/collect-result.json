@@ -1,0 +1,16 @@
+{
+  "exit_code": 0,
+  "seconds": 0.21207003202289343,
+  "source_pins_unchanged": true,
+  "stderr": {
+    "bytes": 0,
+    "path": "/home/barberb/lift_coding/artifacts/candidate-prompt-projection-20261015/live/collect.stderr",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "stdout": {
+    "bytes": 224858,
+    "path": "/home/barberb/lift_coding/artifacts/candidate-prompt-projection-20261015/live/collect.stdout",
+    "sha256": "eefa22f241889ffbbcf2fb7f808e15dd20b348671fb55611fbc622b4b865acf2"
+  },
+  "step": "collect"
+}

@@ -1,0 +1,22 @@
+FFF                                                                      [100%]
+=================================== FAILURES ===================================
+_ test_cancelled_turn_cap_trailer_retains_one_final_envelope_with_unknown_or_partial_usage[None] _
+test/api/test_grok_stream_router.py:135: in test_cancelled_turn_cap_trailer_retains_one_final_envelope_with_unknown_or_partial_usage
+    assert usage["usage"] == {"input_tokens": 13, "cached_input_tokens": 21,
+           ^^^^^^^^^^^^^^
+E   TypeError: 'NoneType' object is not subscriptable
+_ test_cancelled_turn_cap_trailer_retains_one_final_envelope_with_unknown_or_partial_usage[True] _
+test/api/test_grok_stream_router.py:135: in test_cancelled_turn_cap_trailer_retains_one_final_envelope_with_unknown_or_partial_usage
+    assert usage["usage"] == {"input_tokens": 13, "cached_input_tokens": 21,
+           ^^^^^^^^^^^^^^
+E   TypeError: 'NoneType' object is not subscriptable
+______ test_cancelled_turn_cap_trailer_then_live_process_remains_timeout _______
+test/api/test_grok_stream_router.py:156: in test_cancelled_turn_cap_trailer_then_live_process_remains_timeout
+    assert observation["native_grok_task_complete"] is False
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   KeyError: 'native_grok_task_complete'
+=========================== short test summary info ============================
+FAILED test/api/test_grok_stream_router.py::test_cancelled_turn_cap_trailer_retains_one_final_envelope_with_unknown_or_partial_usage[None]
+FAILED test/api/test_grok_stream_router.py::test_cancelled_turn_cap_trailer_retains_one_final_envelope_with_unknown_or_partial_usage[True]
+FAILED test/api/test_grok_stream_router.py::test_cancelled_turn_cap_trailer_then_live_process_remains_timeout
+3 failed, 26 deselected in 15.01s

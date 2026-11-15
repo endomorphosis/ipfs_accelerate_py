@@ -1,0 +1,90 @@
+{
+  "schema": "world-history-reconciliation@1",
+  "prepared_at": "2026-11-10T02:14:14.857918+00:00",
+  "base_main": "9f3de2db5ac095ce7d736bcdac218aef58185e81",
+  "selected_gate_head": "5596c23b1b92bc9cfb9b796508c7657d66edb4ae",
+  "historical_world_head": "de656f5ac0042a96ce73637475bc3c5d3d7a18fa",
+  "resolved_product_commit": "915e3feb5e3684d8b051e8585e7208058dd42e74",
+  "resolved_tree": "339eb57b56d9bf5638228ed67e77a8b158c49e90",
+  "historical_unique_commits_retained": 13,
+  "changed_python_files_vs_gate": 96,
+  "changed_product_python_files_vs_gate": 46,
+  "changed_test_python_files_vs_gate": 50,
+  "syntax_and_whitespace_checks_passed": true,
+  "qualified_scopes": [
+    {
+      "scope": "comparison",
+      "owning_test_files": [
+        "benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py"
+      ],
+      "request_sha256": "e3d85d7f91fd033d2f9b18c1d335c5a35d71a4a2acb08d24671b3c0e2fac61d5",
+      "passed": 129,
+      "failed": 0,
+      "errors": 0,
+      "skipped": 0,
+      "source_pins": 207,
+      "compiled_parent_sources": 190,
+      "validation_owner_sha256": "8e7fd9e15c1f6d9024648b9a9f67df81518414cf644fe82099653b50c35888f6",
+      "pytest_plugin_sha256": "c19ab1470d0a1638635dc796e7ed60cc515181c79bc75f8ca89ad74af59a51e1",
+      "resource_bounds": {
+        "cpu_slots": 1,
+        "memory_mb": 1536,
+        "child_process_slots": 4,
+        "timeout_seconds": 180
+      },
+      "storage_reserved_bytes": 16777216,
+      "final_attempt_bytes": 254550,
+      "original_custody_closed": true,
+      "storage_status": "released",
+      "audit_violations": 0,
+      "source_drift": 0,
+      "source_checkout_bytecode": 0,
+      "vendor_sources_attested": false,
+      "child_compilation_attested": false
+    },
+    {
+      "scope": "controls",
+      "owning_test_files": [
+        "benchmarks/agent_supervisor/container_coding/test_benchmark_controls.py"
+      ],
+      "request_sha256": "fa5f37cdcb76d8f2cbba34057fbf0e01961309ad5a4c90af80a04d02e925c788",
+      "passed": 57,
+      "failed": 0,
+      "errors": 0,
+      "skipped": 0,
+      "source_pins": 238,
+      "compiled_parent_sources": 210,
+      "validation_owner_sha256": "8e7fd9e15c1f6d9024648b9a9f67df81518414cf644fe82099653b50c35888f6",
+      "pytest_plugin_sha256": "c19ab1470d0a1638635dc796e7ed60cc515181c79bc75f8ca89ad74af59a51e1",
+      "resource_bounds": {
+        "cpu_slots": 1,
+        "memory_mb": 1536,
+        "child_process_slots": 4,
+        "timeout_seconds": 180
+      },
+      "storage_reserved_bytes": 16777216,
+      "final_attempt_bytes": 57882,
+      "original_custody_closed": true,
+      "storage_status": "released",
+      "audit_violations": 0,
+      "source_drift": 0,
+      "source_checkout_bytecode": 0,
+      "vendor_sources_attested": false,
+      "child_compilation_attested": false
+    }
+  ],
+  "prior_controls_attempt": {
+    "request_sha256": "5c29013dfcde2474f7f7f4ea7a86d1accd1c68f928db8e520c7833bc7f213d7b",
+    "passed": 48,
+    "failed": 9,
+    "qualified": false,
+    "reason": "Eight uncaptured lazy-import refusals and one missing installed Harbor path; corrected only validation capture/environment for the next attempt.",
+    "retained_storage_bytes": 16777216
+  },
+  "remaining_changed_owning_test_files": 48,
+  "whole_branch_qualified": false,
+  "live_provider_or_deployment_qualified": false,
+  "model_or_token_savings_claimed": false,
+  "main_merged": false,
+  "scope_note": "This draft preserves both histories and the current gate controls. Only the two listed complete owning suites are qualified for their exact captured source contexts. Historical gate results and unrelated validation generations do not qualify this combined branch."
+}

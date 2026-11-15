@@ -1,0 +1,453 @@
+{
+  "analysis_script_sha256": "ee7410a2264ef86e3ed0702028505d67d135ab68473dc573a04291e96826e0fa",
+  "arithmetic_checked_against_retained_rows": true,
+  "causal_token_savings_claimed": false,
+  "closed_export_sha256": "3377ef9dfeb66c2f2ce7009dbca8ae5216c9694e7d4ddfc123af17282db58d2c",
+  "coding_provider_calls": 1,
+  "container_stop_returned": true,
+  "diagnostic_qualified": true,
+  "docker_calls": 0,
+  "driver_task_completed_observed": false,
+  "exact_container_absence_observations": [
+    true,
+    true
+  ],
+  "frozen_inputs_unchanged": true,
+  "invocations": [
+    {
+      "billing_total_verified": false,
+      "cache_included_in_input": false,
+      "call_hash_attribution_performed": false,
+      "call_identities": 8,
+      "call_relation_counts": {
+        "lifecycle_update": 37,
+        "new_call": 8,
+        "orphan_update": 0,
+        "repeated_call": 0,
+        "unattributed": 0
+      },
+      "classification_counts": {
+        "payload_bounds": {
+          "content": {
+            "bytes": 0,
+            "depth": 0,
+            "integer_bits": 0,
+            "nodes": 0
+          },
+          "input": {
+            "bytes": 0,
+            "depth": 0,
+            "integer_bits": 0,
+            "nodes": 0
+          },
+          "output": {
+            "bytes": 0,
+            "depth": 0,
+            "integer_bits": 0,
+            "nodes": 0
+          }
+        },
+        "resolution_bases": {
+          "documented_alias": 8,
+          "exact": 0,
+          "unknown": 37
+        },
+        "resolved_tools": {
+          "grep": 0,
+          "list_dir": 0,
+          "read_file": 0,
+          "run_terminal_cmd": 8,
+          "search_replace": 0,
+          "todo_write": 0,
+          "unknown": 37
+        },
+        "status_presence": {
+          "missing": 0,
+          "present": 45
+        },
+        "status_shapes": {
+          "array": 0,
+          "boolean": 0,
+          "integer": 0,
+          "invalid": 0,
+          "missing": 0,
+          "null": 8,
+          "number": 0,
+          "object": 0,
+          "string": 37
+        },
+        "tool_name_shapes": {
+          "array": 0,
+          "boolean": 0,
+          "integer": 0,
+          "invalid": 0,
+          "missing": 37,
+          "null": 0,
+          "number": 0,
+          "object": 0,
+          "string": 8
+        },
+        "tool_name_statuses": {
+          "empty": 0,
+          "invalid": 0,
+          "missing": 37,
+          "null": 0,
+          "oversized": 0,
+          "valid": 8
+        }
+      },
+      "duration_seconds": 163.76466689701192,
+      "event_repetition_does_not_establish_history_resends": true,
+      "events_after_final": 1,
+      "final_event_type": "max_turns_reached",
+      "final_reason_code": "max_turns",
+      "frames": 642,
+      "history_resend_bytes": null,
+      "incompleteness": {
+        "call_id_bound_exceeded": false,
+        "counter_overflow": false,
+        "invalid_payload": false,
+        "malformed_frames": false,
+        "non_object_frames": false,
+        "oversized_frames": false,
+        "payload_bound_exceeded": false,
+        "post_final_events": false,
+        "row_limit_exceeded": false,
+        "stream_incomplete": false,
+        "stream_tainted": false,
+        "text_truncated": false,
+        "timed_out": false,
+        "unattributed_call": false,
+        "unknown_event_shape": true,
+        "unknown_events": false
+      },
+      "known_reported_cost_subtotal_usd": null,
+      "known_token_subtotals": {
+        "cached_input_tokens": 248064,
+        "input_tokens": 41336,
+        "output_tokens": 11256,
+        "total_tokens": 300656
+      },
+      "legacy_tool_call_name_counts": {
+        "grep": 0,
+        "list_dir": 0,
+        "read_file": 0,
+        "run_terminal_cmd": 0,
+        "search_replace": 0,
+        "todo_write": 0,
+        "unknown": 8
+      },
+      "legacy_tool_status_event_counts": {
+        "completed": 8,
+        "failed": 0,
+        "in_progress": 21,
+        "pending": 8,
+        "unknown": 8
+      },
+      "max_retained_tool_frame_bytes": 22017,
+      "missing_call_name_or_call_status_revokes_observation_coverage": true,
+      "missing_update_name_alone_revokes_observation_coverage": false,
+      "missing_update_names_preserved_as_unknown": true,
+      "missing_update_status_alone_revokes_observation_coverage": false,
+      "native_task_complete_observed": false,
+      "native_usage_complete_observed": false,
+      "observation_complete": false,
+      "observed_tool_events": 45,
+      "omitted_tool_events": 0,
+      "payload_bytes_by_legacy_tool_name_on_event": {
+        "grep": {
+          "content": 0,
+          "input": 0,
+          "output": 0
+        },
+        "list_dir": {
+          "content": 0,
+          "input": 0,
+          "output": 0
+        },
+        "read_file": {
+          "content": 0,
+          "input": 0,
+          "output": 0
+        },
+        "run_terminal_cmd": {
+          "content": 0,
+          "input": 0,
+          "output": 0
+        },
+        "search_replace": {
+          "content": 0,
+          "input": 0,
+          "output": 0
+        },
+        "todo_write": {
+          "content": 0,
+          "input": 0,
+          "output": 0
+        },
+        "unknown": {
+          "content": 41378,
+          "input": 13321,
+          "output": 223105
+        }
+      },
+      "payload_bytes_by_resolved_tool_name_on_event": {
+        "grep": {
+          "content": 0,
+          "input": 0,
+          "output": 0
+        },
+        "list_dir": {
+          "content": 0,
+          "input": 0,
+          "output": 0
+        },
+        "read_file": {
+          "content": 0,
+          "input": 0,
+          "output": 0
+        },
+        "run_terminal_cmd": {
+          "content": 16,
+          "input": 13321,
+          "output": 0
+        },
+        "search_replace": {
+          "content": 0,
+          "input": 0,
+          "output": 0
+        },
+        "todo_write": {
+          "content": 0,
+          "input": 0,
+          "output": 0
+        },
+        "unknown": {
+          "content": 41362,
+          "input": 0,
+          "output": 223105
+        }
+      },
+      "payload_lanes": {
+        "content": {
+          "bound_reasons": {
+            "bytes": 0,
+            "depth": 0,
+            "integer_bits": 0,
+            "nodes": 0
+          },
+          "bounded_payload_frame_max_bytes": null,
+          "bounded_payload_frame_min_bytes": null,
+          "canonical_json_bytes": 41378,
+          "cross_call_repeated_bytes": 406,
+          "cross_call_repeated_events": 14,
+          "max_measured_field_bytes": 3945,
+          "measured_fields": 45,
+          "repeated_bytes": 17579,
+          "repeated_bytes_percent": 42.483928657740826,
+          "repeated_events": 22,
+          "same_call_repeated_bytes": 17173,
+          "same_call_repeated_events": 8,
+          "states": {
+            "empty": 8,
+            "invalid": 0,
+            "missing": 0,
+            "null": 0,
+            "oversized": 0,
+            "valid": 37
+          }
+        },
+        "input": {
+          "bound_reasons": {
+            "bytes": 0,
+            "depth": 0,
+            "integer_bits": 0,
+            "nodes": 0
+          },
+          "bounded_payload_frame_max_bytes": null,
+          "bounded_payload_frame_min_bytes": null,
+          "canonical_json_bytes": 13321,
+          "cross_call_repeated_bytes": 0,
+          "cross_call_repeated_events": 0,
+          "max_measured_field_bytes": 3696,
+          "measured_fields": 8,
+          "repeated_bytes": 0,
+          "repeated_bytes_percent": 0.0,
+          "repeated_events": 0,
+          "same_call_repeated_bytes": 0,
+          "same_call_repeated_events": 0,
+          "states": {
+            "empty": 0,
+            "invalid": 0,
+            "missing": 37,
+            "null": 0,
+            "oversized": 0,
+            "valid": 8
+          }
+        },
+        "output": {
+          "bound_reasons": {
+            "bytes": 0,
+            "depth": 0,
+            "integer_bits": 0,
+            "nodes": 0
+          },
+          "bounded_payload_frame_max_bytes": null,
+          "bounded_payload_frame_min_bytes": null,
+          "canonical_json_bytes": 223105,
+          "cross_call_repeated_bytes": 28,
+          "cross_call_repeated_events": 7,
+          "max_measured_field_bytes": 17926,
+          "measured_fields": 37,
+          "repeated_bytes": 28,
+          "repeated_bytes_percent": 0.012550144550772057,
+          "repeated_events": 7,
+          "same_call_repeated_bytes": 0,
+          "same_call_repeated_events": 0,
+          "states": {
+            "empty": 0,
+            "invalid": 0,
+            "missing": 8,
+            "null": 8,
+            "oversized": 0,
+            "valid": 29
+          }
+        }
+      },
+      "payload_lanes_may_overlap": true,
+      "payload_limits": {
+        "payload_byte_limit": 262144,
+        "payload_depth_limit": 32,
+        "payload_integer_bit_limit": 4096,
+        "payload_node_limit": 131072
+      },
+      "provider_request_bytes": null,
+      "repetition_categories_overlap": true,
+      "repetition_scope": "retained-tool-events-only",
+      "replacement_or_delta_semantics": "unverified",
+      "reported_cost_usd": null,
+      "request_history_complete": false,
+      "response_usable": false,
+      "retained_tool_events": 45,
+      "retained_tool_events_after_final": 0,
+      "retained_tool_frame_bytes": 284936,
+      "returncode": 1,
+      "status_presence_by_event_type": {
+        "tool_call": {
+          "missing": 0,
+          "present": 8,
+          "unknown_supplied": 0
+        },
+        "tool_call_update": {
+          "missing": 0,
+          "present": 37,
+          "unknown_supplied": 8
+        },
+        "unknown": {
+          "missing": 0,
+          "present": 0,
+          "unknown_supplied": 0
+        }
+      },
+      "stderr_bytes": 25,
+      "stdout_bytes": 355683,
+      "stream_complete": true,
+      "timed_out": false,
+      "tokens": {
+        "cached_input_tokens": null,
+        "input_tokens": null,
+        "output_tokens": null,
+        "total_tokens": null
+      },
+      "tool_name_classification_scope": "each-retained-event-present-bounded-name-digest",
+      "tool_name_inheritance_performed": false,
+      "tool_name_presence_and_resolution_by_event_type": {
+        "tool_call": {
+          "missing": 0,
+          "present": 8,
+          "resolved_documented_alias": 8,
+          "resolved_exact": 0,
+          "supplied_unresolved": 0,
+          "supplied_unresolved_shapes": {
+            "array": 0,
+            "boolean": 0,
+            "integer": 0,
+            "invalid": 0,
+            "missing": 0,
+            "null": 0,
+            "number": 0,
+            "object": 0,
+            "string": 0
+          }
+        },
+        "tool_call_update": {
+          "missing": 37,
+          "present": 0,
+          "resolved_documented_alias": 0,
+          "resolved_exact": 0,
+          "supplied_unresolved": 0,
+          "supplied_unresolved_shapes": {
+            "array": 0,
+            "boolean": 0,
+            "integer": 0,
+            "invalid": 0,
+            "missing": 0,
+            "null": 0,
+            "number": 0,
+            "object": 0,
+            "string": 0
+          }
+        },
+        "unknown": {
+          "missing": 0,
+          "present": 0,
+          "resolved_documented_alias": 0,
+          "resolved_exact": 0,
+          "supplied_unresolved": 0,
+          "supplied_unresolved_shapes": {
+            "array": 0,
+            "boolean": 0,
+            "integer": 0,
+            "invalid": 0,
+            "missing": 0,
+            "null": 0,
+            "number": 0,
+            "object": 0,
+            "string": 0
+          }
+        }
+      },
+      "tool_result_coverage_complete": false,
+      "unique_output_bytes_measured": false
+    }
+  ],
+  "observation_only": true,
+  "official_reward": null,
+  "official_verifier_executed": false,
+  "payload_lane_totals_not_added": true,
+  "phases": {
+    "context_seconds": 3.889708552043885,
+    "initial_context_seconds": 15.047624822007492,
+    "planning_seconds": 4.504145740065724,
+    "prepare_seconds": 0.42163722310215235
+  },
+  "planning_provider_calls": 0,
+  "private_owner_or_provider_output_read": false,
+  "provider_calls": 0,
+  "provider_internal_model_calls": null,
+  "raw_content_exported": false,
+  "schema": "terminal-tool-event-closed-arithmetic-analysis@2",
+  "seconds": 395.4677845260594,
+  "source384": {
+    "checkpoint_sha256": "2ca38dfcc05536315fc3e2c0647b710b930ef4066b474061a7b4e5bfb9a258c5",
+    "config_sha256": "c0ef8114ecf81303295c0fc8b7b55a4bf74e83eaad3e677dfa57d686a36eb6d7",
+    "inference_sha256": "17f0abfc1da964022da7df584d451005fedea04243d96130ef34681f742c7058",
+    "preparation_inference_record_retained": true,
+    "seconds": 10.17649515089579,
+    "worker_consumption_independently_verified": false
+  },
+  "task_success_claimed": false,
+  "validated_progress_schema": "native-grok-stream-progress@5",
+  "validated_tool_event_schema": "native-grok-tool-events@2",
+  "worker_cleanup_returncode": 0
+}

@@ -1,0 +1,237 @@
+{
+  "authored_qualification_records": [
+    {
+      "bytes": 777,
+      "path": "inspect-authored-result-01.json",
+      "sha256": "cb432500c5f17d75082ddae3a4fdce23263990401c1b50cd655145805ed2ae5e"
+    },
+    {
+      "bytes": 2195,
+      "path": "inspect-authored-docker-result-01.json",
+      "sha256": "9150ebb2a8018c546e3fcb1b6b7c069d559e9f0168e5e93283915d399972dd94"
+    },
+    {
+      "bytes": 3203,
+      "path": "inspect-authored-docker-fields-result-01.json",
+      "sha256": "338ce3ff45d017478b43b3de84e5ae2fa5b7c961c77010799ddde71a283a88d7"
+    },
+    {
+      "bytes": 7037,
+      "path": "inspect-authored-docker-schema-result-01.json",
+      "sha256": "c0d81861016296c89a1e84dfdb7df2a8c102872a65b852a3d9f431572132d0d8"
+    },
+    {
+      "bytes": 355,
+      "path": "inspect-authored-docker-identity-refusal-01.json",
+      "sha256": "3a6e0bcd14cd2cef5f96c9281b01f2c234d433a70e9b5124a6f755dc4032760f"
+    }
+  ],
+  "binary": {
+    "bytes": 142867512,
+    "cli_version": "1.0.46",
+    "path": "/home/barberb/lift_coding/artifacts/source-context-substitution-20261013/live-preparation/grok-1.0.46/grok",
+    "sha256": "45b0943e736f00a249b9cf02af2be9e0749d97c09a6f55cfcf3029a1a836f23e"
+  },
+  "canonical_configuration_read": false,
+  "config": {
+    "dedicated_pruning_cli_flag_found": false,
+    "dedicated_pruning_env_flag_found": false,
+    "default_grok_home": "~/.grok",
+    "merge_low_to_high": [
+      "built-in defaults",
+      "/etc/grok/managed_config.toml",
+      "$GROK_HOME/managed_config.toml",
+      "$GROK_HOME/config.toml",
+      "restricted project config",
+      "allowlisted GROK_CONFIG or GROK_CONFIG_PATH",
+      "$GROK_HOME/requirements.toml",
+      "/etc/grok/requirements.toml",
+      "macOS MDM",
+      "direct GROK_* variables",
+      "CLI flags"
+    ],
+    "negative_search_scope": "Reviewed shipped configuration, config reference, headless options and headless environment documentation; not proof that no internal option exists.",
+    "overlay_compaction_allowed": false,
+    "overlay_note": "GROK_CONFIG/GROK_CONFIG_PATH are allowlisted overlays; every other table is dropped.",
+    "overlay_scope": [
+      "models",
+      "features",
+      "narrowed toolset",
+      "shell_environment_policy filter fields"
+    ],
+    "project_compaction_contribution_documented": false,
+    "project_scope": [
+      "mcp_servers",
+      "plugins",
+      "permission",
+      "mcp.max_output_bytes"
+    ],
+    "pruning_section": "compaction.pruning",
+    "requirements_pin_exception": "Supported requirements pins take precedence over environment and CLI; per-key resolver support must be verified.",
+    "user_path": "$GROK_HOME/config.toml",
+    "worker_path": "/opt/ipfs-supervisor/worker-home/.grok/config.toml"
+  },
+  "container_boundary": {
+    "all_cleanup_returncodes": 0,
+    "architecture": "arm64",
+    "canonical_config_mounted": false,
+    "capabilities_dropped": "ALL",
+    "credentials_supplied": false,
+    "each_container_absent_twice": true,
+    "existing_image": "python:3.12-slim-bookworm",
+    "image_id": "sha256:54c85f3c47607a77f32adec749d3c81d1348bf25833671f512b26a9b6d778cb3",
+    "log_driver": "none",
+    "minimum_free_bytes": 34359738368,
+    "network": "none",
+    "no_build": true,
+    "no_new_privileges": true,
+    "no_pull": true,
+    "only_bind_mounts": [
+      "pinned-public-binary",
+      "fresh-authored-home-and-workspace"
+    ],
+    "owned_containers_created": 5,
+    "read_only_root": true
+  },
+  "credentials_read": false,
+  "documented_defaults": {
+    "enabled": true,
+    "hard_clear_age_turns": 10,
+    "keep_last_n_turns": 3,
+    "soft_trim_head": 1500,
+    "soft_trim_tail": 1500,
+    "soft_trim_threshold": 4000
+  },
+  "native_effective_readout": {
+    "all_successful_native_returncodes": 0,
+    "authored_config_path_observed": false,
+    "compaction_or_pruning_key_count": 0,
+    "config_source_list_proves_user_config_loaded": false,
+    "config_sources_json_path": [
+      "configSources",
+      "layers"
+    ],
+    "documentation_scope": "Lists contributing config files and winning values; exact pruning-object schema is not documented in reviewed passages.",
+    "documented_command": [
+      "grok",
+      "inspect",
+      "--json"
+    ],
+    "each_native_stderr_bytes": 0,
+    "each_native_stdout_bytes": 3211,
+    "effective_settings_verified": false,
+    "exact_channel_json_value_retained": false,
+    "exact_grok_version_json_value_retained": false,
+    "final_identity_probe_refused_before_launch": "disk_floor",
+    "first_authored_probe": "blocked by permission-refused network/filesystem isolation wrapper before native JSON output",
+    "five_numeric_target_field_occurrences": 0,
+    "independent_noop_wrapper_also_refused": true,
+    "isolated_on_off_reports_byte_identical": true,
+    "native_report_sha256": "03405dda40bebe19d431310ec9b015143ceed73c25248d4a28185fae4095b72a",
+    "observed_config_source_layer_count": 0,
+    "pruning_json_path": null,
+    "six_pruning_values_qualified": false,
+    "status": "unavailable",
+    "successful_native_invocations": 5,
+    "top_level_keys": [
+      "agents",
+      "channel",
+      "configSources",
+      "cwd",
+      "externalCompat",
+      "grokVersion",
+      "hooks",
+      "loginPolicy",
+      "lspServers",
+      "marketplaces",
+      "mcpServers",
+      "permissions",
+      "plugins",
+      "projectInstructions",
+      "projectRoot",
+      "projectTrusted",
+      "skills"
+    ],
+    "unauthenticated_inspect_qualified": true,
+    "unrelated_native_configuration_fields_must_not_be_exported": true
+  },
+  "network_calls": 0,
+  "private_provider_outputs_read": false,
+  "provider_calls": 0,
+  "recommendation": "Use isolated user config rather than project config or allowlisted overlay. Inspect succeeded but did not expose pruning or a contributing user-config path; record status unavailable and effective_settings_verified=false. Explicit config-only experimental profiles may proceed with declared settings and exact file hash; do not invent native verification. A future pruning-specific effective readout needs separate qualification.",
+  "references": [
+    {
+      "body_exported": false,
+      "bytes": 3175,
+      "end_byte_exclusive": 7337465,
+      "id": "configuration_precedence_and_overlay",
+      "sha256": "140c26a82d37c8f2e98a022cbb33fb66b7a36312b3aac572043ad89ca290fdf0",
+      "start_byte_inclusive": 7334290
+    },
+    {
+      "body_exported": false,
+      "bytes": 520,
+      "end_byte_exclusive": 7356150,
+      "id": "project_config_scope",
+      "sha256": "04f59a2687cd3f437ede71124ec9e0db201914c0a234c741b7cbf6d99805e41a",
+      "start_byte_inclusive": 7355630
+    },
+    {
+      "body_exported": false,
+      "bytes": 736,
+      "end_byte_exclusive": 7574663,
+      "id": "pruning_settings",
+      "sha256": "dcd45d0006c8bed4ab008a44b53946086cc24ec0cca03fbeb2de94f79c14cb0b",
+      "start_byte_inclusive": 7573927
+    },
+    {
+      "body_exported": false,
+      "bytes": 7299,
+      "end_byte_exclusive": 7583850,
+      "id": "headless_options",
+      "sha256": "c99677ea1a41ea43217bb9faebb5d74fea70a890d562fed5f3c8fcbf9401a4b9",
+      "start_byte_inclusive": 7576551
+    },
+    {
+      "body_exported": false,
+      "bytes": 916,
+      "end_byte_exclusive": 7611586,
+      "id": "headless_environment",
+      "sha256": "b999c08d5c19fa02c5349ce303ab2ca49cf97ac5f9762c1ccdc98291970ea4aa",
+      "start_byte_inclusive": 7610670
+    },
+    {
+      "body_exported": false,
+      "bytes": 1568,
+      "end_byte_exclusive": 7617348,
+      "id": "additional_headless_flags",
+      "sha256": "8cc4dac5cd31e60577a9a714d53049f670f910f2d4e573508337eb12f916e4e6",
+      "start_byte_inclusive": 7615780
+    },
+    {
+      "body_exported": false,
+      "bytes": 3064,
+      "end_byte_exclusive": 7821380,
+      "id": "config_reference_layers_and_inspect",
+      "sha256": "28754a17196013ed6b43aabe400e45b957683a91c29062dc0cf3821269eb18ae",
+      "start_byte_inclusive": 7818316
+    },
+    {
+      "body_exported": false,
+      "bytes": 257,
+      "end_byte_exclusive": 7888937,
+      "id": "config_reference_effective_inspection",
+      "sha256": "d964b6d58c85b160fe32f308a04303a5154269277240c03aef03f0fa3adff02b",
+      "start_byte_inclusive": 7888680
+    }
+  ],
+  "schema": "grok-pruning-config-protocol-audit@1",
+  "source_edits": false,
+  "units": {
+    "hard_clear_age_turns": "turns",
+    "keep_last_n_turns": "turns",
+    "soft_trim_head": "characters",
+    "soft_trim_tail": "characters",
+    "soft_trim_threshold": "characters"
+  }
+}

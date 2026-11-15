@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import hashlib
 import inspect
+import math
 import json
 import os
 import subprocess
@@ -4893,6 +4894,294 @@ def _authority_gate_records(
     )
 
 
+class PreparedValidationDisposition(str, Enum):
+    """A trusted caller's disposition after its original custody checks."""
+
+    NOT_STARTED = "not_started"
+    STOPPED = "stopped"
+    UNKNOWN = "unknown"
+
+
+class PreparedValidationAdmissionError(ValueError):
+    """A prepared validation contract or its live authority is unavailable."""
+
+
+class _PreparedValidationBorrow:
+    """An internal command ticket, never a supervisor ResourceAdmissionLease."""
+
+    def __init__(self, owner: "PreparedValidationAdmission", index: int,
+                 requirement: LaneResourceRequirements) -> None:
+        self.owner = owner
+        self.index = index
+        self.requirement = requirement
+
+
+class PreparedValidationAdmission:
+    """Borrow a real, already prepared grant from a trusted same-process owner.
+
+    Call ``prepare`` before recording a stable journal or native task claim.
+    The callbacks are the original authority adapter: they acquire and check
+    the actual grant and own its eventual release. A budget, provenance JSON,
+    or this unprepared object alone grants no execution authority. The original
+    outer owner supplies continuous process, storage, cancellation and deadline
+    monitoring; this interface adds no allocator or monitoring thread.
+
+    A scheduler's command-finally only returns its borrow ticket. Only an
+    explicit caller STOPPED disposition, after original stop/reap checks, or
+    NOT_STARTED before any borrow, may invoke the real release callback.
+    UNKNOWN and ordinary context-manager exit retain the original grant.
+    """
+
+    def __init__(self, *, task_cid: str, contract_digest: str,
+                 workspace_path: Path | str, commands: tuple[str, ...],
+                 budget: ResourceLeaseBudget, deadline_monotonic: float,
+                 acquire: Callable[[], object], check: Callable[[object], None],
+                 release: Callable[[object], None],
+                 provenance: Mapping[str, Any]) -> None:
+        def need(value: bool, reason: str) -> None:
+            if not value:
+                raise PreparedValidationAdmissionError(reason)
+        need(type(task_cid) is str and 0 < len(task_cid) <= 512
+             and all(ord(c) >= 32 and ord(c) != 127 for c in task_cid),
+             "prepared_task_cid_invalid")
+        need(type(contract_digest) is str and 0 < len(contract_digest) <= 512
+             and all(ord(c) >= 32 and ord(c) != 127 for c in contract_digest),
+             "prepared_contract_digest_invalid")
+        need(type(commands) is tuple and 1 <= len(commands) <= 2
+             and all(type(c) is str and 0 < len(c) <= 32768
+                     and c.strip() and "\x00" not in c for c in commands)
+             and len(set(commands)) == len(commands), "prepared_commands_invalid")
+        need(isinstance(workspace_path, (str, Path)), "prepared_workspace_invalid")
+        workspace = Path(workspace_path)
+        need(workspace.is_absolute() and ".." not in workspace.parts
+             and workspace.resolve(strict=True) == workspace and workspace.is_dir(),
+             "prepared_workspace_invalid")
+        need(type(budget) is ResourceLeaseBudget, "prepared_nominal_budget_required")
+        values = budget.to_dict()
+        need(all(type(v) is int and 0 <= v <= 2**63 - 1 for v in values.values()),
+             "prepared_budget_scalars_invalid")
+        need(budget.max_parallel == budget.max_cpu_proof_concurrency
+             == budget.max_model_concurrency == budget.max_artifact_concurrency == 1
+             and budget.max_processes <= 1024
+             and budget.wall_time_ms > 0 and budget.memory_bytes > 0
+             and budget.disk_bytes > 0
+             and budget.gpu_memory_bytes == budget.model_token_limit
+             == budget.provider_quota == budget.context_tokens
+             == budget.maximum_provider_latency_ms == 0,
+             "prepared_finite_serial_cpu_budget_required")
+        need(type(deadline_monotonic) in (int, float)
+             and math.isfinite(deadline_monotonic), "prepared_deadline_invalid")
+        now = time.monotonic()
+        need(now < deadline_monotonic <= now + budget.wall_time_ms / 1000.0,
+             "prepared_deadline_outside_budget")
+        need(all(callable(v) for v in (acquire, check, release)),
+             "prepared_authority_callbacks_required")
+        need(isinstance(provenance, Mapping), "prepared_provenance_invalid")
+        raw = json.dumps(dict(provenance), sort_keys=True, allow_nan=False,
+                         separators=(",", ":")).encode()
+        need(len(raw) <= 16384, "prepared_provenance_too_large")
+        self._task_cid = task_cid
+        self._contract_digest = contract_digest
+        self._workspace = workspace
+        identity = workspace.stat(follow_symlinks=False)
+        self._workspace_identity = (identity.st_dev, identity.st_ino, identity.st_uid, identity.st_mode)
+        self._commands = commands
+        self._budget = ResourceLeaseBudget(**values)
+        self._deadline = float(deadline_monotonic)
+        self._acquire = acquire
+        self._check = check
+        self._release = release
+        self._provenance = json.loads(raw)
+        self._owner_pid = os.getpid()
+        self._lock = threading.RLock()
+        self._state = "new"
+        self._grant: object | None = None
+        self._next_command = 0
+        self._borrow: _PreparedValidationBorrow | None = None
+        self._awaiting_stop: int | None = None
+        self._release_attempted = False
+
+    @property
+    def budget(self) -> ResourceLeaseBudget:
+        return self._budget
+
+    @property
+    def deadline_monotonic(self) -> float:
+        return self._deadline
+
+    def _need(self, condition: bool, reason: str) -> None:
+        if not condition:
+            raise PreparedValidationAdmissionError(reason)
+
+    def _same_process(self) -> None:
+        self._need(os.getpid() == self._owner_pid, "prepared_foreign_process")
+
+    def _live(self) -> None:
+        self._same_process()
+        identity = self._workspace.stat(follow_symlinks=False)
+        self._need(self._workspace.resolve(strict=True) == self._workspace
+                   and self._workspace.is_dir()
+                   and (identity.st_dev, identity.st_ino, identity.st_uid, identity.st_mode)
+                   == self._workspace_identity, "prepared_workspace_identity_changed")
+        self._need(self._state == "active" and self._grant is not None,
+                   "prepared_grant_not_active")
+        self._need(time.monotonic() < self._deadline, "prepared_deadline_expired")
+        self._need(self._check(self._grant) is None,
+                   "prepared_check_must_raise_or_return_none")
+
+    def prepare(self) -> "PreparedValidationAdmission":
+        with self._lock:
+            self._same_process()
+            self._need(self._state == "new", "prepared_acquire_not_repeatable")
+            self._need(time.monotonic() < self._deadline, "prepared_deadline_expired")
+            self._state = "acquire_started"
+            # A callback exception may have an uncertain acquisition outcome;
+            # never automatically replay it or claim that a grant was released.
+            self._grant = self._acquire()
+            self._need(self._grant is not None
+                       and not isinstance(self._grant, (Mapping, ResourceAdmissionLease,
+                           bool, int, float, str, bytes, tuple, list, set)),
+                       "prepared_original_opaque_grant_required")
+            self._state = "active"
+            self._live()
+            return self
+
+    def assert_binding(self, *, task_cid: str, contract_digest: str) -> None:
+        with self._lock:
+            self._need(type(task_cid) is str and type(contract_digest) is str
+                       and task_cid == self._task_cid
+                       and contract_digest == self._contract_digest,
+                       "prepared_task_or_contract_changed")
+            self._live()
+
+    def remaining_seconds(self) -> float:
+        with self._lock:
+            self._live()
+            return self._deadline - time.monotonic()
+
+    def _validate_run(self, specs: tuple[ValidationCommand, ...], *,
+                      workspace_path: Path, budget: ResourceLeaseBudget) -> None:
+        with self._lock:
+            self._live()
+            self._need(Path(workspace_path) == self._workspace
+                       and budget == self._budget, "prepared_workspace_or_budget_changed")
+            self._need(self._borrow is None and self._awaiting_stop is None
+                       and len(specs) == 1
+                       and all(type(s) is ValidationCommand and s.cacheable is False
+                               and type(s.stage) is ValidationStage
+                               and s.fallback is False
+                               and type(s.resource_cost) is int and s.resource_cost == 1
+                               and (s.timeout_seconds is None or (
+                                   type(s.timeout_seconds) in (int, float)
+                                   and math.isfinite(s.timeout_seconds)
+                                   and s.timeout_seconds > 0)) for s in specs),
+                       "prepared_one_serial_uncacheable_spec_required")
+            commands = tuple(s.command for s in specs)
+            self._need(commands == self._commands[
+                self._next_command:self._next_command + len(commands)],
+                "prepared_command_order_or_reuse_changed")
+
+    def _borrow_command(self, spec: ValidationCommand, *, workspace_path: Path,
+                        budget: ResourceLeaseBudget,
+                        requirement: LaneResourceRequirements
+                        ) -> tuple[AdmissionDecision, _PreparedValidationBorrow]:
+        with self._lock:
+            self._validate_run((spec,), workspace_path=workspace_path, budget=budget)
+            ticket = _PreparedValidationBorrow(self, self._next_command, requirement)
+            self._next_command += 1
+            self._borrow = ticket
+            self._awaiting_stop = ticket.index
+            decision = AdmissionDecision(
+                lane_id=requirement.lane_id, admitted=True,
+                reasons=("prepared_original_parent_admission",),
+                resource_class=requirement.resource_class,
+                resource_pool=requirement.resource_pool, stage=requirement.stage,
+                effective_slots=1, reserved_process_slots=requirement.process_slots,
+                reserved_memory_bytes=budget.memory_bytes,
+                reserved_disk_bytes=budget.disk_bytes, retryable=False)
+            return decision, ticket
+
+    def _return_borrow(self, ticket: _PreparedValidationBorrow) -> dict[str, Any]:
+        with self._lock:
+            self._same_process()
+            self._need(self._borrow is ticket and ticket.owner is self,
+                       "prepared_borrow_identity_changed")
+            self._borrow = None
+            # A resource failure cannot erase the original runner's returned
+            # custody receipt. The caller still decides STOPPED from its actual
+            # stop/reap witness; this observation never supplies that witness.
+            try:
+                self._live()
+            except Exception as error:
+                self._state = "retained"
+                return {"valid": False, "error_type": type(error).__name__,
+                        "error": str(error)[:2048]}
+            return {"valid": True}
+
+    def acknowledge_stopped(self, *, command: str) -> None:
+        """Called only after the caller's original stop/reap witness succeeds."""
+        with self._lock:
+            self._same_process()
+            self._need(self._borrow is None and self._awaiting_stop is not None
+                       and command == self._commands[self._awaiting_stop],
+                       "prepared_original_stop_acknowledgment_mismatch")
+            self._awaiting_stop = None
+
+    def command_receipt(self, ticket: _PreparedValidationBorrow) -> dict[str, Any]:
+        return {
+            "schema": "prepared-validation-borrow/v1",
+            "authority_origin": "original_parent_adapter",
+            "task_cid": self._task_cid, "contract_digest": self._contract_digest,
+            "command_index": ticket.index,
+            "command": self._commands[ticket.index],
+            "workspace_path": str(self._workspace),
+            "budget": self._budget.to_dict(),
+            "provenance": json.loads(json.dumps(self._provenance)),
+            "host_pressure_resampled": False,
+            "borrow_returned": self._borrow is not ticket,
+            "released": False,
+            "original_stop_acknowledgment_required": True,
+            "original_stop_acknowledged": self._awaiting_stop != ticket.index,
+        }
+
+    def close(self, *, disposition: PreparedValidationDisposition
+              = PreparedValidationDisposition.UNKNOWN) -> bool:
+        with self._lock:
+            self._same_process()
+            self._need(type(disposition) is PreparedValidationDisposition,
+                       "prepared_nominal_disposition_required")
+            self._need(self._borrow is None, "prepared_command_still_borrowed")
+            if self._state == "closed":
+                return False
+            if disposition is PreparedValidationDisposition.UNKNOWN:
+                self._state = "retained"
+                return False
+            self._need(disposition is not PreparedValidationDisposition.NOT_STARTED
+                       or self._next_command == 0, "prepared_execution_was_borrowed")
+            self._need(not self._release_attempted,
+                       "prepared_release_outcome_requires_original_reconciliation")
+            if self._state == "new":
+                self._state = "closed"
+                return True
+            self._need(self._grant is not None,
+                       "prepared_acquisition_outcome_requires_original_reconciliation")
+            self._release_attempted = True
+            self._state = "retained"
+            self._need(self._release(self._grant) is None,
+                       "prepared_release_must_return_none")
+            self._state = "closed"
+            return True
+
+    def __enter__(self) -> "PreparedValidationAdmission":
+        return self.prepare()
+
+    def __exit__(self, *exception: object) -> None:
+        self.close(disposition=PreparedValidationDisposition.UNKNOWN)
+
+    def __reduce__(self):
+        raise TypeError("prepared admission is a same-process authority handle")
+
+
 class ValidationScheduler:
     """Execute validation stages with bounded weighted parallelism and caching."""
 
@@ -4918,7 +5207,11 @@ class ValidationScheduler:
         hermetic_policy: (
             HermeticValidationPolicy | Mapping[str, Any] | None
         ) = None,
+        prepared_admission: PreparedValidationAdmission | None = None,
+        prepared_task_cid: str | None = None,
+        prepared_contract_digest: str | None = None,
     ) -> None:
+        explicit_resource_scheduler = resource_scheduler is not None
         if int(max_workers) <= 0:
             raise ValueError("max_workers must be positive")
         budget = int(resource_budget if resource_budget is not None else max_workers)
@@ -4939,6 +5232,7 @@ class ValidationScheduler:
             and resource_lease_budget is None
             and host_resource_source is None
             and provider_capacity_source is None
+            and prepared_admission is None
         )
         if resource_scheduler is None:
             if isinstance(resource_policy, ResourcePolicy):
@@ -4989,6 +5283,27 @@ class ValidationScheduler:
             else None
         )
 
+        self._prepared_admission = prepared_admission
+        if prepared_admission is None:
+            if prepared_task_cid is not None or prepared_contract_digest is not None:
+                raise PreparedValidationAdmissionError("prepared_handle_required")
+        else:
+            if (type(prepared_admission) is not PreparedValidationAdmission
+                    or type(max_workers) is not int or max_workers != 1
+                    or type(resource_budget) is not int or resource_budget != 1
+                    or type(resource_lease_budget) is not ResourceLeaseBudget
+                    or self.resource_lease_budget != prepared_admission.budget
+                    or self.cache is not None or self.hermetic_policy is not None
+                    or resource_policy is not None or explicit_resource_scheduler
+                    or host_resource_source is not None
+                    or provider_capacity_source is not None
+                    or type(default_timeout_seconds) not in (int, float)
+                    or not math.isfinite(default_timeout_seconds)
+                    or default_timeout_seconds <= 0):
+                raise PreparedValidationAdmissionError("prepared_scheduler_configuration_changed")
+            prepared_admission.assert_binding(task_cid=prepared_task_cid,
+                                               contract_digest=prepared_contract_digest)
+
     @staticmethod
     def _read_capacity_source(source: Any, spec: ValidationCommand) -> Any:
         """Read a static or callable telemetry source without masking errors."""
@@ -5031,7 +5346,11 @@ class ValidationScheduler:
         spec: ValidationCommand,
         *,
         workspace_path: Path,
-    ) -> tuple[AdmissionDecision, ResourceAdmissionLease | None]:
+    ) -> tuple[AdmissionDecision, ResourceAdmissionLease | _PreparedValidationBorrow | None]:
+        if self._prepared_admission is not None:
+            return self._prepared_admission._borrow_command(
+                spec, workspace_path=workspace_path, budget=self.resource_lease_budget,
+                requirement=self._resource_requirement(spec))
         transient_reasons = {
             "host_worker_capacity",
             "cpu_proof_concurrency",
@@ -5158,6 +5477,8 @@ class ValidationScheduler:
             )
             return result
         timeout = spec.timeout_seconds or self.default_timeout_seconds
+        if self._prepared_admission is not None:
+            timeout = min(timeout, self._prepared_admission.remaining_seconds())
         runtime_context: HermeticValidationRuntime | None = None
         effective_dependencies = dependency_state
         if hermetic_policy is not None:
@@ -5367,7 +5688,10 @@ class ValidationScheduler:
             )
             return rejected
 
+        prepared_postcheck: dict[str, Any] | None = None
         try:
+            if self._prepared_admission is not None:
+                timeout = min(timeout, self._prepared_admission.remaining_seconds())
             attempts: list[dict[str, object]] = []
             attempt_total = (
                 hermetic_policy.stability_runs
@@ -5561,7 +5885,25 @@ class ValidationScheduler:
                     runtime_context.to_dict() if runtime_context else None
                 )
         finally:
-            self.resource_scheduler.release(resource_lease)
+            if type(resource_lease) is _PreparedValidationBorrow:
+                prepared_postcheck = resource_lease.owner._return_borrow(resource_lease)
+            else:
+                self.resource_scheduler.release(resource_lease)
+        if prepared_postcheck is not None:
+            result["prepared_resource_postcheck"] = prepared_postcheck
+            if prepared_postcheck["valid"] is not True:
+                result["original_runner_returncode"] = result.get("returncode")
+                result["original_runner_error"] = result.get("error")
+                result["original_runner_outcome"] = result.get("outcome")
+                result["original_runner_passed"] = result.get("passed")
+                result.update({
+                    "passed": False,
+                    "error": "prepared_resource_postcheck_failed",
+                    "infrastructure_failure": True,
+                    "outcome": ValidationOutcome.INFRASTRUCTURE_FAILURE.value,
+                    "classification": ValidationOutcome.INFRASTRUCTURE_FAILURE.value,
+                    "authoritative": False, "stable": False,
+                })
         result.setdefault("command", spec.command)
         result.setdefault("raw_command", spec.raw_command or spec.command)
         result.setdefault("started_at", utc_now())
@@ -5617,13 +5959,16 @@ class ValidationScheduler:
         ):
             result["diagnostic_id"] = result["validation_result_digest"]
         result["resource_admission"] = decision.to_dict()
-        result["resource_lease"] = {
-            "lease_id": resource_lease.lease_id,
-            "resource_class": resource_lease.resource_class,
-            "resource_pool": resource_lease.resource_pool,
-            "child_limits": resource_lease.child_limits.to_dict(),
-            "released": True,
-        }
+        if type(resource_lease) is _PreparedValidationBorrow:
+            result["resource_lease"] = resource_lease.owner.command_receipt(resource_lease)
+        else:
+            result["resource_lease"] = {
+                "lease_id": resource_lease.lease_id,
+                "resource_class": resource_lease.resource_class,
+                "resource_pool": resource_lease.resource_pool,
+                "child_limits": resource_lease.child_limits.to_dict(),
+                "released": True,
+            }
         if (
             spec.cacheable
             and self.cache is not None
@@ -5646,6 +5991,11 @@ class ValidationScheduler:
         ):
             self.cache.put_diagnostic(cache_key, result)
         return result
+
+    @staticmethod
+    def _prepared_postcheck_failed(result: Mapping[str, object]) -> bool:
+        observation = result.get("prepared_resource_postcheck")
+        return isinstance(observation, Mapping) and observation.get("valid") is False
 
     @staticmethod
     def _first_failure(results: Iterable[Mapping[str, object]]) -> Mapping[str, object] | None:
@@ -7060,6 +7410,12 @@ class ValidationScheduler:
         pipeline.  Command-only callers retain the original report contract.
         """
 
+        if self._prepared_admission is not None and (
+                proof_scheduler is not None or proof_plan is not None
+                or proof_executor is not None or proof_executors is not None
+                or proof_scheduler_options is not None or proof_timeout_seconds is not None
+                or fallback_plan is not None or fallback_plans != ()):
+            raise PreparedValidationAdmissionError("prepared_staged_execution_not_supported")
         if (
             proof_scheduler is not None
             or proof_plan is not None
@@ -7090,6 +7446,8 @@ class ValidationScheduler:
 
         specs = build_validation_commands(commands)
         if not specs:
+            if self._prepared_admission is not None:
+                raise PreparedValidationAdmissionError("prepared_command_required")
             return {
                 "attempted": False,
                 "passed": True,
@@ -7099,6 +7457,12 @@ class ValidationScheduler:
             }
 
         workspace = Path(workspace_path)
+        if self._prepared_admission is not None:
+            if (require_full_validation is not True or changed_files is None
+                    or not target_commit or dependency_state is None):
+                raise PreparedValidationAdmissionError("prepared_explicit_full_validation_context_required")
+            self._prepared_admission._validate_run(
+                tuple(specs), workspace_path=workspace, budget=self.resource_lease_budget)
         changed = discover_changed_files(workspace) if changed_files is None else tuple(changed_files)
         selection: ValidationSelection = select_validation_commands(
             specs,
@@ -7113,6 +7477,11 @@ class ValidationScheduler:
             else dependency_state
         )
         selected = tuple(selection.selected)
+        if self._prepared_admission is not None:
+            ordered = tuple(spec for stage in ValidationStage for spec in selected
+                            if spec.stage == stage)
+            self._prepared_admission._validate_run(
+                ordered, workspace_path=workspace, budget=self.resource_lease_budget)
         command_runner = runner or self.runner
         execution_environment = build_validation_environment(environment)
         if self.hermetic_policy is None:
@@ -7147,6 +7516,9 @@ class ValidationScheduler:
             stage_results = list(stage_batch.results)
             results.extend(stage_results)
             failed = self._first_failure(stage_results)
+            if failed is None and self._prepared_admission is not None:
+                failed = next((row for row in stage_results
+                               if self._prepared_postcheck_failed(row)), None)
             if failed is not None and first_failure_elapsed is None:
                 first_failure_elapsed = (
                     time.monotonic() - validation_started_monotonic
@@ -7178,7 +7550,10 @@ class ValidationScheduler:
         report: dict[str, Any] = {
             "attempted": bool(results),
             "passed": failed is None,
-            "returncode": 0 if failed is None else int(failed.get("returncode", 1)),
+            "returncode": (0 if failed is None else 75
+                           if self._prepared_admission is not None
+                           and self._prepared_postcheck_failed(failed)
+                           else int(failed.get("returncode", 1))),
             "results": results,
             "stages": stages,
             "selection": selection.to_dict(),
@@ -7200,7 +7575,10 @@ class ValidationScheduler:
                 "planned_count": len(selected),
                 "completed_count": len(results),
                 "accepted_count": sum(
-                    int(result.get("returncode", 1)) == 0 for result in results
+                    int(result.get("returncode", 1)) == 0
+                    and (self._prepared_admission is None
+                         or not self._prepared_postcheck_failed(result))
+                    for result in results
                 ),
                 "throughput_per_second": (
                     len(results) / validation_elapsed

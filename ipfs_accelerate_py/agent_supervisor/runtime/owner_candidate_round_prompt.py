@@ -17,6 +17,11 @@ from .worker_source_views import canonical_json
 
 REQUIREMENTS_SCHEMA = "supervisor-owner-original-requirements@1"
 PROMPT_SCHEMA = "supervisor-owner-candidate-router-input@1"
+DOCTOR_PROMPT_SCHEMA = "supervisor-owner-candidate-router-input@2"
+
+
+class DoctorRequirementsUnavailable(ValueError):
+    """Original Doctor capture is unavailable; continuation remains unqualified."""
 OBSERVATION_SCHEMA = "supervisor-owner-candidate-prompt-observation@1"
 MAX_PROMPT_BYTES = 256_000
 MAX_SUMMARY_BYTES = 65_536
@@ -100,14 +105,17 @@ class OriginalRequirements:
     _public_request: tuple | None = field(repr=False)
     _public_artifact_bytes: bytes = field(repr=False)
     _public_sources_bytes: bytes = field(repr=False)
+    _doctor_requirements: object = field(repr=False, compare=False)
 
     def __init__(self, *, _owner_token, native_prompt, public_instruction_block,
-            metadata_bytes, source_broker, public_request, public_artifact_bytes, public_sources_bytes):
+            metadata_bytes, source_broker, public_request, public_artifact_bytes, public_sources_bytes,
+            doctor_requirements=None):
         _need(_owner_token is _OWNER_TOKEN, "owner original requirements factory required")
         for name, value in (("native_prompt", native_prompt),
                 ("public_instruction_block", public_instruction_block), ("metadata_bytes", metadata_bytes),
                 ("_source_broker", source_broker), ("_public_request", public_request),
-                ("_public_artifact_bytes", public_artifact_bytes), ("_public_sources_bytes", public_sources_bytes)):
+                ("_public_artifact_bytes", public_artifact_bytes), ("_public_sources_bytes", public_sources_bytes),
+                ("_doctor_requirements", doctor_requirements)):
             object.__setattr__(self, name, value)
 
     @property
@@ -159,10 +167,28 @@ class OriginalRequirements:
             "original public requirement block differs")
         snapshot.revalidate()
         _need(_head(root) == metadata["baseline_commit"], "original canonical baseline changed during replay")
+        if self._doctor_requirements is not None:
+            from .doctor_candidate_context import OriginalDoctorRequirements
+            _need(type(self._doctor_requirements) is OriginalDoctorRequirements
+                and self._doctor_requirements._source_broker is broker
+                and self._doctor_requirements.revalidate(snapshot=snapshot) == metadata.get("doctor_requirements"),
+                "original Doctor requirements differ")
+        else:
+            _need("doctor_requirements" not in metadata and broker._doctor_request is None,
+                "original Doctor requirement capture missing")
         return metadata
 
 
-def _capture(*, source_broker, public_request=None):
+def _capture(*, source_broker, public_request=None, doctor_request=None):
+    selected_doctor = getattr(source_broker, "_doctor_request", None)
+    doctor_nomination = None
+    if doctor_request is not None:
+        _need(type(doctor_request) is dict and set(doctor_request) ==
+            {"artifact", "expected_sha256", "task_cid"}, "complete original Doctor nomination required")
+        doctor_nomination = (str(Path(doctor_request["artifact"]).absolute()),
+            doctor_request["expected_sha256"], doctor_request["task_cid"])
+    _need(selected_doctor is None or selected_doctor == doctor_nomination,
+        "original Doctor residual selection cannot be omitted or substituted")
     before = _initial_binding(source_broker)
     native = source_broker.prompt.encode("utf-8")
     block, receipt, artifact_bytes, sources = b"", None, b"", b"{}"
@@ -184,38 +210,58 @@ def _capture(*, source_broker, public_request=None):
         public._current_sources(source_broker.workspace, manifest["sources"])
         _need(_public_artifact(artifact, expected_sha256) == artifact_bytes,
             "original public instruction artifact changed during capture")
+    doctor = None
+    if doctor_request is not None:
+        from .doctor_candidate_context import capture_doctor_requirements
+        try:
+            doctor = capture_doctor_requirements(source_broker=source_broker, **doctor_request)
+        except (OSError, ValueError) as error:
+            raise DoctorRequirementsUnavailable("original Doctor residual capture unavailable") from error
     _need(_initial_binding(source_broker) == before
         and source_broker.prompt.encode("utf-8") == native,
         "original requirements changed during capture")
+    if doctor is not None:
+        doctor.revalidate_initial()
     metadata = dict(schema=REQUIREMENTS_SCHEMA, **before,
         selection="public-instruction" if public_request is not None else "native-only",
         native_prompt_bytes=len(native), public_instruction_receipt=receipt,
         public_instruction_block_sha256=_sha(block), public_instruction_block_bytes=len(block),
         initial_source_current_verified=True, source_current_at_candidate=False,
         **FLAGS)
+    if doctor is not None:
+        metadata["doctor_requirements"] = doctor.metadata
     return OriginalRequirements(_owner_token=_OWNER_TOKEN, native_prompt=native,
         public_instruction_block=block, metadata_bytes=canonical_json(metadata), source_broker=source_broker,
-        public_request=public_request, public_artifact_bytes=artifact_bytes, public_sources_bytes=sources)
+        public_request=public_request, public_artifact_bytes=artifact_bytes, public_sources_bytes=sources,
+        doctor_requirements=doctor)
 
 
 def capture_public_requirements(*, source_broker, artifact: Path, expected_sha256: str,
-                                task_cid: str) -> OriginalRequirements:
+                                task_cid: str, doctor_request=None) -> OriginalRequirements:
     """Capture the actual native verified public-instruction block before edits."""
     _need(type(expected_sha256) is str and type(task_cid) is str and bool(task_cid),
         "explicit original public instruction nomination required")
     return _capture(source_broker=source_broker,
-        public_request=(str(Path(artifact).absolute()), expected_sha256, task_cid))
+        public_request=(str(Path(artifact).absolute()), expected_sha256, task_cid), doctor_request=doctor_request)
 
 
-def capture_native_only_requirements(*, source_broker) -> OriginalRequirements:
+def capture_native_only_requirements(*, source_broker, doctor_request=None) -> OriginalRequirements:
     """Explicit owner selection for a launch with no external public instruction."""
-    return _capture(source_broker=source_broker)
+    return _capture(source_broker=source_broker, doctor_request=doctor_request)
 
 
-def _render(snapshot, requirements, max_prompt_bytes):
+def _render(snapshot, requirements, max_prompt_bytes, doctor_context=None):
     _need(type(max_prompt_bytes) is int and 1 <= max_prompt_bytes <= MAX_PROMPT_BYTES,
         "bounded candidate prompt byte budget required")
     original = requirements.revalidate(snapshot=snapshot)
+    if requirements._doctor_requirements is not None:
+        from .doctor_candidate_context import DoctorCandidateContext
+        _need(type(doctor_context) is DoctorCandidateContext
+            and doctor_context._snapshot is snapshot and doctor_context._requirements is requirements,
+            "Doctor candidate prompt requires explicit generation-bound advisory preparation")
+        doctor_context.revalidate()
+    else:
+        _need(doctor_context is None, "Doctor advisory requires captured native constraints")
     context = snapshot.metadata
     summary = json.loads(snapshot.artifacts["summary"])
     formal = json.loads(snapshot.artifacts["formal"])
@@ -239,6 +285,22 @@ def _render(snapshot, requirements, max_prompt_bytes):
         prior_failure=dict(prior_session_id=context["prior_session_id"],
             descriptor_sha256=context["descriptor_sha256"], prior_returncode=context["prior_returncode"]),
         **FLAGS)
+    if doctor_context is not None:
+        payload.update(schema=DOCTOR_PROMPT_SCHEMA, doctor_context=dict(
+            schema="supervisor-doctor-candidate-context-binding@1",
+            sha256=_sha(doctor_context.metadata_bytes), bytes=len(doctor_context.metadata_bytes)),
+            doctor_advisory=doctor_context.advisory_bytes.decode("utf-8"))
+    public_validation = getattr(snapshot, "_public_validation", None)
+    if public_validation is not None:
+        from .candidate_public_validation import public_validation_feedback
+        _need(doctor_context is not None, "public validation continuation requires Doctor policy")
+        observed = public_validation.revalidate(launch=snapshot._validation_launch,
+            retired_worker=snapshot._retired_worker, snapshot=snapshot)
+        raw_validation = canonical_json(observed)
+        payload.update(schema="supervisor-owner-candidate-router-input@3", public_validation=dict(
+            schema="supervisor-public-validation-feedback-binding@1",
+            sha256=_sha(raw_validation), bytes=len(raw_validation),
+            feedback=public_validation_feedback(observed)))
     body = canonical_json(payload)
     _need(len(body) <= max_prompt_bytes, "complete candidate prompt exceeds byte bound; requirements cannot be truncated")
     metadata = dict(schema=OBSERVATION_SCHEMA, status="prepared",
@@ -254,6 +316,15 @@ def _render(snapshot, requirements, max_prompt_bytes):
         provider_prompt_sha256=_sha(body), provider_prompt_bytes=len(body),
         required_text_truncated=False, native_prompt_preserved=True, original_public_block_preserved=True,
         raw_prompt_exported=False, **FLAGS)
+    if doctor_context is not None:
+        metadata.update(schema="supervisor-owner-candidate-prompt-observation@2",
+            doctor_context_sha256=_sha(doctor_context.metadata_bytes),
+            doctor_advisory_sha256=_sha(doctor_context.advisory_bytes),
+            doctor_advisory_bytes=len(doctor_context.advisory_bytes))
+    if public_validation is not None:
+        metadata.update(schema="supervisor-owner-candidate-prompt-observation@3",
+            public_validation_observation_sha256=_sha(raw_validation),
+            public_validation_observation_bytes=len(raw_validation))
     requirements.revalidate(snapshot=snapshot)
     return body, canonical_json(metadata)
 
@@ -266,11 +337,14 @@ class OwnerCandidateRoundPrompt:
     _snapshot: object = field(repr=False, compare=False)
     _requirements: OriginalRequirements = field(repr=False, compare=False)
     _max_prompt_bytes: int = field(repr=False)
+    _doctor_context: object = field(repr=False, compare=False)
 
-    def __init__(self, *, _owner_token, provider_prompt, metadata_bytes, snapshot, requirements, max_prompt_bytes):
+    def __init__(self, *, _owner_token, provider_prompt, metadata_bytes, snapshot, requirements, max_prompt_bytes,
+                 doctor_context=None):
         _need(_owner_token is _OWNER_TOKEN, "owner candidate prompt factory required")
         for name, value in (("provider_prompt", provider_prompt), ("metadata_bytes", metadata_bytes),
-                ("_snapshot", snapshot), ("_requirements", requirements), ("_max_prompt_bytes", max_prompt_bytes)):
+                ("_snapshot", snapshot), ("_requirements", requirements), ("_max_prompt_bytes", max_prompt_bytes),
+                ("_doctor_context", doctor_context)):
             object.__setattr__(self, name, value)
 
     @property
@@ -282,23 +356,24 @@ class OwnerCandidateRoundPrompt:
         return False
 
     def revalidate(self):
-        body, metadata = _render(self._snapshot, self._requirements, self._max_prompt_bytes)
+        body, metadata = _render(self._snapshot, self._requirements, self._max_prompt_bytes, self._doctor_context)
         _need(body == self.provider_prompt and metadata == self.metadata_bytes,
             "candidate prompt or original requirement binding changed")
         return self.metadata
 
 
 def prepare_candidate_round_prompt(*, snapshot, requirements=None,
-                                   max_prompt_bytes=MAX_PROMPT_BYTES) -> OwnerCandidateRoundPrompt:
+                                   max_prompt_bytes=MAX_PROMPT_BYTES, doctor_context=None) -> OwnerCandidateRoundPrompt:
     """Prepare complete original requirements plus a bounded advisory summary."""
     from .owner_candidate_round_context import OwnerCandidateRoundContext
     _need(type(snapshot) is OwnerCandidateRoundContext, "exact owner candidate snapshot required")
     if requirements is None:
         requirements = getattr(snapshot._source_broker, "original_requirements", None)
     _need(type(requirements) is OriginalRequirements, "typed owner original requirements capture required")
-    body, metadata = _render(snapshot, requirements, max_prompt_bytes)
+    body, metadata = _render(snapshot, requirements, max_prompt_bytes, doctor_context)
     return OwnerCandidateRoundPrompt(_owner_token=_OWNER_TOKEN, provider_prompt=body,
-        metadata_bytes=metadata, snapshot=snapshot, requirements=requirements, max_prompt_bytes=max_prompt_bytes)
+        metadata_bytes=metadata, snapshot=snapshot, requirements=requirements, max_prompt_bytes=max_prompt_bytes,
+        doctor_context=doctor_context)
 
 
 __all__ = ["OriginalRequirements", "OwnerCandidateRoundPrompt", "capture_public_requirements",

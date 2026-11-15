@@ -1,0 +1,210 @@
+{
+  "docker_calls": 0,
+  "files": [
+    {
+      "bytes": 15970,
+      "path": "/home/barberb/lift_coding/artifacts/working-set-owner-census-20261015/live/run.py",
+      "sha256": "fcd2eeab2f56b95e6d08f674d3fa38b00a7b9e88cf9f7bfdaf2820220c21eba0"
+    },
+    {
+      "bytes": 2723,
+      "path": "/home/barberb/lift_coding/artifacts/working-set-owner-census-20261015/live/prepare_draft.py",
+      "sha256": "bc03e90ebb0ac9f8eea1844b64190babbf1492b83d5b4c4c6c2f19136a664c43"
+    },
+    {
+      "bytes": 4017,
+      "path": "/home/barberb/lift_coding/artifacts/working-set-owner-census-20261015/live/recipe-draft.json",
+      "sha256": "754ed134444207764f0daa9077d665b2260a6321d89f7bdfde24389d895c817c"
+    },
+    {
+      "bytes": 1714,
+      "path": "/home/barberb/lift_coding/artifacts/working-set-owner-census-20261015/live/environment.json",
+      "sha256": "f1e8d2e834c2c58490cd8e93b02cfbd1434609b6d75341efb22044a745d44526"
+    },
+    {
+      "bytes": 375,
+      "path": "/home/barberb/lift_coding/artifacts/working-set-owner-census-20261015/live/largest-eigenval-public-profile.json",
+      "sha256": "274146542fd5d4c611b0b01700fbeea48a202da875525303bddbd44b2a4e67c3"
+    },
+    {
+      "bytes": 7464,
+      "path": "/home/barberb/lift_coding/artifacts/working-set-owner-census-20261015/live/closed_export.py",
+      "sha256": "6411d8a8445302cd7bc2a7c0b4e13e8cf9cae1a3a1d5a23bb3f6c609116b8d1a"
+    },
+    {
+      "bytes": 4857,
+      "path": "/home/barberb/lift_coding/artifacts/working-set-owner-census-20261015/live/local-asset-readiness-draft01.json",
+      "sha256": "b9d9de822c04b4ec9ca3c5d1c8f925add7005f907240398741df9a9aaea1ab8c"
+    },
+    {
+      "bytes": 3207,
+      "path": "/home/barberb/lift_coding/artifacts/working-set-owner-census-20261015/live/test_run.py",
+      "sha256": "08d1ebfcae4462fd876ead4c6eecbe5dce11cc77df23f6f52e3b4d8aac4ff55b"
+    },
+    {
+      "bytes": 5113,
+      "path": "/home/barberb/lift_coding/artifacts/working-set-owner-census-20261015/live/test_closed_export.py",
+      "sha256": "f3172a20183dee4a4995a8c4fc3ec0c1cc5c7fc5f8e88748d60cef546430dff2"
+    },
+    {
+      "bytes": 7300,
+      "path": "/home/barberb/lift_coding/artifacts/working-set-owner-census-20261015/qualification-final01.json",
+      "sha256": "d85ffb3a5d10234b1b71685290ee42d19f4a16f846977acbb7aa298607d278fb"
+    }
+  ],
+  "inputs": [
+    {
+      "bytes": 1739,
+      "path": "/home/barberb/lift_coding/artifacts/terminal-suite-eigenval-pilot-20261004/source384-config.json",
+      "sha256": "b81ecc3487dd077e92024a60c0317ca80057b1680e6a2e74389331b360ca61c5"
+    },
+    {
+      "bytes": 716,
+      "path": "/home/barberb/lift_coding/.benchmarks/terminal-bench-2/largest-eigenval/instruction.md",
+      "sha256": "6fa938389f99648508e5a9772e0d5e95d1102738c68d1ff61bd65469d76c52ab"
+    },
+    {
+      "bytes": 642,
+      "path": "/home/barberb/lift_coding/.benchmarks/terminal-bench-2/largest-eigenval/environment/src/eigen.py",
+      "sha256": "bbd5be97fb11e9ed46fd5f1fb9d407efb19b265b549d3c36e2cfba923efe3d9d"
+    },
+    {
+      "bytes": 2246,
+      "path": "/home/barberb/lift_coding/.benchmarks/terminal-bench-2/largest-eigenval/environment/src/eval.py",
+      "sha256": "70a12a80b9caa392b1f1f0439de853932c5ac61f1a2274b5de1ce93aebd4e139"
+    },
+    {
+      "bytes": 493355,
+      "path": "/home/barberb/lift_coding/artifacts/distributed384-20261001/run-01/security_ir/coordinator/checkpoints/2ca38dfcc05536315fc3e2c0647b710b930ef4066b474061a7b4e5bfb9a258c5.json",
+      "sha256": "2ca38dfcc05536315fc3e2c0647b710b930ef4066b474061a7b4e5bfb9a258c5"
+    },
+    {
+      "bytes": 142867512,
+      "path": "/home/barberb/lift_coding/artifacts/source-context-substitution-20261013/live-preparation/grok-1.0.46/grok",
+      "sha256": "45b0943e736f00a249b9cf02af2be9e0749d97c09a6f55cfcf3029a1a836f23e"
+    },
+    {
+      "bytes": 155005253,
+      "path": "/home/barberb/lift_coding/artifacts/source384-torch-wheel-20261003/torch-2.13.0+cpu-cp312-cp312-manylinux_2_28_aarch64.whl",
+      "sha256": "6f307c2c32d764ffc6ff6893b801fad6d4752f3e67966cb8abf1843427c02604"
+    },
+    {
+      "bytes": 190,
+      "path": "/home/barberb/.cache/huggingface/hub/models--thenlper--gte-small/snapshots/17e1f347d17fe144873b1201da91788898c639cd/1_Pooling/config.json",
+      "sha256": "4be450dde3b0273bb9787637cfbd28fe04a7ba6ab9d36ac48e92b11e350ffc23"
+    },
+    {
+      "bytes": 583,
+      "path": "/home/barberb/.cache/huggingface/hub/models--thenlper--gte-small/snapshots/17e1f347d17fe144873b1201da91788898c639cd/config.json",
+      "sha256": "00273cdfb3e05c7304d180270bdef8adae45023e7bdfc396338bdd815943dc59"
+    },
+    {
+      "bytes": 66746168,
+      "path": "/home/barberb/.cache/huggingface/hub/models--thenlper--gte-small/snapshots/17e1f347d17fe144873b1201da91788898c639cd/model.safetensors",
+      "sha256": "9a1eb90bbac323ea08aa5629b624fe6ae75db121b904799c2266a1e2c2de22d2"
+    },
+    {
+      "bytes": 385,
+      "path": "/home/barberb/.cache/huggingface/hub/models--thenlper--gte-small/snapshots/17e1f347d17fe144873b1201da91788898c639cd/modules.json",
+      "sha256": "73348a3d8f8ae4cc5f851dc6b98be3ea819390b814e83656d5eebbadf75fe43e"
+    },
+    {
+      "bytes": 57,
+      "path": "/home/barberb/.cache/huggingface/hub/models--thenlper--gte-small/snapshots/17e1f347d17fe144873b1201da91788898c639cd/sentence_bert_config.json",
+      "sha256": "948201d8329907aae938fa62f9ceeed53f5694dacc2b87b9f3b78b37ee986529"
+    },
+    {
+      "bytes": 125,
+      "path": "/home/barberb/.cache/huggingface/hub/models--thenlper--gte-small/snapshots/17e1f347d17fe144873b1201da91788898c639cd/special_tokens_map.json",
+      "sha256": "b6d346be366a7d1d48332dbc9fdf3bf8960b5d879522b7799ddba59e76237ee3"
+    },
+    {
+      "bytes": 711661,
+      "path": "/home/barberb/.cache/huggingface/hub/models--thenlper--gte-small/snapshots/17e1f347d17fe144873b1201da91788898c639cd/tokenizer.json",
+      "sha256": "da0e79933b9ed51798a3ae27893d3c5fa4a201126cef75586296df9b4d2c62a0"
+    },
+    {
+      "bytes": 394,
+      "path": "/home/barberb/.cache/huggingface/hub/models--thenlper--gte-small/snapshots/17e1f347d17fe144873b1201da91788898c639cd/tokenizer_config.json",
+      "sha256": "e1790949631401af1bfb6c9c7aeec7fcf612e274d73579d99f704faea40c8ba7"
+    },
+    {
+      "bytes": 231508,
+      "path": "/home/barberb/.cache/huggingface/hub/models--thenlper--gte-small/snapshots/17e1f347d17fe144873b1201da91788898c639cd/vocab.txt",
+      "sha256": "07eced375cec144d27c900241f3e339478dec958f92fddbc551f295c992038a3"
+    },
+    {
+      "bytes": 32143862,
+      "path": "/home/barberb/.duckdb/extensions/v1.5.5/linux_arm64/ducklake.duckdb_extension",
+      "sha256": "d0b57c8e261b89a1ae367c7224f0857cfde72ab6cf2609f188e0de9b897b1088"
+    },
+    {
+      "bytes": 19861758,
+      "path": "/home/barberb/.duckdb/extensions/v1.5.5/linux_arm64/httpfs.duckdb_extension",
+      "sha256": "eba6e263e395a83966090f1f11ade63630b1b21422f0f2813858d179d42ea1e9"
+    },
+    {
+      "bytes": 29708110,
+      "path": "/home/barberb/.duckdb/extensions/v1.5.5/linux_arm64/quack.duckdb_extension",
+      "sha256": "41b2b9292bfb860c5ca8c5f818f9dd7a2c6bc24f9c750cffbc3169286fe59f08"
+    },
+    {
+      "bytes": 1032,
+      "path": "/home/barberb/lift_coding/.benchmarks/terminal-bench-2/largest-eigenval/task.toml",
+      "sha256": "f7b9b7dda446f969a3ce88f61039d216f4d58b5fc5c10ff9faa24e2403bbd830"
+    },
+    {
+      "bytes": 307,
+      "path": "/home/barberb/lift_coding/.benchmarks/terminal-bench-2/largest-eigenval/environment/Dockerfile",
+      "sha256": "93253c52a674766179244f2290ba8ed43680a7cbbbc0f7168322298c5f5a4b94"
+    }
+  ],
+  "provider_calls": 0,
+  "qualification": {
+    "bytes": 7300,
+    "path": "/home/barberb/lift_coding/artifacts/working-set-owner-census-20261015/qualification-final01.json",
+    "sha256": "d85ffb3a5d10234b1b71685290ee42d19f4a16f846977acbb7aa298607d278fb"
+  },
+  "recipe": {
+    "bytes": 4543,
+    "path": "/home/barberb/lift_coding/artifacts/working-set-owner-census-20261015/live/recipe.json",
+    "sha256": "3c66587c83786c9809ac8e062ba87333629b2e11b2ab4b7b450d7c5fe4c164fe"
+  },
+  "roots": {
+    "datasets": {
+      "commit": "28b9ef1f0b9da51e87b1e68ee565b43681397109",
+      "path": "/home/barberb/lift_coding/.worktrees/supervisor-bounded-rounds-datasets-20261014"
+    },
+    "kit": {
+      "commit": "8ac00bb1974b1378e12091d546d8425af34049e0",
+      "path": "/home/barberb/lift_coding/.worktrees/publication-main-20261004/kit"
+    },
+    "source": {
+      "commit": "92b540f00490c68a34e6d50e2b9e7af4acc54494",
+      "path": "/home/barberb/lift_coding/.worktrees/supervisor-working-set-owner-census-20261015"
+    }
+  },
+  "schema": "working-set-owner-census-source-freeze@1",
+  "source_frozen_before_execution": true,
+  "source_sha256": {
+    "benchmarks/agent_supervisor/container_coding/benchmark_controls.py": "bc973ff26e9b28876a97556f4b928e54dfdeee0cbd257ef21d0e69750a799d47",
+    "benchmarks/agent_supervisor/container_coding/full_supervisor_benchmark.py": "6864ba47d71142f3033a74f7b4d5555de5fbd302e65e413c6a007bfd0cd8cee3",
+    "benchmarks/agent_supervisor/container_coding/full_supervisor_harbor_agent.py": "2d68b94a895578c7fedcaf53aca48ef30b27b0e4f2c183a9ccd5699905e62a3a",
+    "benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py": "65914e4759af0a5211745d9ef02bca84344a7a83f789b7f7c32b78532b563aa1",
+    "benchmarks/agent_supervisor/container_coding/terminal_live_metadata_census.py": "a3fde9af38c1301fc50e2c623931fff8b73d56ae3e5d8ca18e46fa8ed046f6de",
+    "benchmarks/agent_supervisor/container_coding/terminal_semantic_working_set_policy.py": "2c07693b02dfe6bc0a8bb8f2d18cde44510147ff67d457c00a7fa4386c9b7c1f",
+    "benchmarks/agent_supervisor/container_coding/terminal_working_set_census.py": "bcd1e08214ed2268b3cc3172aa2d4330a7eb81eb1d43c01efe1cfbb49793f94d",
+    "benchmarks/agent_supervisor/container_coding/terminal_working_set_census_observation.py": "d7818e876963b8d3edf564a662027387f17722f4bb053d3c5ff9964781ef65ee",
+    "benchmarks/agent_supervisor/container_coding/test_benchmark_controls.py": "180e2ac6ea8fa9079040e5d3a23a8bdafc0694ab61bbce9277068669160e05f5",
+    "benchmarks/agent_supervisor/container_coding/test_full_supervisor_harbor_agent.py": "9b7f8c3c58bbe1935135317edfe86faac95611f4ee271ce337c55056747cfd9c",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_formal_status_census.py": "213b61cc56a81a3cb378f46575e0eefbb8893fa074d9a357be652ce7177507ad",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_live_census_cache_profile.py": "910512d19a7fa183331012ad79667155ab10b546d63a43848d0c811b6d28272a",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_live_census_driver.py": "e5557a52d564911218d9e78436f85d74addd3c89bf8ffea740a9ee9db467f6f9",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_live_metadata_census.py": "d13cec3dbe01f29b6902c8552679ce9fa063e16266773a780ebee4fa7f7c62a8",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_semantic_working_set_policy.py": "6ac3e3aca2d48974eca90927ef5a4416cd6cb39d5405aa370ce01c97ae530a0b",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_working_set_census_driver.py": "1672f73d2c1b0ddf1264941475bb9247eb5b60a13232a175f4fd248c7f4c48a3",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_working_set_census_owner.py": "21684c35f163fd1d8a13bdabdb61f5e1d1b973f691b45bfcb571931b659dd5e4",
+    "benchmarks/agent_supervisor/container_coding/test_working_set_census_harbor.py": "5547152ad7df90128cc10de785fca80ba29ca06daf6bb1ff9b5a084c6bf527ed",
+    "test/api/test_terminal_working_set_census_replay.py": "aba0223fbb171c8ea973967e3a8b7210fde942266264c014bfe5168e8a58bca3"
+  }
+}

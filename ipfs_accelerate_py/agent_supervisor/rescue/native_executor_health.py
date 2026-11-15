@@ -6,6 +6,7 @@ artifacts and distinguishes current executor health from task completion.
 """
 from __future__ import annotations
 import argparse
+import base64
 import hashlib
 import json
 import math
@@ -40,6 +41,15 @@ _CYCLES = {}
 _USED_REQUESTS = set()
 
 class _CycleHandle:
+    __slots__ = ()
+
+# This capability authenticates archived source DATA only. It is deliberately
+# distinct from _CycleHandle and is never accepted by current health producers.
+_HISTORICAL_SOURCE_WITNESSES = {}
+_HISTORICAL_FROZEN_FIELDS = ('st_dev', 'st_ino', 'st_mode', 'st_uid', 'st_gid',
+    'st_nlink', 'st_size', 'st_mtime_ns', 'st_ctime_ns')
+
+class _HistoricalProjectSourceWitness:
     __slots__ = ()
 
 class ExecutorHealthError(ValueError):
@@ -166,7 +176,11 @@ def _document(ref):
     return value
 
 def _profile(ref):
-    profile = _document(ref)
+    # Current callers always require current bytes; no historical argument exists.
+    return _profile_value(_document(ref), current_sources=True)
+
+def _profile_value(profile, *, current_sources):
+    _need(type(current_sources) is bool, 'profile_source_mode')
     _keys(profile, PROFILE_KEYS, 'profile_shape')
     _need(profile['schema'] == PROFILE_SCHEMA, 'profile_schema')
     _keys(profile['catalogue'], IDENTITY_KEYS, 'catalogue_binding_shape')
@@ -191,8 +205,16 @@ def _profile(ref):
         _keys(pin, {'path', 'bytes', 'sha256'}, 'descriptor_shape')
         if pin['path'] == unit['interpreter']:
             _bound_installed_tool(pin)
-        else:
+        elif current_sources:
             _bound_project_source(pin, profile)
+        else:
+            # Parse the exact historical metadata before assembling its witness.
+            # A completed capability rechecks every selected source, using an
+            # archive only for explicitly listed exceptions.
+            _need(_integer(pin['bytes'], 0, MAX_SOURCE) and
+                  type(pin['sha256']) is str and re.fullmatch('[0-9a-f]{64}', pin['sha256']),
+                  'descriptor_bounds')
+            _path(pin['path'])
         _need(pin['path'] not in sources, 'duplicate_source')
         sources[pin['path']] = pin
         total += pin['bytes']
@@ -276,7 +298,164 @@ def _within(ref, root):
     _need(Path(root) in path.parents, 'cycle_artifact_outside_root')
     return path
 
-def _origins(value, profile):
+def _historical_frozen_input(reference):
+    _bound(reference)
+    info = _path(reference['path']).lstat()
+    _need(stat.S_ISREG(info.st_mode) and info.st_nlink == 1 and
+          info.st_uid == os.geteuid() and not info.st_mode & 0o222,
+          'historical_source_input_not_frozen')
+    return tuple(getattr(info, key) for key in _HISTORICAL_FROZEN_FIELDS)
+
+
+def _historical_source_record(witness, profile=None, *, check_inputs=False):
+    _need(type(witness) is _HistoricalProjectSourceWitness and
+          witness in _HISTORICAL_SOURCE_WITNESSES, 'historical_source_witness_not_authenticated')
+    record = _HISTORICAL_SOURCE_WITNESSES[witness]
+    _need(profile is None or profile is record['profile'],
+          'historical_source_witness_profile_changed')
+    if check_inputs:
+        selected = record['profile']
+        for pin in selected['source_descriptors']:
+            if pin['path'] == selected['unit']['interpreter']:
+                _bound_installed_tool(pin)
+            else:
+                _bound_historical_project_source(pin, selected, witness)
+        for reference, stamp in record['frozen_inputs']:
+            _need(_historical_frozen_input(reference) == stamp,
+                  'historical_source_witness_input_changed')
+        _need(_encoded(record['profile']) == record['profile_encoded'],
+              'historical_source_witness_profile_changed')
+    return record
+
+
+def authenticate_historical_source_witness(reference):
+    """Authenticate immutable old project bytes for archival evidence only.
+
+    The capture is not an execution receipt or a policy grant. Its original
+    logical path/hash, reported source identity and raw bytes must match the
+    recorded source snapshot. Current verifier/producer APIs cannot take this
+    capability. Every non-overridden declared source retains ordinary current
+    reads at authentication and each archival use.
+    """
+    value = _document(reference)
+    _keys(value, {'schema', 'purpose', 'profile_ref', 'profile_snapshot_ref', 'sources'},
+          'historical_source_witness_shape')
+    _need(value['schema'] == 'agent-supervisor/historical-project-source-witness@1'
+          and value['purpose'] == 'closed_cycle_and_receipt_evidence_only',
+          'historical_source_witness_scope')
+    original = value['profile_ref']; snapshot = value['profile_snapshot_ref']
+    _keys(original, {'path', 'bytes', 'sha256'}, 'historical_source_profile_descriptor_shape')
+    _keys(snapshot, {'path', 'bytes', 'sha256'}, 'historical_source_profile_descriptor_shape')
+    _need(original['path'] != snapshot['path'] and _bound(original) == _bound(snapshot),
+          'historical_source_profile_snapshot_join')
+    profile = _profile_value(_document(snapshot), current_sources=False)
+    # Frozen role implementations and the installed interpreter do not receive
+    # the canonical-source substitution. The interpreter is checked above.
+    for role in ('main_entrypoint', 'health_module', 'owner_source', 'driver_source'):
+        _bound_project_source(profile[role], profile)
+    selected = {pin['path']: pin for pin in profile['source_descriptors']}
+    forbidden = {profile['unit']['interpreter']} | {
+        profile[key]['path'] for key in ('main_entrypoint', 'health_module', 'owner_source', 'driver_source')}
+    rows = value['sources']
+    _need(type(rows) is list and 1 <= len(rows) <= 16, 'historical_source_witness_population')
+    sources = {}; references = [reference, original, snapshot]; total = 0
+    for row in rows:
+        _keys(row, {'source_ref', 'captured_source_ref', 'source_capture_ref'},
+              'historical_source_witness_row_shape')
+        pin = row['source_ref']
+        _keys(pin, {'path', 'bytes', 'sha256'}, 'historical_source_descriptor_shape')
+        _need(type(pin['path']) is str and _integer(pin['bytes'], 0, MAX_SOURCE)
+              and type(pin['sha256']) is str and re.fullmatch('[0-9a-f]{64}', pin['sha256']),
+              'historical_source_descriptor_bounds')
+        _need(selected.get(pin['path']) == pin
+              and pin['path'] not in forbidden and pin['path'] not in sources,
+              'historical_source_not_selected_or_role_or_duplicate')
+        captured = row['captured_source_ref']; provenance = row['source_capture_ref']
+        _keys(captured, {'path', 'bytes', 'sha256'}, 'historical_source_capture_descriptor_shape')
+        _keys(provenance, {'path', 'bytes', 'sha256'}, 'historical_source_capture_descriptor_shape')
+        _need(captured['path'] not in selected, 'historical_source_capture_is_canonical_path')
+        raw = _bound(captured)
+        _need(len(raw) == pin['bytes'] and hashlib.sha256(raw).hexdigest() == pin['sha256'],
+              'historical_source_capture_bytes_changed')
+        capture = _document(provenance); items = capture.get('files')
+        _need(capture.get('schema') == 'resource-census-canonical-source-snapshot/v1'
+              and type(items) is list and 1 <= len(items) <= 4096,
+              'historical_source_capture_provenance_shape')
+        matching = [item for item in items if type(item) is dict and
+            type(item.get('source_ref')) is dict and _encoded(item['source_ref']) == _encoded(pin)]
+        _need(len(matching) == 1, 'historical_source_capture_provenance_join')
+        item = matching[0]
+        _keys(item, {'source_ref', 'identity', 'raw_base64'}, 'historical_source_capture_row_shape')
+        identity = item['identity']; required = set(_HISTORICAL_FROZEN_FIELDS)-{'st_gid'}
+        _need(type(identity) is dict and required <= set(identity) <= set(_HISTORICAL_FROZEN_FIELDS)
+              and all(_integer(value) for value in identity.values())
+              and stat.S_ISREG(identity['st_mode']) and identity['st_nlink'] == 1
+              and identity['st_size'] == pin['bytes'] and not identity['st_mode'] & 0o022,
+              'historical_source_capture_identity')
+        _need(type(item['raw_base64']) is str, 'historical_source_capture_encoding')
+        try:
+            decoded = base64.b64decode(item['raw_base64'], validate=True)
+        except (ValueError, TypeError) as error:
+            raise ExecutorHealthError('historical_source_capture_encoding') from error
+        _need(decoded == raw, 'historical_source_capture_provenance_bytes_changed')
+        total += len(raw)
+        _need(total <= 16 * 1024**2, 'historical_source_witness_total_bound')
+        sources[pin['path']] = dict(source_ref=dict(pin), captured_source_ref=dict(captured))
+        references.extend((captured, provenance))
+    frozen = {}; frozen_inputs = []
+    for pin in references:
+        if pin['path'] in frozen:
+            _need(frozen[pin['path']] == pin, 'historical_source_witness_reference_alias')
+            continue
+        frozen[pin['path']] = pin
+        frozen_inputs.append((dict(pin), _historical_frozen_input(pin)))
+    _need(len(_HISTORICAL_SOURCE_WITNESSES) < 64, 'historical_source_witness_handle_bound')
+    witness = _HistoricalProjectSourceWitness()
+    _HISTORICAL_SOURCE_WITNESSES[witness] = dict(reference=dict(reference),
+        profile_ref=dict(original), profile=profile, profile_encoded=_encoded(profile),
+        sources=sources, frozen_inputs=tuple(frozen_inputs))
+    try:
+        _historical_source_record(witness, check_inputs=True)
+    except BaseException:
+        del _HISTORICAL_SOURCE_WITNESSES[witness]
+        raise
+    return witness
+
+
+def close_historical_source_witness(witness):
+    """Discard local archival DATA; no resource or authorization is released."""
+    _need(type(witness) is _HistoricalProjectSourceWitness and
+          witness in _HISTORICAL_SOURCE_WITNESSES, 'historical_source_witness_not_authenticated')
+    del _HISTORICAL_SOURCE_WITNESSES[witness]
+
+
+def _bound_historical_project_source(pin, profile, witness):
+    record = _historical_source_record(witness, profile)
+    row = record['sources'].get(pin['path'])
+    if row is None:
+        return _bound_project_source(pin, profile)
+    _project_origin_descriptor(pin, 'historical_source_descriptor')
+    _need(_encoded(row['source_ref']) == _encoded(pin), 'historical_source_descriptor_changed')
+    reference = row['captured_source_ref']
+    raw = _bound(reference)
+    _need(len(raw) == pin['bytes'] and hashlib.sha256(raw).hexdigest() == pin['sha256'],
+          'historical_source_capture_bytes_changed')
+    stamp = next(stamp for ref, stamp in record['frozen_inputs'] if ref == reference)
+    _need(_historical_frozen_input(reference) == stamp, 'historical_source_witness_input_changed')
+    return raw
+
+
+def _project_origin_descriptor(pin, reason, *, maximum=MAX_SOURCE):
+    """Reject numeric coercion before associating a reported source descriptor."""
+    _keys(pin, {'path', 'bytes', 'sha256'}, reason + '_shape')
+    _need(type(pin['path']) is str and _integer(pin['bytes'], 0, maximum)
+          and type(pin['sha256']) is str and re.fullmatch('[0-9a-f]{64}', pin['sha256']),
+          reason + '_bounds')
+    _path(pin['path'])
+    return pin
+
+
+def _origins(value, profile, *, historical_source_witness=None):
     _need(type(value) is dict and value.get('schema') == 'legal-ir-pre-execution-project-import-origins/v1' and value.get('project_origins_checked_before_module_execution') is True and value.get('denials') == [], 'original_import_origins_missing')
     rows = value.get('project_imports')
     _need(type(rows) is list and 1 <= len(rows) <= 4096, 'original_import_origins_population')
@@ -285,11 +464,270 @@ def _origins(value, profile):
     for row in rows:
         _need(type(row) is dict and _text(row.get('module')) and row['module'] not in seen, 'original_import_origin_duplicate')
         seen.add(row['module'])
-        _need(sources.get(row.get('path')) == {k: row.get(k) for k in ('path', 'bytes', 'sha256')} and row.get('execution_profile') == 'compiled_exact_authenticated_source_bytes', 'original_import_origin_unbound')
-        _bound_project_source(sources[row['path']], profile)
+        reported = _project_origin_descriptor({key: row.get(key) for key in ('path', 'bytes', 'sha256')},
+            'original_import_origin_descriptor', maximum=(MAX_INSTALLED_TOOL
+                if row.get('path') == profile['unit']['interpreter'] else MAX_SOURCE))
+        _need(sources.get(reported['path']) == reported and
+              row.get('execution_profile') == 'compiled_exact_authenticated_source_bytes',
+              'original_import_origin_unbound')
+        if historical_source_witness is None:
+            _bound_project_source(sources[row['path']], profile)
+        else:
+            _bound_historical_project_source(sources[row['path']], profile, historical_source_witness)
     return rows
 
-def _embedded_idle_result(result, request, plan, origins, profile, native):
+# Opt-in native CLI4 source/namespace evidence remains closed DATA. It grants
+# no executor, Source, Native, storage, task, or provider capability.
+_PHYSICAL_R_CLI = 'native-embedded-scoped-observation-cli/v4'
+_PHYSICAL_R_RELATIVES = (
+    'ipfs_datasets_py/__init__.py', 'ipfs_datasets_py/ipfs_backend_router.py',
+    'ipfs_datasets_py/logic/__init__.py', 'ipfs_datasets_py/logic/backends/process.py',
+    'ipfs_datasets_py/optimizers/__init__.py',
+    'ipfs_datasets_py/optimizers/logic_theorem_optimizer/__init__.py',
+    'ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_daemon_resources.py',
+    'ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_resource_recovery.py',
+    'ipfs_datasets_py/optimizers/logic_theorem_optimizer/existing_resource_scheduler.py',
+    'ipfs_datasets_py/optimizers/logic_theorem_optimizer/parented_phase_resources.py',
+    'ipfs_datasets_py/optimizers/logic_theorem_optimizer/proof_resource_safety.py',
+    'ipfs_datasets_py/optimizers/logic_theorem_optimizer/resource_scheduler.py',
+    'ipfs_datasets_py/optimizers/logic_theorem_optimizer/runtime_telemetry.py',
+    'ipfs_datasets_py/router_deps.py', 'scripts/ops/legal_ir/run_owned_validation.py')
+_PHYSICAL_R_ESSENTIAL = (
+    'ipfs_datasets_py.optimizers.logic_theorem_optimizer.existing_resource_scheduler',
+    'ipfs_datasets_py.optimizers.logic_theorem_optimizer.resource_scheduler',
+    'ipfs_datasets_py.optimizers.logic_theorem_optimizer.parented_phase_resources',
+    'ipfs_datasets_py.optimizers.logic_theorem_optimizer.autoencoder_daemon_resources',
+    'ipfs_datasets_py.logic.backends.process')
+_PHYSICAL_R_PATHS = {
+    'parent_resource_origins': 'project-import-origins-native-physical-R-parent-resource.json',
+    'parent_namespace': 'native-physical-R-parent-namespace.json',
+    'child_namespace': 'native-physical-R-child-namespace.json',
+    'parent_bootstrap': 'native-physical-R-parent-guard-bootstrap.json',
+    'child_bootstrap': 'native-physical-R-child-guard-bootstrap.json',
+    'direct_cleanup': 'native-physical-R-parent-direct-cleanup.json',
+    'child_driver': 'native-physical-R-child-driver-bootstrap.json'}
+_PHYSICAL_R_CONTEXT = frozenset({'phase', 'request', 'plan', 'profile_sha256',
+    'source_root_binding', 'guard', 'identity'})
+_PHYSICAL_R_GUARD_SHA = '141b7da6a57bd65d03c673c5e1041d8e26bce0ed7c02803a3d11f829925da95e'
+
+
+def _physical_same(left, right):
+    # JSON equality preserves scalar types; Python True == 1 must not bind IDs.
+    return _encoded(left) == _encoded(right)
+
+
+def _physical_identity(value):
+    _keys(value, {'pid', 'birth'}, 'physical_identity_shape')
+    _need(_integer(value['pid'], 1) and type(value['birth']) is str
+          and 1 <= len(value['birth']) <= 32 and re.fullmatch('[0-9]+', value['birth']),
+          'physical_identity_values')
+    return value
+
+
+def _physical_profile(command, request, profile, *, historical_source_witness=None):
+    _keys(command, {'schema', 'runtime_root', 'cwd', 'attempt_directory',
+        'temporary_directory', 'project_import_plan', 'pre_body_guard', 'result_path',
+        'source_sha256', 'observation_binding', 'import_head_capsule_Git',
+        'physical_source_profile'}, 'physical_cli_shape')
+    _need(command['schema'] == _PHYSICAL_R_CLI
+          and type(request.get('source_sha256')) is dict
+          and type(command['source_sha256']) is dict, 'physical_cli_schema_or_pins')
+    value = command.get('physical_source_profile')
+    _keys(value, {'schema', 'source_root_binding', 'source_descriptors',
+                  'normal_namespace_profiles'}, 'physical_profile_shape')
+    _need(value['schema'] == 'native-embedded-physical-R-source@1', 'physical_profile_schema')
+    binding = value['source_root_binding']
+    _keys(binding, {'physical_root', 'canonical_root'}, 'physical_root_binding_shape')
+    physical = _path(binding['physical_root']); canonical = _path(binding['canonical_root'])
+    _need(str(physical) == binding['physical_root']
+          and str(canonical) == binding['canonical_root']
+          and physical != canonical and physical not in canonical.parents
+          and canonical not in physical.parents and request.get('cwd') == str(canonical)
+          and command.get('cwd') == str(canonical), 'physical_root_binding_join')
+    roots = request.get('source_roots')
+    _need(type(roots) is list and len(roots) == 2 and roots[0] == str(canonical)
+          and _path(roots[1]) != canonical, 'physical_original_source_roots')
+    import_plan = command.get('project_import_plan')
+    _keys(import_plan, {'accelerate_root', 'datasets_root', 'publication_root', 'source_pins'},
+          'physical_import_plan_shape')
+    _need(import_plan['accelerate_root'] == command['runtime_root']
+          and import_plan['datasets_root'] == import_plan['publication_root'] == str(physical),
+          'physical_import_roots')
+    sources = value['source_descriptors']; declared = import_plan['source_pins']
+    _need(type(sources) is list and len(sources) == len(_PHYSICAL_R_RELATIVES)
+          and type(declared) is list and 1 <= len(declared) <= 1024,
+          'physical_source_population')
+    selected = {pin['path']: pin for pin in profile['source_descriptors']}
+    declared_paths = []
+    for pin in declared:
+        _project_origin_descriptor(pin, 'physical_import_descriptor', maximum=MAX_SOURCE)
+        declared_paths.append(pin['path'])
+        if Path(pin['path']).is_relative_to(physical):
+            _need(pin['path'] in {str(physical / name) for name in _PHYSICAL_R_RELATIVES},
+                  'physical_unlisted_import_body')
+    _need(len(set(declared_paths)) == len(declared_paths), 'physical_duplicate_import_pin')
+    _need(tuple(pin.get('path') for pin in sources if type(pin) is dict) ==
+          tuple(str(physical / name) for name in _PHYSICAL_R_RELATIVES),
+          'physical_exact_source_paths')
+    for pin in sources:
+        _project_origin_descriptor(pin, 'physical_source_descriptor', maximum=MAX_SOURCE)
+        _need(_physical_same(selected.get(pin['path']), pin)
+              and any(_physical_same(pin, row) for row in declared)
+              and request.get('source_sha256', {}).get(pin['path']) == pin['sha256']
+              and command.get('source_sha256', {}).get(pin['path']) == pin['sha256'],
+              'physical_source_pin_join')
+        if historical_source_witness is None:
+            _bound_project_source(pin, profile)
+        else:
+            _bound_historical_project_source(pin, profile, historical_source_witness)
+    namespace = value['normal_namespace_profiles']
+    _need(type(namespace) is list and len(namespace) == 1, 'physical_namespace_population')
+    namespace = namespace[0]
+    _keys(namespace, {'fullname', 'path', 'device', 'inode', 'initializer_absent'},
+          'physical_namespace_profile_shape')
+    _need(namespace['fullname'] == 'ipfs_datasets_py.logic.backends'
+          and namespace['path'] == str(physical / 'ipfs_datasets_py/logic/backends')
+          and _integer(namespace['device'], 1) and _integer(namespace['inode'], 1)
+          and namespace['initializer_absent'] is True, 'physical_namespace_profile_values')
+    # These are captured namespace facts. No live Source/Native/proc/Git query,
+    # directory inode claim, initializer read, or package import is made here.
+    return value
+
+
+def _physical_source_evidence(value, request, plan, profile, *, request_ref,
+        plan_ref, origins_ref, terminal, historical_source_witness=None):
+    _keys(value, {'schema', 'request', 'plan', 'profile_sha256', 'source_root_binding',
+        'guard', 'owner_identity', 'child_identity'} | set(_PHYSICAL_R_PATHS),
+        'physical_evidence_shape')
+    _need(value['schema'] == 'native-embedded-physical-R-source-evidence@1',
+          'physical_evidence_schema')
+    command = plan['native_metadata_cli']
+    physical = _physical_profile(command, request, profile,
+        historical_source_witness=historical_source_witness)
+    digest = hashlib.sha256(_encoded(physical)[:-1]).hexdigest()
+    _need(_physical_same(value['request'], request_ref)
+          and _physical_same(value['plan'], plan_ref)
+          and value['profile_sha256'] == digest
+          and _physical_same(value['source_root_binding'], physical['source_root_binding']),
+          'physical_evidence_request_profile_join')
+    _need(request.get('source_sha256', {}).get(plan_ref['path']) == plan_ref['sha256'],
+          'physical_original_plan_pin')
+    guard = command.get('pre_body_guard')
+    _project_origin_descriptor(guard, 'physical_guard_descriptor', maximum=MAX_SOURCE)
+    _need(profile['owner_source']['path'] == str(Path(command['runtime_root']) /
+              'ipfs_accelerate_py/agent_supervisor/rescue/original_embedded_observation_owner.py')
+          and profile['driver_source']['path'] == str(Path(command['runtime_root']) /
+              'ipfs_accelerate_py/agent_supervisor/rescue/native_embedded_observation_driver.py'),
+          'physical_current_adjacent_owner_driver')
+    _need(_physical_same(value['guard'], guard)
+          and guard['path'] == str(Path(command['runtime_root']) /
+              'ipfs_accelerate_py/agent_supervisor/rescue/project_import_source_guard.py')
+          and guard['sha256'] == _PHYSICAL_R_GUARD_SHA
+          and any(_physical_same(guard, pin) for pin in profile['source_descriptors'])
+          and request.get('source_sha256', {}).get(guard['path']) == guard['sha256']
+          and command.get('source_sha256', {}).get(guard['path']) == guard['sha256'],
+          'physical_original_guard_join')
+    owner = _physical_identity(value['owner_identity'])
+    child = _physical_identity(value['child_identity'])
+    _need(_physical_same(owner, {'pid': terminal.get('owner_pid'),
+                                'birth': terminal.get('owner_birth')})
+          and _physical_same(child, terminal.get('reservation', {}).get('record', {}).get('child'))
+          and owner['pid'] != child['pid'], 'physical_parent_child_identity_join')
+    attempt = _path(command['attempt_directory']); exports = attempt / 'exports'
+    _need(request.get('attempt_directory') == str(attempt), 'physical_attempt_join')
+    _need(origins_ref['path'] == str(exports /
+              'project-import-origins-closing-native-embedded-observation.json'),
+          'physical_child_origins_path')
+    _within(origins_ref, profile['proof_root'])
+    docs = {}
+    for role, name in _PHYSICAL_R_PATHS.items():
+        pin = value[role]
+        _keys(pin, {'path', 'bytes', 'sha256'}, 'physical_artifact_descriptor_shape')
+        _need(pin['path'] == str(exports / name), 'physical_exact_artifact_path')
+        _within(pin, profile['proof_root'])
+        docs[role] = _document(pin)
+    def context(document, phase, identity):
+        expected = dict(phase=phase, request=request_ref, plan=plan_ref,
+            profile_sha256=digest, source_root_binding=physical['source_root_binding'],
+            guard=guard, identity=identity)
+        _need(all(_physical_same(document[key], selected)
+                  for key, selected in expected.items()), 'physical_artifact_context_join')
+    direct = {'parent_bootstrap': ('parent-resource', owner, 'parent-guard-bootstrap', guard),
+        'child_bootstrap': ('child-observation', child, 'child-guard-bootstrap', guard),
+        'direct_cleanup': ('parent-resource', owner, 'parent-cleanup',
+            physical['source_descriptors'][-1]),
+        'child_driver': ('child-observation', child, 'child-driver', profile['driver_source'])}
+    for role, (phase, identity, label, source) in direct.items():
+        doc = docs[role]
+        _keys(doc, {'schema', 'role', 'source', 'source_identity', 'execution_kind'} |
+              _PHYSICAL_R_CONTEXT, 'physical_direct_shape')
+        context(doc, phase, identity)
+        _need(doc['schema'] == 'native-embedded-physical-R-direct-source@1'
+              and doc['role'] == label and _physical_same(doc['source'], source)
+              and doc['execution_kind'] ==
+                  'compiled_exact_authenticated_source_bytes_outside_import_guard',
+              'physical_direct_source_join')
+        _need(any(_physical_same(source, pin) for pin in profile['source_descriptors'])
+              and request.get('source_sha256', {}).get(source['path']) == source['sha256']
+              and command.get('source_sha256', {}).get(source['path']) == source['sha256'],
+              'physical_direct_source_not_selected')
+        stamp = doc['source_identity']
+        _keys(stamp, _HISTORICAL_FROZEN_FIELDS, 'physical_direct_identity_shape')
+        _need(all(_integer(number) for number in stamp.values())
+              and _integer(stamp['st_dev'], 1) and _integer(stamp['st_ino'], 1)
+              and stat.S_ISREG(stamp['st_mode']) and stamp['st_nlink'] == 1
+              and stamp['st_size'] == source['bytes'], 'physical_direct_identity_values')
+        if historical_source_witness is None:
+            _bound_project_source(source, profile)
+        else:
+            _bound_historical_project_source(source, profile, historical_source_witness)
+    parent_origins = docs['parent_resource_origins']
+    parent_rows = _origins(parent_origins, profile,
+        historical_source_witness=historical_source_witness)
+    child_origins = _document(origins_ref)
+    child_rows = _origins(child_origins, profile,
+        historical_source_witness=historical_source_witness)
+    pins = {pin['path']: pin for pin in physical['source_descriptors']}
+    for row in parent_rows + child_rows:
+        _need(row['module'] != 'ipfs_datasets_py.logic.backends',
+              'physical_namespace_is_not_compiled_source')
+        if row['module'].startswith('ipfs_datasets_py.') or row['module'] == 'ipfs_datasets_py':
+            _need(_physical_same(pins.get(row['path']),
+                      {key: row[key] for key in ('path', 'bytes', 'sha256')}),
+                  'physical_unlisted_datasets_body')
+    by_name = {row['module']: row for row in parent_rows}
+    for name in _PHYSICAL_R_ESSENTIAL:
+        source = pins[str(Path(physical['source_root_binding']['physical_root']) /
+            (name.replace('.', '/') + '.py'))]
+        row = by_name.get(name)
+        _need(type(row) is dict and row.get('execution_status') == 'execution_completed'
+              and _physical_same({key: row.get(key) for key in ('path', 'bytes', 'sha256')}, source),
+              'physical_essential_parent_import_missing')
+    for role, phase, identity, origins, bootstrap in (
+            ('parent_namespace', 'parent-resource', owner, value['parent_resource_origins'],
+             value['parent_bootstrap']),
+            ('child_namespace', 'child-observation', child, origins_ref,
+             value['child_bootstrap'])):
+        doc = docs[role]
+        _keys(doc, {'schema', 'origins_ref', 'bootstrap_ref', 'guard_instance_type',
+                    'namespace'} | _PHYSICAL_R_CONTEXT, 'physical_namespace_document_shape')
+        context(doc, phase, identity)
+        _need(doc['schema'] == 'native-embedded-physical-R-namespace-checkpoint@1'
+              and doc['guard_instance_type'] == 'GuardedProjectImports'
+              and _physical_same(doc['origins_ref'], origins)
+              and _physical_same(doc['bootstrap_ref'], bootstrap),
+              'physical_namespace_origins_bootstrap_join')
+        row = doc['namespace']; declared = physical['normal_namespace_profiles'][0]
+        _keys(row, set(declared) | {'search_locations', 'origin',
+              'pathfinder_loader_is_none', 'module_loaded'}, 'physical_namespace_row_shape')
+        _need(all(_physical_same(row[key], item) for key, item in declared.items())
+              and row['search_locations'] == [declared['path']]
+              and row['origin'] is None and row['pathfinder_loader_is_none'] is True
+              and type(row['module_loaded']) is bool, 'physical_namespace_row_values')
+    return value
+
+
+def _embedded_idle_result(result, request, plan, origins, profile, native, *, historical_source_witness=None, physical_source_evidence=None):
     """Join genuine embedded read-only observation to original source/custody.
 
     This is a separate backend contract. It never relabels an embedded source as
@@ -313,8 +751,20 @@ def _embedded_idle_result(result, request, plan, origins, profile, native):
                     'project_import_plan', 'pre_body_guard', 'result_path', 'source_sha256',
                     'observation_binding', 'import_head_capsule_Git'}
     reuse = command.get('schema') == 'native-embedded-scoped-observation-cli/v3'
-    _keys(command, cli_fields | ({'source_capsule_ref'} if reuse else set()), 'embedded_idle_cli_shape')
-    _need(command['schema'] in ('native-embedded-scoped-observation-cli/v2','native-embedded-scoped-observation-cli/v3') and
+    physical = command.get('schema') == _PHYSICAL_R_CLI
+    _keys(command, cli_fields | ({'source_capsule_ref'} if reuse else set()) |
+          ({'physical_source_profile'} if physical else set()), 'embedded_idle_cli_shape')
+    if physical:
+        _need(type(physical_source_evidence) is dict
+              and physical_source_evidence.get('schema') ==
+                  'native-embedded-physical-R-source-evidence@1'
+              and physical_source_evidence.get('profile_sha256') == hashlib.sha256(
+                  _encoded(command['physical_source_profile'])[:-1]).hexdigest(),
+              'physical_validated_terminal_evidence_required')
+    else:
+        _need(physical_source_evidence is None, 'physical_legacy_evidence_forbidden')
+    _need(command['schema'] in ('native-embedded-scoped-observation-cli/v2',
+          'native-embedded-scoped-observation-cli/v3', _PHYSICAL_R_CLI) and
           _text(command['runtime_root']) and command['runtime_root'] == plan['accelerate_root'],
           'embedded_idle_cli_contract')
     if reuse:
@@ -346,7 +796,7 @@ def _embedded_idle_result(result, request, plan, origins, profile, native):
           type(command['source_sha256']) is dict and command['source_sha256'].get(route['path']) == route['sha256'],
           'embedded_idle_import_source_binding')
     _need(any(row.get('module') == 'ipfs_accelerate_py.agent_implementation_route' and
-              {key: row.get(key) for key in ('path', 'bytes', 'sha256')} == route for row in _origins(origins, profile)),
+              {key: row.get(key) for key in ('path', 'bytes', 'sha256')} == route for row in _origins(origins, profile, historical_source_witness=historical_source_witness)),
           'embedded_idle_import_route_origin_missing')
 
     binding = command['observation_binding']
@@ -360,7 +810,7 @@ def _embedded_idle_result(result, request, plan, origins, profile, native):
           request.get('source_sha256', {}).get(source['path']) == source['sha256'] and
           type(command['source_sha256']) is dict and
           command['source_sha256'].get(source['path']) == source['sha256'], 'embedded_idle_observer_source')
-    rows = _origins(origins, profile)
+    rows = _origins(origins, profile, historical_source_witness=historical_source_witness)
     _need(any(row.get('module') == 'ipfs_accelerate_py.agent_supervisor.todo_daemon.native_owner_bootstrap'
               and {key: row.get(key) for key in ('path', 'bytes', 'sha256')} == source for row in rows),
           'embedded_idle_observer_origin_missing')
@@ -399,7 +849,7 @@ def _embedded_idle_result(result, request, plan, origins, profile, native):
               row == expected[row['task_cid']] for row in tasks)
           and len({row['task_cid'] for row in tasks}) == len(tasks), 'embedded_idle_catalogue_tasks_changed')
 
-def _cycle(cycle_ref, profile, identity, native, *, now, monotonic_ns):
+def _cycle(cycle_ref, profile, identity, native, *, now, monotonic_ns, historical_source_witness=None):
     _within(cycle_ref, profile['proof_root'])
     proof = _document(cycle_ref)
     _keys(proof, CYCLE_KEYS, 'cycle_link_shape')
@@ -447,7 +897,20 @@ def _cycle(cycle_ref, profile, identity, native, *, now, monotonic_ns):
     expected = [request['argv'][0], '-B', profile['driver_source']['path'], '--plan', proof['plan_ref']['path'], '--plan-sha256', proof['plan_ref']['sha256']]
     _need(request.get('argv') == expected and request.get('source_sha256', {}).get(profile['driver_source']['path']) == profile['driver_source']['sha256'], 'original_driver_source_or_argv_changed')
     _need(plan.get('native_metadata_cli', {}).get('result_path') == proof['result_ref']['path'], 'original_result_path_not_bound')
-    _origins(origins, profile)
+    _origins(origins, profile, historical_source_witness=historical_source_witness)
+    physical_evidence = None
+    if plan.get('native_metadata_cli', {}).get('schema') == _PHYSICAL_R_CLI:
+        _need(proof['kind'] == 'genuine_scoped_idle'
+              and result.get('schema') == 'native-embedded-daemon-observation@1',
+              'physical_readonly_observer_scope_required')
+        physical_evidence = _physical_source_evidence(
+            terminal.get('physical_source_evidence'), request, plan, profile,
+            request_ref=proof['request_ref'], plan_ref=proof['plan_ref'],
+            origins_ref=proof['origins_ref'], terminal=terminal,
+            historical_source_witness=historical_source_witness)
+    else:
+        _need(terminal.get('physical_source_evidence') is None,
+              'physical_legacy_terminal_evidence_forbidden')
     cycle_native_value, cycle_native = _linked_native(proof['native_diagnostic_ref'], profile, now=now)
     _need(cycle_native['event_cursor'] <= native['event_cursor'], 'native_event_cursor_regressed')
     _need(_number(cycle_native_value.get('checked_at_epoch')) and proof['started_at'] <= cycle_native_value['checked_at_epoch'] <= proof['finished_at'], 'native_cycle_report_not_current')
@@ -463,7 +926,12 @@ def _cycle(cycle_ref, profile, identity, native, *, now, monotonic_ns):
     else:
         _need(plan.get('task_scope') == profile['task_scope'], 'original_idle_task_scope_changed')
         if result.get('schema') == 'native-embedded-daemon-observation@1':
-            _embedded_idle_result(result, request, plan, origins, profile, cycle_native_value)
+            if physical_evidence is None:
+                _embedded_idle_result(result, request, plan, origins, profile, cycle_native_value, historical_source_witness=historical_source_witness)
+            else:
+                _embedded_idle_result(result, request, plan, origins, profile, cycle_native_value,
+                    historical_source_witness=historical_source_witness,
+                    physical_source_evidence=physical_evidence)
         else:
             _keys(result, {'schema', 'ready_task_count', 'selection_idle_reason', 'unchanged', 'write_count', 'provider_dispatched', 'attempt_consumed', 'completion_authority'}, 'original_idle_result_shape')
             _need(result['schema'] == 'native-typed-daemon-observation@1', 'original_idle_result_schema')
@@ -472,32 +940,282 @@ def _cycle(cycle_ref, profile, identity, native, *, now, monotonic_ns):
         _need(all(tasks[c]['status'] in ('blocked', 'completed', 'complete', 'done', 'skipped') for c in profile['task_scope']), 'scoped_idle_has_runnable_work')
     return proof
 
-def _receipt(ref, profile_ref, profile, native, identity, *, now, monotonic_ns):
+SOURCE_LEASE_RECOVERY_SCHEMA = 'agent-supervisor/scientific-source-lease-prestart-recovery@1'
+SOURCE_LEASE_RECOVERY_ENV = 'IPFS_SCIENTIFIC_SOURCE_LEASE_RECOVERY_SHA256'
+SOURCE_LEASE_RECOVERY_KEYS = frozenset({'schema','authorization','incident','prior_profile_ref',
+    'successor_profile_ref','prior_config_ref','successor_config_ref','generation_authorization_ref',
+    'generation_ack_ref','history_ref','independent_audit_ref','hold_ref','cycle_hold_ref','intent_ref',
+    'request_ref','owner_stdout_ref','owner_stderr_ref','last_health_receipt_ref','last_closed_cycle_ref',
+    'prior_main_identity','manager_before','current_boot_id','owner_currently_absent','recorded_at','source_successor_ref'})
+PROFILE_TRANSITION_RECEIPT_SCHEMA = 'agent-supervisor/native-executor-main-loop-health-profile-transition@1'
+SOURCE_LEASE_OWNER_SHA = 'e243cdf7b22a63f55e3c55101a2a7aeeee31492a98c8dbfe9f05b4d43b7fdc06'
+SOURCE_LEASE_MODULE_SHA = '42e9f07d0d458177079269d9f495f0b70512180c1adc2f7fe0bfdb05518a12f9'
+SOURCE_LEASE_MODULE_PATH = '/home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_source_lease.py'
+
+
+def classify_original_source_lease_deferral(profile_ref, request_ref, terminal, *, kind):
+    """Pure exact prestart predicate; never admission, closure or health authority.
+
+    Metadata/Git preparation may have happened. This proves only the pinned
+    owner's pre-control/native/storage/task-action failure point.
+    """
+    profile = _profile(profile_ref)
+    _need(kind == 'genuine_scoped_idle' and profile['owner_source']['sha256'] == SOURCE_LEASE_OWNER_SHA,
+          'source_lease_deferral_not_exact_idle_owner')
+    request = _document(request_ref)
+    _need(request.get('schema') == 'legal-ir-original-native-control-request/v1'
+          and request.get('purpose') == 'native_control_metadata'
+          and request.get('source_sha256', {}).get(profile['owner_source']['path']) == SOURCE_LEASE_OWNER_SHA,
+          'source_lease_deferral_request_source')
+    root = Path(SOURCE_LEASE_MODULE_PATH).parents[3]
+    _need(request.get('source_sha256',{}).get(SOURCE_LEASE_MODULE_PATH) == SOURCE_LEASE_MODULE_SHA
+          and request.get('source_roots') == [str(root),str(root.parent/'ipfs_accelerate')],
+          'source_lease_deferral_original_lease_source')
+    expected = {'schema':'legal-ir-original-native-control-terminal/v1','completed':False,
+        'child_launch_attempted':False,'child_reaped':False,'child_returncode':None,
+        'control_effects':'not_started','storage_status':'not_requested','original_native_compute_closed':True,
+        'source_READ_closed':True,'absolute_resource_operation_deadline_closed':True,
+        'cleanup_errors':[],'received_signals':[],'error_type':'SourceLeaseTimeout',
+        'error':'timed out waiting for admission source lease',
+        'task_completion_authority_granted_by_resource_owner':False,
+        'resource_profile':'original_orchestration_parented_disk_sampled_birth_bound_descendants',
+        'external_file_growth_enforcement':'polled_size_caps_and_original_conservative_precharge_not_sandbox',
+        'partial_or_failed_control_must_be_reconciled':True}
+    _need(type(terminal) is dict and set(terminal) == set(expected) | {
+          'request_sha256','owner_pid','owner_boot_id','elapsed_seconds'}
+          and all(type(terminal.get(k)) is type(v) and terminal.get(k) == v
+          for k,v in expected.items()), 'source_lease_deferral_not_proven_prestart')
+    _need(terminal.get('request_sha256') == request_ref['sha256']
+          and _integer(terminal.get('owner_pid'), 2) and _text(terminal.get('owner_boot_id'))
+          and _number(terminal.get('elapsed_seconds')) and 60 <= terminal['elapsed_seconds'] <= profile['max_cycle_seconds']
+          and not any(key in terminal for key in ('owner_birth','database_preimage_before_grants',
+              'reservation','execution_request','external_precharge','process_spawn_receipts')),
+          'source_lease_deferral_effect_or_source_point_unknown')
+    return dict(eligible=True, classification='known_prestart_idle_source_lease_timeout',
+                health_credit=False, native_or_storage_release_authority=False)
+
+
+def acknowledge_original_nonstarted_cycle(profile_ref, terminal_ref, request_ref, *, sequence, cycle_handle):
+    """Consume our genuine current Popen capability; publish no health/release."""
+    _need(threading.current_thread() is threading.main_thread(), 'producer_not_main_thread')
+    _need(type(cycle_handle) is _CycleHandle and cycle_handle in _CYCLES, 'original_cycle_capability_missing')
+    capability = _CYCLES[cycle_handle]; profile = _profile(profile_ref)
+    identity = _identity(profile_ref, profile, _manager, _process)
+    _need(Path(__file__).resolve() == Path(profile['health_module']['path'])
+          and _integer(sequence,1) and identity['pid'] == os.getpid() and capability['identity'] == identity
+          and capability['profile_ref'] == profile_ref and capability['request_ref'] == request_ref
+          and capability['sequence'] == sequence, 'negative_original_cycle_custody_changed')
+    process = capability['process']
+    _need(type(process) is subprocess.Popen, 'negative_requires_original_Popen_object')
+    # Genuine actual wait, never a returncode copied out of JSON.
+    code = process.wait(timeout=0)
+    _need(type(code) is int and code != 0 and process.returncode == code,
+          'negative_original_owner_wait_not_nonzero')
+    terminal = _document(terminal_ref)
+    classify_original_source_lease_deferral(profile_ref, request_ref, terminal, kind='genuine_scoped_idle')
+    original = capability['owner_observation']
+    _need(original['pid'] == terminal['owner_pid'] and original['boot_id'] == terminal['owner_boot_id']
+          and original['argv'] == [profile['unit']['argv'][0],'-B',profile['owner_source']['path'],
+              '--request',request_ref['path'],'--expected-request-sha256',request_ref['sha256']]
+          and original['ancestry'][-1]['pid'] == identity['pid'], 'negative_original_parent_request_source_changed')
+    _need(request_ref['sha256'] not in _USED_REQUESTS, 'original_request_replayed')
+    value = dict(schema='agent-supervisor/scientific-original-prestart-deferral@1',
+        profile_ref=profile_ref,request_ref=request_ref,terminal_ref=terminal_ref,sequence=sequence,
+        identity=identity,owner_observation=original,original_wait_returncode=code,
+        original_process_wait_completed=True,health_credit=False,completion_authority=False,
+        native_or_storage_release_authority=False,automatic_replay_permitted=False)
+    # Consume before any caller-side publication. An uncertain write cannot
+    # recreate this handle or retry the same request.
+    _USED_REQUESTS.add(request_ref['sha256']); del _CYCLES[cycle_handle]
+    return value
+
+
+def validate_source_profile_transition_value(grant, profile_ref, profile):
+    """One exact same-generation control-source transition, no native grant."""
+    _keys(grant, SOURCE_LEASE_RECOVERY_KEYS, 'source_recovery_shape')
+    _need(grant['schema'] == SOURCE_LEASE_RECOVERY_SCHEMA
+          and grant['authorization'] == 'one_exact_same_generation_source_lease_resume'
+          and grant['incident'] == 'cycle48-source-lease-timeout-v1'
+          and grant['successor_profile_ref'] == profile_ref, 'source_profile_transition_authority')
+    prior_ref = grant['prior_profile_ref']; prior = _profile(prior_ref)
+    old_sources={row['path']:row for row in prior['source_descriptors']}
+    new_sources={row['path']:row for row in profile['source_descriptors']}
+    _need(all(new_sources.get(path)==row for path,row in old_sources.items()),
+          'source_profile_transition_must_retain_all_original_pins')
+    for key in ('schema','catalogue','receipt_path','task_scope','max_age_seconds','max_cycle_seconds',
+                'proof_root','cycle_contract','owner_source','driver_source'):
+        _need(prior[key] == profile[key], 'source_profile_transition_scope_changed')
+    for key in ('name','interpreter','working_directory'):
+        _need(prior['unit'][key] == profile['unit'][key], 'source_profile_transition_unit_changed')
+    _need({k:v for k,v in prior['unit']['environment'].items() if k != 'PYTHONPATH'} ==
+          {k:v for k,v in profile['unit']['environment'].items() if k != 'PYTHONPATH'},
+          'source_profile_transition_environment_widened')
+    source = _document(grant['source_successor_ref'])
+    _keys(source, {'schema','prior_profile_ref','successor_profile_ref','producer_sources',
+                  'owner_environment','prior_unit_argv','successor_unit_argv'}, 'source_successor_shape')
+    _need(source['schema'] == 'agent-supervisor/scientific-producer-source-successor@1'
+          and source['prior_profile_ref'] == prior_ref and source['successor_profile_ref'] == profile_ref
+          and source['prior_unit_argv'] == prior['unit']['argv']
+          and source['successor_unit_argv'] == profile['unit']['argv']
+          and source['owner_environment'] == prior['unit']['environment'], 'source_successor_binding')
+    rows = source['producer_sources']; pins = {row['path']:row for row in profile['source_descriptors']}
+    _need(type(rows) is list and 2 <= len(rows) <= 4096
+          and all(type(row) is dict and pins.get(row.get('path')) == row for row in rows)
+          and profile['main_entrypoint'] in rows and profile['health_module'] in rows,
+          'source_successor_producer_population')
+    for row in rows:_bound_project_source(row, profile)
+    config = _document(grant['successor_config_ref']); previous_config = _document(grant['prior_config_ref'])
+    _need(all(config[key] == previous_config[key] for key in
+          ('schema','catalogue','idle_template_ref','execution_templates','poll_seconds','max_cycles','max_proof_bytes')),
+          'source_profile_transition_limits_or_templates_changed')
+    _need(config['max_cycles'] == 10000 and config['max_proof_bytes'] == 1073741824,
+          'source_profile_transition_original_finite_budget_changed')
+    return grant, prior_ref, prior
+
+
+def validate_source_profile_transition(reference, profile_ref, profile):
+    return validate_source_profile_transition_value(_document(reference),profile_ref,profile)
+
+
+def _source_transition_previous_receipt(reference, old_ref, profile_ref, profile, native, identity, proof, *, now):
+    grant, prior_ref, prior = validate_source_profile_transition(reference, profile_ref, profile)
+    flag='--known-source-lease-recovery'; argv=profile['unit']['argv']
+    _need(os.environ.get(SOURCE_LEASE_RECOVERY_ENV) == reference['sha256']
+          and argv.count(flag)==1 and argv[argv.index(flag)+1]==reference['path'],
+          'source_transition_not_original_unit_pinned')
+    _need(old_ref == grant['last_health_receipt_ref'], 'source_transition_prior_receipt_changed')
+    old = _document(old_ref)
+    _need(old['profile_ref'] == prior_ref and old['sequence'] == 34
+          and old['identity'] == grant['prior_main_identity'], 'source_transition_prior_epoch_changed')
+    old_proof = _document(old['cycle_proof_ref'])
+    old_native,_ = _linked_native(old_proof['native_diagnostic_ref'],prior,now=old['observed_at'])
+    _, old_proof = _receipt(old_ref, prior_ref, prior, old_native, old['identity'],
+        now=old['observed_at'], monotonic_ns=old['observed_monotonic_ns'])
+    _need(old['cycle_proof_ref'] == grant['last_closed_cycle_ref'] and proof['sequence'] == 1
+          and identity['invocation_id'] != old['identity']['invocation_id']
+          and _definitely_dead_identity(old['identity'], identity)
+          and proof['request_ref'] != old_proof['request_ref'], 'source_transition_new_cycle_not_fresh')
+    ack_path = Path(_document(grant['hold_ref'])['cycle_root']) / 'source-lease-reconciliation.json'
+    ack = _document(descriptor(ack_path))
+    _need(ack['schema'] == 'agent-supervisor/scientific-source-lease-reconciliation@1'
+          and ack['recovery_ref'] == reference and ack['consuming_main_identity'] == identity
+          and ack['health_credit'] is False and ack['spent_cycle_count'] == 48,
+          'source_transition_not_acknowledged_by_actual_Main')
+    archive = _epoch_archive_path(profile['receipt_path'], old_ref['sha256'])
+    _within(dict(path=str(archive)), profile['proof_root'])
+    return dict(previous_receipt_sha256=old_ref['sha256'],previous_ref=old_ref,
+        archive_path=str(archive),archive_raw=_bound(old_ref),profile_transition_ref=reference)
+
+
+def _verify_source_transition_receipt(receipt, profile_ref, profile):
+    reference = receipt['profile_transition_ref']
+    grant, prior_ref, prior = validate_source_profile_transition(reference, profile_ref, profile)
+    argv=profile['unit']['argv'];flag='--known-source-lease-recovery'
+    _need(argv.count(flag)==1 and argv[argv.index(flag)+1]==reference['path'],
+          'source_transition_receipt_not_unit_bound')
+    _need(receipt['sequence'] == 1 and receipt['previous_receipt_sha256'] == grant['last_health_receipt_ref']['sha256'],
+          'source_transition_receipt_boundary')
+    archive = _epoch_archive_path(profile['receipt_path'], receipt['previous_receipt_sha256'])
+    archived_ref = descriptor(archive); old = _document(archived_ref)
+    _need(archived_ref['bytes'] == grant['last_health_receipt_ref']['bytes']
+          and archived_ref['sha256'] == grant['last_health_receipt_ref']['sha256']
+          and old['profile_ref'] == prior_ref and old['identity'] == grant['prior_main_identity'],
+          'source_transition_archive_changed')
+    # Validate historical truth at its original clocks/profile/source paths.
+    old_proof = _document(old['cycle_proof_ref'])
+    old_native, _ = _linked_native(old_proof['native_diagnostic_ref'], prior, now=old['observed_at'])
+    _receipt(archived_ref, prior_ref, prior, old_native, old['identity'],
+        now=old['observed_at'], monotonic_ns=old['observed_monotonic_ns'])
+    ack_path=Path(_document(grant['hold_ref'])['cycle_root'])/'source-lease-reconciliation.json'
+    ack=_document(descriptor(ack_path))
+    _need(ack['recovery_ref']==reference and ack['consuming_main_identity']==receipt['identity']
+          and ack['health_credit'] is False and _definitely_dead_identity(old['identity'],receipt['identity']),
+          'source_transition_receipt_epoch_not_original')
+
+
+def _receipt(ref, profile_ref, profile, native, identity, *, now, monotonic_ns, historical_source_witness=None):
     receipt = _document(ref)
-    _keys(receipt, RECEIPT_KEYS, 'receipt_shape')
-    _need(receipt['schema'] == RECEIPT_SCHEMA and receipt['profile_ref'] == profile_ref and receipt['identity'] == identity, 'receipt_process_or_profile_changed')
+    transition_receipt = receipt.get('schema') == PROFILE_TRANSITION_RECEIPT_SCHEMA
+    _keys(receipt, RECEIPT_KEYS | {'profile_transition_ref'} if transition_receipt else RECEIPT_KEYS, 'receipt_shape')
+    _need(receipt['schema'] in (RECEIPT_SCHEMA, PROFILE_TRANSITION_RECEIPT_SCHEMA) and receipt['profile_ref'] == profile_ref and receipt['identity'] == identity, 'receipt_process_or_profile_changed')
     _need(_integer(receipt['sequence'], 1) and _number(receipt['observed_at']) and 0 <= now - receipt['observed_at'] <= profile['max_age_seconds'], 'receipt_stale_or_future')
     _need(_integer(receipt['observed_monotonic_ns'], 1) and 0 <= monotonic_ns - receipt['observed_monotonic_ns'] <= profile['max_age_seconds'] * 10**9, 'receipt_monotonic_stale_or_future')
     _keys(receipt['catalogue'], IDENTITY_KEYS | {'event_cursor', 'task_scope'}, 'receipt_catalogue_shape')
     expected = {k: native[k] for k in IDENTITY_KEYS}
     _need({k: receipt['catalogue'].get(k) for k in IDENTITY_KEYS} == expected and receipt['catalogue'].get('task_scope') == profile['task_scope'] and _integer(receipt['catalogue'].get('event_cursor')) and receipt['catalogue']['event_cursor'] <= native['event_cursor'], 'receipt_catalogue_or_scope_changed')
-    proof = _cycle(receipt['cycle_proof_ref'], profile, identity, native, now=now, monotonic_ns=monotonic_ns)
+    proof = _cycle(receipt['cycle_proof_ref'], profile, identity, native, now=now, monotonic_ns=monotonic_ns, historical_source_witness=historical_source_witness)
     cycle_native_value, cycle_native = _linked_native(proof['native_diagnostic_ref'], profile, now=now)
     _need(cycle_native['event_cursor'] <= receipt['catalogue']['event_cursor'], 'receipt_cycle_cursor_regressed')
     _need(receipt['previous_receipt_sha256'] is None or (type(receipt['previous_receipt_sha256']) is str and re.fullmatch('[0-9a-f]{64}', receipt['previous_receipt_sha256'])), 'receipt_previous_digest')
     _need(proof['sequence'] == receipt['sequence'] and proof['finished_monotonic_ns'] <= receipt['observed_monotonic_ns'] and proof['finished_at'] <= receipt['observed_at'], 'receipt_does_not_follow_cycle')
     if receipt['sequence'] == 1 and receipt['previous_receipt_sha256'] is not None:
-        archive = _epoch_archive_path(profile['receipt_path'], receipt['previous_receipt_sha256'])
-        archive_ref = descriptor(archive)
-        _need(archive_ref['sha256'] == receipt['previous_receipt_sha256'], 'previous_epoch_archive_digest_changed')
-        archived = _document(archive_ref)
-        _keys(archived, RECEIPT_KEYS, 'previous_epoch_archive_shape')
-        _stored_identity(archived['identity'], profile_ref, profile)
-        _need(archived['profile_ref'] == profile_ref and archived['identity']['invocation_id'] != identity['invocation_id'], 'previous_epoch_archive_binding_changed')
+        if transition_receipt:
+            _verify_source_transition_receipt(receipt, profile_ref, profile)
+        else:
+            archive = _epoch_archive_path(profile['receipt_path'], receipt['previous_receipt_sha256'])
+            archive_ref = descriptor(archive)
+            _need(archive_ref['sha256'] == receipt['previous_receipt_sha256'], 'previous_epoch_archive_digest_changed')
+            archived = _document(archive_ref)
+            _keys(archived, RECEIPT_KEYS, 'previous_epoch_archive_shape')
+            _stored_identity(archived['identity'], profile_ref, profile)
+            _need(archived['profile_ref'] == profile_ref and archived['identity']['invocation_id'] != identity['invocation_id'], 'previous_epoch_archive_binding_changed')
+    _need(not transition_receipt or (receipt['sequence'] == 1 and receipt['previous_receipt_sha256'] is not None), 'source_transition_receipt_requires_first_sequence')
     sources = {p['path']: p for p in profile['source_descriptors']}
-    _need(type(receipt['origins']) is dict and 1 <= len(receipt['origins']) <= 4096 and all(type(pin) is dict and sources.get(pin.get('path')) == pin and pin['path'] != profile['unit']['interpreter'] for pin in receipt['origins'].values()), 'producer_import_origins_unbound')
+    _need(type(receipt['origins']) is dict and 1 <= len(receipt['origins']) <= 4096,
+          'producer_import_origins_unbound')
+    for pin in receipt['origins'].values():
+        _project_origin_descriptor(pin, 'producer_import_origin_descriptor', maximum=(MAX_INSTALLED_TOOL
+            if type(pin) is dict and pin.get('path') == profile['unit']['interpreter'] else MAX_SOURCE))
+        _need(sources.get(pin['path']) == pin and pin['path'] != profile['unit']['interpreter'],
+              'producer_import_origins_unbound')
     _need(receipt['origins'].get('__main__') == profile['main_entrypoint'] and profile['health_module'] in receipt['origins'].values(), 'producer_entrypoint_or_health_origin_missing')
     return receipt, proof
+
+def _historical_evidence_context(profile_ref, witness):
+    record = _historical_source_record(witness, check_inputs=True)
+    _bound(profile_ref)
+    _need(_encoded(profile_ref) == _encoded(record['profile_ref']), 'historical_source_witness_profile_changed')
+    return record, record['profile']
+
+
+def _historical_evidence_result(record, profile_ref, proof_ref, *, receipt_ref=None):
+    result = dict(schema='agent-supervisor/historical-original-cycle-evidence@1',
+        historical_evidence_verified=True, verified=False, current_executor_verified=False,
+        dispatch_authority=False, completion_authority=False, runtime_activation_authority=False,
+        source_witness_ref=dict(record['reference']), profile_ref=dict(profile_ref),
+        cycle_proof_ref=dict(proof_ref), source_scope='all_declared_sources_with_explicit_archived_project_exceptions',
+        all_declared_historical_source_bytes_authenticated=True,
+        all_declared_historical_source_bodies_reconstructed=False,
+        new_kernel_or_native_execution_performed=False)
+    if receipt_ref is not None:
+        result['receipt_ref'] = dict(receipt_ref)
+    return result
+
+
+def verify_historical_cycle(profile_ref, cycle_proof_ref, identity, *, source_witness):
+    """Validate an old closed cycle at its recorded clock, never current health."""
+    record, profile = _historical_evidence_context(profile_ref, source_witness)
+    _stored_identity(identity, profile_ref, profile)
+    proof = _document(cycle_proof_ref)
+    _, native = _linked_native(proof['native_diagnostic_ref'], profile, now=proof['finished_at'])
+    _cycle(cycle_proof_ref, profile, identity, native, now=proof['finished_at'],
+           monotonic_ns=proof['finished_monotonic_ns'], historical_source_witness=source_witness)
+    _historical_source_record(source_witness, profile, check_inputs=True)
+    return _historical_evidence_result(record, profile_ref, cycle_proof_ref)
+
+
+def verify_historical_receipt(profile_ref, receipt_ref, identity, *, source_witness):
+    """Validate the historical receipt/cycle join without republishing anything."""
+    record, profile = _historical_evidence_context(profile_ref, source_witness)
+    _stored_identity(identity, profile_ref, profile)
+    receipt = _document(receipt_ref); proof = _document(receipt['cycle_proof_ref'])
+    _, native = _linked_native(proof['native_diagnostic_ref'], profile, now=receipt['observed_at'])
+    _receipt(receipt_ref, profile_ref, profile, native, identity,
+             now=receipt['observed_at'], monotonic_ns=receipt['observed_monotonic_ns'],
+             historical_source_witness=source_witness)
+    _historical_source_record(source_witness, profile, check_inputs=True)
+    return _historical_evidence_result(record, profile_ref, receipt['cycle_proof_ref'], receipt_ref=receipt_ref)
+
 
 def verify_bound_executor(profile_ref, native_diagnostic, *, now=None, manager_reader=None, process_reader=None):
     """Independently verify current process, all source pins and original closure."""
@@ -599,7 +1317,7 @@ def _epoch_archive_path(receipt_path, digest):
     path = Path(receipt_path)
     return path.with_name(path.name + '.previous-' + digest + '.json')
 
-def _previous_receipt_transition(profile_ref, profile, native, identity, proof, *, now, monotonic_ns):
+def _previous_receipt_transition(profile_ref, profile, native, identity, proof, *, now, monotonic_ns, profile_transition_ref=None):
     """Validate the prior epoch at its own clocks; this function never writes."""
     _need(_integer(proof.get('sequence'), 1), 'cycle_sequence')
     path = _path(profile['receipt_path'])
@@ -610,7 +1328,10 @@ def _previous_receipt_transition(profile_ref, profile, native, identity, proof, 
     old_ref = descriptor(path)
     raw = _bound(old_ref)
     old = _decode(raw)
-    _keys(old, RECEIPT_KEYS, 'previous_receipt_shape')
+    if profile_transition_ref is not None and old.get('profile_ref') != profile_ref:
+        return _source_transition_previous_receipt(profile_transition_ref, old_ref, profile_ref,
+            profile, native, identity, proof, now=now)
+    _keys(old, RECEIPT_KEYS | {'profile_transition_ref'} if old.get('schema') == PROFILE_TRANSITION_RECEIPT_SCHEMA else RECEIPT_KEYS, 'previous_receipt_shape')
     _stored_identity(old['identity'], profile_ref, profile)
     _need(_number(old['observed_at']) and old['observed_at'] <= now and _integer(old['observed_monotonic_ns'], 1), 'previous_receipt_clock')
     previous, old_proof = _receipt(old_ref, profile_ref, profile, native, old['identity'], now=old['observed_at'], monotonic_ns=old['observed_monotonic_ns'])
@@ -661,7 +1382,7 @@ def _archive_previous_receipt(path, raw):
     _need(_raw(path) == raw, 'previous_archive_postimage_changed')
     return descriptor(path)
 
-def publish_after_native_cycle(profile_ref, cycle_proof_ref, native_diagnostic, *, sequence, cycle_handle):
+def publish_after_native_cycle(profile_ref, cycle_proof_ref, native_diagnostic, *, sequence, cycle_handle, profile_transition_ref=None):
     """Call synchronously from the unit MainPID after genuine original closure.
 
     NativeOwnerHeartbeat remains advisory background owner-read liveness. It
@@ -683,7 +1404,7 @@ def publish_after_native_cycle(profile_ref, cycle_proof_ref, native_diagnostic, 
     _need(not _same_birth(capability['owner_observation']['pid'], capability['owner_observation']['birth_ticks']), 'original_owner_not_reaped')
     _need(proof['request_ref']['sha256'] not in _USED_REQUESTS, 'original_request_replayed')
     path = _path(profile['receipt_path'])
-    transition = _previous_receipt_transition(profile_ref, profile, native, identity, proof, now=now, monotonic_ns=mono)
+    transition = _previous_receipt_transition(profile_ref, profile, native, identity, proof, now=now, monotonic_ns=mono, profile_transition_ref=profile_transition_ref)
     previous_sha = transition['previous_receipt_sha256']
     sources = {p['path']: p for p in profile['source_descriptors']}
     origins = {}
@@ -697,6 +1418,9 @@ def publish_after_native_cycle(profile_ref, cycle_proof_ref, native_diagnostic, 
         origins[name] = pin
     _need(origins.get('__main__') == profile['main_entrypoint'] and profile['health_module'] in origins.values(), 'producer_main_origin_unbound')
     receipt = dict(schema=RECEIPT_SCHEMA, profile_ref=profile_ref, sequence=sequence, identity=identity, observed_at=now, observed_monotonic_ns=mono, cycle_proof_ref=cycle_proof_ref, catalogue=native, origins=origins, previous_receipt_sha256=previous_sha)
+    if transition.get('profile_transition_ref') is not None:
+        receipt['schema'] = PROFILE_TRANSITION_RECEIPT_SCHEMA
+        receipt['profile_transition_ref'] = transition['profile_transition_ref']
     parent = path.parent
     info = parent.lstat()
     _need(stat.S_ISDIR(info.st_mode) and info.st_uid == os.geteuid() and stat.S_IMODE(info.st_mode) == 0o700, 'receipt_parent_not_private')

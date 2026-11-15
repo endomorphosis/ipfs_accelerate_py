@@ -1,0 +1,78 @@
+{
+  "billing_total_verified": false,
+  "causal_token_savings_established": false,
+  "first_final_usage_observed": true,
+  "first_stream_untainted": true,
+  "full_usage_completeness_established": false,
+  "native_supervisor_seconds": 461.31504030898213,
+  "native_usage_completeness_observed": null,
+  "observed_usage": {
+    "cache_write_input_tokens": 0,
+    "cached_input_tokens": 197248,
+    "input_tokens": 102333,
+    "output_tokens": 11103,
+    "reasoning_output_tokens": 9270,
+    "total_tokens": 310684
+  },
+  "official_reward": 0.0,
+  "planning_model_calls_reported": 0,
+  "planning_seconds": 4.391944996081293,
+  "public_round_outcomes": [
+    {
+      "actual_returncode": 1,
+      "checks": [
+        {
+          "reason": "obligations_satisfied",
+          "status": "passed",
+          "validation_key": "public-structural-smoke"
+        },
+        {
+          "reason": "obligations_satisfied",
+          "status": "passed",
+          "validation_key": "public-eigenpair-behavior"
+        },
+        {
+          "reason": "timing_unstable",
+          "status": "inconclusive",
+          "validation_key": "public-eigenvalue-performance"
+        }
+      ],
+      "round_number": 1,
+      "status": "inconclusive"
+    },
+    {
+      "actual_returncode": 0,
+      "checks": [
+        {
+          "reason": "obligations_satisfied",
+          "status": "passed",
+          "validation_key": "public-structural-smoke"
+        },
+        {
+          "reason": "obligations_satisfied",
+          "status": "passed",
+          "validation_key": "public-eigenpair-behavior"
+        },
+        {
+          "reason": "timing_unstable",
+          "status": "inconclusive",
+          "validation_key": "public-eigenvalue-performance"
+        }
+      ],
+      "round_number": 2,
+      "status": "inconclusive"
+    }
+  ],
+  "runtime_commit": "9d6ef76c8e2bb6916b68cad3563c6ec530b32736",
+  "same_workspace_generation_across_rounds": true,
+  "schema": "grok-coding-route-live-outcome@1",
+  "second_native_cli": {
+    "exit_code": 0,
+    "num_turns": 1,
+    "stop_reason": "end_turn"
+  },
+  "second_provider_status": "provider_returned",
+  "services_changed": [],
+  "source_readout_sha256": "5e03e1499ba1ffd8cd42a313ae338af4d6ba8ebffbcb3bb5645aeca513777952",
+  "task_completed_reported": false
+}

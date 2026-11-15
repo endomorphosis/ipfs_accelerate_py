@@ -1,0 +1,25 @@
+{
+  "artifact_source_sha256": {
+    "closed_export.py": "74a4e0ba9534b7d8069c7c1dcd845bf10de262017ce7504cb544ad1867c7579d",
+    "run.py": "252d0ab759e5e779ac40a059a22086962f765f7c306d68f5f2c1abe98c7e8edc",
+    "test_closed_export.py": "8c33ea4746116de7dddab2f6a3d8b11f8109611771d99c02faf974569459bf4a",
+    "test_run.py": "08d1ebfcae4462fd876ead4c6eecbe5dce11cc77df23f6f52e3b4d8aac4ff55b"
+  },
+  "head": "2e6aaecb50f8376a7f3ef33c4e8a1f2c93c79b77",
+  "selected_production_source_sha256": {
+    "benchmarks/agent_supervisor/container_coding/container_worker_deployment.py": "c42ec3ec9e90b5383473c56831678b16169ac043585ea6d1a94f79611ee1ca7a",
+    "benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py": "a536c932da23556898b69d15162fe471584e980b6f768189aa60bceef1729cc5",
+    "benchmarks/agent_supervisor/container_coding/terminal_live_metadata_census.py": "a3fde9af38c1301fc50e2c623931fff8b73d56ae3e5d8ca18e46fa8ed046f6de",
+    "benchmarks/agent_supervisor/container_coding/terminal_semantic_working_set_policy.py": "a3ce1df53dcdea483ec017cca893e7fd8fe2a59fd08aa87c70b4bb54d44e29ab",
+    "benchmarks/agent_supervisor/container_coding/terminal_working_set_census.py": "bcd1e08214ed2268b3cc3172aa2d4330a7eb81eb1d43c01efe1cfbb49793f94d",
+    "benchmarks/agent_supervisor/container_coding/terminal_working_set_census_observation.py": "1d38f1b0033fea475126f8cfe10e1f7e345f9ace8bae47c2d90f50439a205497",
+    "ipfs_accelerate_py/agent_supervisor/context/context_compiler.py": "a8928c0e227dcbb0f7b31f877713c0fdeeb37699d110404cfc638ac4a1995b90",
+    "ipfs_accelerate_py/agent_supervisor/context/context_contracts.py": "eb814d83b29b3d92360e8ea98443b60e7e8967ed13046b94885241d9ec03450e",
+    "ipfs_accelerate_py/agent_supervisor/runtime/inline_evidence_projection.py": "996b23429b5b0264afe467ccdd1f25cb65f99416e52adc90ad8e2c0bcf15cff4",
+    "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py": "6b8085d141a7b91e612ae5334a04eb9c8bfce6a08101edb920f6632a377bf67c",
+    "ipfs_accelerate_py/agent_supervisor/runtime/semantic_pack_census.py": "310ed69e1c15d4e24c293ae1d79c010af4269ab339c421d18fe9e6806f13064d",
+    "ipfs_accelerate_py/agent_supervisor/runtime/semantic_router_translation.py": "c6b080eaa9f75af5994f9ef642a91aad9b89f42457763fa7b1a4908972623c1d",
+    "ipfs_accelerate_py/agent_supervisor/runtime/semantic_working_set.py": "28e386246430a6ee46152d3ef3b2bb755fcccc6ce6653b7fb91aab8de6354c29",
+    "ipfs_accelerate_py/agent_supervisor/runtime/semantic_working_set_census.py": "450d112d5886bd205382f051a523c4f59930a9c6aa226cc011486a419b544234"
+  }
+}

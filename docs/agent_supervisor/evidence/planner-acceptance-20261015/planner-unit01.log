@@ -1,0 +1,12 @@
+.F...........................                                            [100%]
+=================================== FAILURES ===================================
+_ test_single_task_preserves_multiple_acceptance_criteria_with_independent_bound[256] _
+test/api/test_agent_supervisor_prompt_goal_planner.py:252: in test_single_task_preserves_multiple_acceptance_criteria_with_independent_bound
+    assert tuple(row.criterion_key for row in result.graph.goals[0].acceptance) == expected
+E   AssertionError: assert ('criterion:8...rion:75', ...) == ('criterion:0...erion:5', ...)
+E     
+E     At index 0 diff: 'criterion:88' != 'criterion:0'
+E     Use -v to get more diff
+=========================== short test summary info ============================
+FAILED test/api/test_agent_supervisor_prompt_goal_planner.py::test_single_task_preserves_multiple_acceptance_criteria_with_independent_bound[256]
+1 failed, 28 passed in 14.99s

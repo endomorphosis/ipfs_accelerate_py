@@ -1,0 +1,129 @@
+{
+  "all_native_source_reads_measured": false,
+  "model_input_and_transport_difference_not_attributed_entirely_to_wrappers": true,
+  "nested_rows_overlap_do_not_sum_all_rows": true,
+  "observed_tokens": null,
+  "qualification": {
+    "bytes": 1822,
+    "path": "/home/barberb/lift_coding/artifacts/grok-cap-end-20261015/census-reader/qualification.json",
+    "sha256": "2362310a745bdde79028c46ae4e1db487f4745ac0359ca3c4fcea79326047b32"
+  },
+  "raw_content_exported": false,
+  "readout": {
+    "bytes": 8387,
+    "path": "/home/barberb/lift_coding/artifacts/grok-cap-end-20261015/census-reader/declared-T-readout.json",
+    "sha256": "fe5227c6b5853a32a4d7a77ba8eebd6d860b7086c74d4e9f0f1282d85b4dccf0"
+  },
+  "rows": [
+    {
+      "component": "native_prompt",
+      "parent": null,
+      "scope": "whole native envelope before semantic translation",
+      "utf8_bytes": 67378
+    },
+    {
+      "component": "native_evidence",
+      "parent": "native_prompt",
+      "scope": "array value; nested within native envelope",
+      "utf8_bytes": 58932
+    },
+    {
+      "component": "native_semantic_rows",
+      "parent": "native_evidence",
+      "scope": "six chunked evidence rows, not six capsules",
+      "utf8_bytes": 36825
+    },
+    {
+      "component": "native_formalization_rows",
+      "parent": "native_evidence",
+      "scope": "formalization evidence row total",
+      "utf8_bytes": 6950
+    },
+    {
+      "component": "native_other_rows",
+      "parent": "native_evidence",
+      "scope": "other evidence row total; world/retrieval not individually separable",
+      "utf8_bytes": 15146
+    },
+    {
+      "component": "native_evidence_punctuation",
+      "parent": "native_evidence",
+      "scope": "array punctuation; three row totals plus this equal58932",
+      "utf8_bytes": 11
+    },
+    {
+      "component": "translated_transport",
+      "parent": null,
+      "scope": "whole semantic-translated input before downstream additions",
+      "utf8_bytes": 60826
+    },
+    {
+      "component": "remaining_native_context",
+      "parent": "translated_transport",
+      "scope": "object value; retains nonsemantic evidence",
+      "utf8_bytes": 30547
+    },
+    {
+      "component": "remaining_evidence",
+      "parent": "remaining_native_context",
+      "scope": "array value; nested within remaining native context",
+      "utf8_bytes": 22101
+    },
+    {
+      "component": "translated_semantic",
+      "parent": "translated_transport",
+      "scope": "object value; nested within transport",
+      "utf8_bytes": 28751
+    },
+    {
+      "component": "capsules",
+      "parent": "translated_semantic",
+      "scope": "value bytes only",
+      "utf8_bytes": 6395
+    },
+    {
+      "component": "admissions",
+      "parent": "translated_semantic",
+      "scope": "value bytes only",
+      "utf8_bytes": 1155
+    },
+    {
+      "component": "raw_sources",
+      "parent": "translated_semantic",
+      "scope": "value bytes only; content not exported",
+      "utf8_bytes": 9977
+    },
+    {
+      "component": "manifest",
+      "parent": "translated_semantic",
+      "scope": "value bytes only",
+      "utf8_bytes": 878
+    },
+    {
+      "component": "other_semantic_fields",
+      "parent": "translated_semantic",
+      "scope": "15 field values; content not exported",
+      "utf8_bytes": 10028
+    },
+    {
+      "component": "semantic_keys_colons_and_punctuation",
+      "parent": "translated_semantic",
+      "scope": "7550+9977+878+10028+318=28751",
+      "utf8_bytes": 318
+    },
+    {
+      "component": "first_complete_model_prompt",
+      "parent": null,
+      "scope": "complete final router model input",
+      "utf8_bytes": 67380
+    },
+    {
+      "component": "candidate_complete_model_prompt",
+      "parent": null,
+      "scope": "from qualified baseline reader; candidate census absent",
+      "utf8_bytes": 91841
+    }
+  ],
+  "schema": "closed-semantic-size-table@1",
+  "value_rows_omit_member_keys_unless_noted": true
+}

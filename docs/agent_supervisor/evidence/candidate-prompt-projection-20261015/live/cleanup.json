@@ -1,0 +1,13 @@
+{
+  "benchmark_artifacts_preserved": true,
+  "collect_result_sha256": "865e17b7b6b02fe2f159e11f08479f3af6034d4c6d84bcd1254cb1d5edc22ecb",
+  "container_cleanup_observed": true,
+  "container_name": "largest-eigenval__jb4no2q__env-main-1",
+  "execute_result_sha256": "19e890bba2694a8e23ccfccd536ff725c7c722bdb1af6d97654d29873c5b1d3c",
+  "observed_at": "2026-10-15T03:22:22.790770+00:00",
+  "remaining_container_ids": [],
+  "removed_container_ids": [],
+  "schema": "candidate-projection-trial-cleanup@1",
+  "services_changed": [],
+  "trial": "largest-eigenval__jb4no2Q"
+}

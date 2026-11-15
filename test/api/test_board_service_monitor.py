@@ -1,5 +1,6 @@
 """External monitor failure injection without importing the supervisor package."""
 import importlib.util
+import dataclasses
 import hashlib
 import json
 import os
@@ -996,19 +997,28 @@ def test_checkpoint_failure_never_defaults_to_empty_quiescence(config,kind):
 @pytest.mark.parametrize("leader",[True,False])
 def test_actual_parent_recovery_publishes_fresh_guard_for_leader_and_nonleader(config,monkeypatch,leader):
     owner,checkpoint=checkpoint_owner(config)
+    owner.config.max_restarts=16
+    owner.restart_count=0
+    loop_limits=[]
+    FixtureLoopConfig=dataclasses.make_dataclass("FixtureLoopConfig", [("max_restarts", int)])
+    monkeypatch.setitem(_native_globals,"replace",dataclasses.replace)
     write_json(config["status_path"],dict(active_worker_count=9,active_worker_pids=[456],worker_descendant_count=9,worker_phase="old-finished-work"))
     owner.ensure_event_log_file=lambda:None;owner.ensure_managed_daemon_pid_file=lambda:None
     owner._is_board_maintenance_leader=lambda:leader;owner.repair_main_checkout_merge_state=lambda:None
     owner.run_once=lambda **kwargs:{};owner._record_event=lambda *args:None
     result=types.SimpleNamespace(status="max_restarts_reached",restart_count=8,last_exit_code=1,last_recycle_reason="launch_failed",last_run_id="failed-8",last_log_path="none")
-    owner.shared_supervisor_loop_class=lambda *args,**kwargs:types.SimpleNamespace(run=lambda:result)
-    owner.build_supervisor_loop_config=lambda:None;owner._supervisor_loop_watchdog_decision=lambda *args:None
+    def shared_loop(loop_config, **kwargs):
+        loop_limits.append(loop_config.max_restarts)
+        return types.SimpleNamespace(run=lambda:result)
+    owner.shared_supervisor_loop_class=shared_loop
+    owner.build_supervisor_loop_config=lambda:FixtureLoopConfig(max_restarts=16);owner._supervisor_loop_watchdog_decision=lambda *args:None
     owner._publish_unavailable_child_recovery=types.MethodType(_native_publish,owner)
     owner._supervisor_loop_recovery_delay_seconds=lambda:20
     monkeypatch.setitem(_native_globals,"RECOVERABLE_SUPERVISOR_LOOP_STATUSES",{"max_restarts_reached"})
     monkeypatch.setitem(_native_globals,"CONTROL_PLANE_RELOAD_STATUS","other")
     monkeypatch.setitem(_native_globals,"time",types.SimpleNamespace(monotonic=lambda:MONOTONIC,sleep=lambda _:(_ for _ in ()).throw(RuntimeError("one-cycle-complete"))))
     with pytest.raises(RuntimeError,match="one-cycle-complete"):_native_parent_loop(owner)
+    assert loop_limits==[16] and owner.restart_count==8
     status=json.loads(Path(config["status_path"]).read_text())
     assert status["status"]=="native_child_recovery" and status["unavailable_child_recovery"]["safe"] is True
     assert status["active_worker_count"]==status["worker_descendant_count"]==0 and status["active_worker_pids"]==[] and status["worker_phase"]==""

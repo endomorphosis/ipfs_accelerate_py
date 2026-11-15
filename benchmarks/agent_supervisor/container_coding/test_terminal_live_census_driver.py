@@ -14,6 +14,7 @@ import json
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
 import sys
+import tempfile
 
 import pytest
 
@@ -390,11 +391,15 @@ def _worker_parser_and_route(argv):
                  "argparse": SimpleNamespace(ArgumentParser=AuthoredArgumentParser), "pathlib": __import__("pathlib"),
                  "sys": fake_sys, "selected_provider": "codex_cli", "artifact": Path("/authored/boundary.json"),
                  "digest": "4" * 64}
-    try:
-        exec(compile(module, "<shipped-worker-routing>", "exec"), namespace)
-    except SystemExit as error:
-        return error.code, events
-    pytest.fail("shipped worker route must terminate")
+    # The full entry initializes this deployment root before the parser suffix.
+    # Give the authored suffix an empty owned directory for pruning discovery.
+    with tempfile.TemporaryDirectory() as deployment_root:
+        namespace["root"] = Path(deployment_root)
+        try:
+            exec(compile(module, "<shipped-worker-routing>", "exec"), namespace)
+        except SystemExit as error:
+            return error.code, events
+        pytest.fail("shipped worker route must terminate")
 
 
 def _worker_census_argv(mode="common-bindings@1"):
