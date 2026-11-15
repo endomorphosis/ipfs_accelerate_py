@@ -1,0 +1,589 @@
+{
+  "Git_Source_Native_or_runtime_actions": false,
+  "activation_or_source_generation_authority": false,
+  "added_owner_definitions": [
+    "_source_generation_current_qualification_profile",
+    "_source_generation_delegated_source_binding"
+  ],
+  "added_owning_definitions": [
+    "_source_generation_copy_package_v2",
+    "immutable_parent_source_generation_SDK_control_package_v2_DATA",
+    "immutable_parent_source_generation_A_qualification_package_v2_DATA",
+    "complete_parent_source_generation_DATA",
+    "_source_generation_immutable_mode_DATA",
+    "immutable_parent_source_generation_qualification_DATA",
+    "test_source_generation_current_profile_has_three_distinct_explicit_contracts",
+    "test_source_generation_current_profile_refuses_crossed_versions",
+    "test_source_generation_parent_profile_cannot_relabel_an_old_policy",
+    "delegated_source_generation_join_DATA",
+    "test_source_generation_parent_join_keeps_physical_code_and_canonical_locks_distinct",
+    "test_source_generation_parent_join_refuses_each_crossed_attestation_field",
+    "test_source_generation_parent_join_refuses_unbound_roots_identity_and_child_custody",
+    "test_source_generation_legacy_profiles_cannot_accept_parent_policy",
+    "test_source_generation_parent_profile_reaches_complete_existing_SDK_metadata_reader",
+    "test_source_generation_parent_profile_rejects_same_byte_other_R_role_identity"
+  ],
+  "all_existing_test_body_ASTs_preserved": true,
+  "all_other_existing_owning_ASTs_preserved": true,
+  "baseline": "Audited Source6 Main owner plus prospective exact new-legacy-fixture Source1 correction; fresh actual Source1 full9 readback is required before adoption",
+  "canonical_writes": false,
+  "changed_existing_owner_definitions": [
+    "_source_generation_qualification"
+  ],
+  "changed_existing_owning_definitions": [
+    "_source_generation_immutable_qualification_v5_DATA"
+  ],
+  "current_before_bytes_and_full9_unchanged_after_private_preparation": false,
+  "current_before_state": "Owner exact current Source6 bytes/full9; owning baseline is the sealed Source1 correction candidate, not yet an observed canonical postimage",
+  "donor": {
+    "owner": {
+      "bytes": 400533,
+      "path": "/tmp/legal-ir-phase2-reviewed-admission-source-20261108-v01/resource-census-compatible-port-v01/runtime-owner-v4-trainer-compatibility-v01/ordinary-immutable-source-parent-delegation-private-v01/Main-candidates/ipfs_accelerate_py/agent_supervisor/rescue/scientific_executor.py",
+      "sha256": "1d50457db29b26dee312b07058fef7c9b8c4dbee68f2c08763949318fd22cc1d"
+    },
+    "owning_test": {
+      "bytes": 134414,
+      "path": "/tmp/legal-ir-phase2-reviewed-admission-source-20261108-v01/resource-census-compatible-port-v01/runtime-owner-v4-trainer-compatibility-v01/ordinary-immutable-source-parent-delegation-private-v01/Main-candidates/tests/unit/agent_supervisor/test_scientific_closed_capacity_continuation.py",
+      "sha256": "ee82af8683faf0994ce854d2f90ba4841f086525276f71f9b4944df6595a1d5b"
+    },
+    "root": "/tmp/legal-ir-phase2-reviewed-admission-source-20261108-v01/resource-census-compatible-port-v01/runtime-owner-v4-trainer-compatibility-v01/ordinary-immutable-source-parent-delegation-private-v01/Main-candidates"
+  },
+  "historical768KiB_fixtures_and_default_immutable_fixture_ASTs_preserved": true,
+  "main_archival_v1_reader_template_transition_storage_policy_and_authorization_ASTs_preserved": true,
+  "new_legacy_fixture_correction": {
+    "Main94_failed_7e6501_and_original16MiB_retained": true,
+    "all_other_v04_candidate_ASTs_preserved": true,
+    "exact_added_line": "Path(row['before_ref']['path']).chmod(0o600)",
+    "manifest": {
+      "bytes": 2571,
+      "path": "/tmp/legal-ir-phase2-reviewed-admission-source-20261108-v01/resource-census-compatible-port-v01/runtime-owner-v4-trainer-compatibility-v01/ordinary-immutable-source-parent-delegation-private-v01/Main-current-preparation-legacy-fixture-correction-private-v01/private-new-legacy-fixture-permission-correction-manifest-v01.json",
+      "sha256": "26441d0690858d57dd006146784a5726c62434685f9bc543a1a1eb70d701144a"
+    },
+    "same_localized_fix_only": true,
+    "v04_files_unchanged": true
+  },
+  "opt_in_package": {
+    "actual_full_run_storage_measurement": false,
+    "aggregate_bytes_limit": 1048576,
+    "bank_bytes_limit": 524288,
+    "fixture_only": true,
+    "old_defaults_unchanged": true,
+    "original_run_storage_bytes": 16777216,
+    "populations": [
+      "sdk-control9",
+      "immutable-qualification12"
+    ],
+    "qualification_schema": "agent-supervisor/immutable-source-qualification@2",
+    "sidecar_bytes_limit": 16384,
+    "sidecar_outside_control_population": true
+  },
+  "package_v2_byte_model": {
+    "ASCII_basetemp_256_byte_envelope": [
+      {
+        "aggregate_raw_bytes": 843123,
+        "bank_raw_bytes": [
+          434431,
+          408692
+        ],
+        "max_source_path_ASCII_bytes": 369,
+        "oneMiB_aggregate_fit": true,
+        "original768KiB_fit": false,
+        "population": "sdk-control9",
+        "raw_files": 9,
+        "root_not_created": true,
+        "root_spelling_only": "/ttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttt/source-generation-immutable-parent-SDK-v2",
+        "rows": [
+          {
+            "bytes": 40208,
+            "path": "/ttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttt/source-generation-immutable-parent-SDK-v2/ipfs_accelerate_py/__init__.py",
+            "sha256": "5083369f823be18cd467346f6f3b955925ec65bedafe9eb28a61ca8897997c03"
+          },
+          {
+            "bytes": 188967,
+            "path": "/ttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttt/source-generation-immutable-parent-SDK-v2/ipfs_accelerate_py/agent_supervisor/__init__.py",
+            "sha256": "3c16dfa0ab9f73de44418dcdb44996fbf0f293daaf7ce9979d2e42a7bb1a2436"
+          },
+          {
+            "bytes": 1827,
+            "path": "/ttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttt/source-generation-immutable-parent-SDK-v2/ipfs_accelerate_py/agent_supervisor/rescue/__init__.py",
+            "sha256": "e8739a06f27803a3055de89f207f3ca63ee3c633e5be1f91a196e14b4d45f73c"
+          },
+          {
+            "bytes": 13498,
+            "path": "/ttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttt/source-generation-immutable-parent-SDK-v2/ipfs_accelerate_py/agent_supervisor/rescue/repair_authorization.py",
+            "sha256": "2d4c53800afda64493e93ddcfdcce1f769e47da95723c4394520e7c244db7433"
+          },
+          {
+            "bytes": 371401,
+            "path": "/ttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttt/source-generation-immutable-parent-SDK-v2/ipfs_accelerate_py/agent_supervisor/rescue/repair_candidate_owners.py",
+            "sha256": "efe23816e4bf8d7a9bd6c1de7d72cfaf74354679df2e60c964b71aa722f1dc12"
+          },
+          {
+            "bytes": 173604,
+            "path": "/ttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttt/source-generation-immutable-parent-SDK-v2/ipfs_accelerate_py/agent_supervisor/rescue/repair_validation_worker.py",
+            "sha256": "493333c631d287436957bb8418a4629e0d34f37c1214f096944c8e39361e40ec"
+          },
+          {
+            "bytes": 49532,
+            "path": "/ttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttt/source-generation-immutable-parent-SDK-v2/ipfs_accelerate_py/agent_supervisor/todo_daemon/engine.py",
+            "sha256": "e6e3e5fc0906cd312e305f46d5c7b12f48c726855561f28991de62ebee759b30"
+          },
+          {
+            "bytes": 51,
+            "path": "/ttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttt/source-generation-immutable-parent-SDK-v2/tests/fictional_owning_tests.py",
+            "sha256": "e78cdead1d0502579c48817a5cd38cf451c9e7879a9b75d0d7dfa85951a86779"
+          },
+          {
+            "bytes": 4035,
+            "path": "/ttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttt/source-generation-immutable-parent-SDK-v2/source-manifest.json",
+            "sha256": "0b5234ed531fcd8fa3cdc12f5487c1145e5330e83fa59cadd75130f2493b963d"
+          }
+        ],
+        "sidecar16KiB_fit": true,
+        "sidecar_bytes": 4465,
+        "two512KiB_banks_fit": true
+      },
+      {
+        "aggregate_raw_bytes": 844695,
+        "bank_raw_bytes": [
+          434431,
+          410264
+        ],
+        "max_source_path_ASCII_bytes": 367,
+        "oneMiB_aggregate_fit": true,
+        "original768KiB_fit": false,
+        "population": "immutable-qualification12",
+        "raw_files": 12,
+        "root_not_created": true,
+        "root_spelling_only": "/ttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttt/source-generation-immutable-parent-A-v2",
+        "rows": [
+          {
+            "bytes": 40208,
+            "path": "/ttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttt/source-generation-immutable-parent-A-v2/ipfs_accelerate_py/__init__.py",
+            "sha256": "5083369f823be18cd467346f6f3b955925ec65bedafe9eb28a61ca8897997c03"
+          },
+          {
+            "bytes": 188967,
+            "path": "/ttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttt/source-generation-immutable-parent-A-v2/ipfs_accelerate_py/agent_supervisor/__init__.py",
+            "sha256": "3c16dfa0ab9f73de44418dcdb44996fbf0f293daaf7ce9979d2e42a7bb1a2436"
+          },
+          {
+            "bytes": 1827,
+            "path": "/ttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttt/source-generation-immutable-parent-A-v2/ipfs_accelerate_py/agent_supervisor/rescue/__init__.py",
+            "sha256": "e8739a06f27803a3055de89f207f3ca63ee3c633e5be1f91a196e14b4d45f73c"
+          },
+          {
+            "bytes": 13498,
+            "path": "/ttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttt/source-generation-immutable-parent-A-v2/ipfs_accelerate_py/agent_supervisor/rescue/repair_authorization.py",
+            "sha256": "2d4c53800afda64493e93ddcfdcce1f769e47da95723c4394520e7c244db7433"
+          },
+          {
+            "bytes": 371401,
+            "path": "/ttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttt/source-generation-immutable-parent-A-v2/ipfs_accelerate_py/agent_supervisor/rescue/repair_candidate_owners.py",
+            "sha256": "efe23816e4bf8d7a9bd6c1de7d72cfaf74354679df2e60c964b71aa722f1dc12"
+          },
+          {
+            "bytes": 173604,
+            "path": "/ttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttt/source-generation-immutable-parent-A-v2/ipfs_accelerate_py/agent_supervisor/rescue/repair_validation_worker.py",
+            "sha256": "493333c631d287436957bb8418a4629e0d34f37c1214f096944c8e39361e40ec"
+          },
+          {
+            "bytes": 49532,
+            "path": "/ttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttt/source-generation-immutable-parent-A-v2/ipfs_accelerate_py/agent_supervisor/todo_daemon/engine.py",
+            "sha256": "e6e3e5fc0906cd312e305f46d5c7b12f48c726855561f28991de62ebee759b30"
+          },
+          {
+            "bytes": 51,
+            "path": "/ttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttt/source-generation-immutable-parent-A-v2/tests/fictional_owning_tests.py",
+            "sha256": "e78cdead1d0502579c48817a5cd38cf451c9e7879a9b75d0d7dfa85951a86779"
+          },
+          {
+            "bytes": 65,
+            "path": "/ttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttt/source-generation-immutable-parent-A-v2/ipfs_accelerate_py/agent_supervisor/rescue/scientific_executor.py",
+            "sha256": "f01730f8fac13ea1751043a7a57d82a9b5c9058b39a6af80caf378109122e192"
+          },
+          {
+            "bytes": 68,
+            "path": "/ttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttt/source-generation-immutable-parent-A-v2/ipfs_accelerate_py/agent_supervisor/rescue/native_executor_health.py",
+            "sha256": "296bd2b3f96e4868098badeea27e8762b5ec8f43d897605dfd6d93d9ce28b025"
+          },
+          {
+            "bytes": 68,
+            "path": "/ttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttt/source-generation-immutable-parent-A-v2/ipfs_accelerate_py/agent_supervisor/rescue/native_catalogue_probe.py",
+            "sha256": "6d246fb9ab4a09ab536388c3eb1301ecdcb14944ebe8a0d7d5d3e89534d2c5ef"
+          },
+          {
+            "bytes": 5406,
+            "path": "/ttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttt/source-generation-immutable-parent-A-v2/source-manifest.json",
+            "sha256": "943d480c5403568ee08bc5b70fd4bf167f602429a4ad2268feee011697eac879"
+          }
+        ],
+        "sidecar16KiB_fit": true,
+        "sidecar_bytes": 5849,
+        "two512KiB_banks_fit": true
+      }
+    ],
+    "actual_run_or_peak_bytes_measured": false,
+    "existing_historical_768KiB_fixture_refusal_is_preserved_not_upgraded": true,
+    "final_post_Source6_source_refs": [
+      {
+        "bytes": 40208,
+        "path": "/tmp/lift-sync-accelerate-all-main-20261114/ipfs_accelerate_py/__init__.py",
+        "sha256": "5083369f823be18cd467346f6f3b955925ec65bedafe9eb28a61ca8897997c03"
+      },
+      {
+        "bytes": 188967,
+        "path": "/tmp/lift-sync-accelerate-all-main-20261114/ipfs_accelerate_py/agent_supervisor/__init__.py",
+        "sha256": "3c16dfa0ab9f73de44418dcdb44996fbf0f293daaf7ce9979d2e42a7bb1a2436"
+      },
+      {
+        "bytes": 1827,
+        "path": "/tmp/lift-sync-accelerate-all-main-20261114/ipfs_accelerate_py/agent_supervisor/rescue/__init__.py",
+        "sha256": "e8739a06f27803a3055de89f207f3ca63ee3c633e5be1f91a196e14b4d45f73c"
+      },
+      {
+        "bytes": 13498,
+        "path": "/tmp/lift-sync-accelerate-all-main-20261114/ipfs_accelerate_py/agent_supervisor/rescue/repair_authorization.py",
+        "sha256": "2d4c53800afda64493e93ddcfdcce1f769e47da95723c4394520e7c244db7433"
+      },
+      {
+        "bytes": 371401,
+        "path": "/tmp/lift-sync-accelerate-all-main-20261114/ipfs_accelerate_py/agent_supervisor/rescue/repair_candidate_owners.py",
+        "sha256": "efe23816e4bf8d7a9bd6c1de7d72cfaf74354679df2e60c964b71aa722f1dc12"
+      },
+      {
+        "bytes": 173604,
+        "path": "/tmp/lift-sync-accelerate-all-main-20261114/ipfs_accelerate_py/agent_supervisor/rescue/repair_validation_worker.py",
+        "sha256": "493333c631d287436957bb8418a4629e0d34f37c1214f096944c8e39361e40ec"
+      },
+      {
+        "bytes": 49532,
+        "path": "/tmp/lift-sync-accelerate-all-main-20261114/ipfs_accelerate_py/agent_supervisor/todo_daemon/engine.py",
+        "sha256": "e6e3e5fc0906cd312e305f46d5c7b12f48c726855561f28991de62ebee759b30"
+      }
+    ],
+    "plain_copy_fit_does_not_qualify_original16MiB_run": true,
+    "prospective_v04_root_examples": [
+      {
+        "aggregate_raw_bytes": 841206,
+        "bank_raw_bytes": [
+          434431,
+          406775
+        ],
+        "max_source_path_ASCII_bytes": 156,
+        "oneMiB_aggregate_fit": true,
+        "original768KiB_fit": false,
+        "population": "sdk-control9",
+        "raw_files": 9,
+        "root_not_created": true,
+        "root_spelling_only": "/tmp/pytest-of-barberb/sourcegen-parent-v04/source-generation-immutable-parent-SDK-v2",
+        "rows": [
+          {
+            "bytes": 40208,
+            "path": "/tmp/pytest-of-barberb/sourcegen-parent-v04/source-generation-immutable-parent-SDK-v2/ipfs_accelerate_py/__init__.py",
+            "sha256": "5083369f823be18cd467346f6f3b955925ec65bedafe9eb28a61ca8897997c03"
+          },
+          {
+            "bytes": 188967,
+            "path": "/tmp/pytest-of-barberb/sourcegen-parent-v04/source-generation-immutable-parent-SDK-v2/ipfs_accelerate_py/agent_supervisor/__init__.py",
+            "sha256": "3c16dfa0ab9f73de44418dcdb44996fbf0f293daaf7ce9979d2e42a7bb1a2436"
+          },
+          {
+            "bytes": 1827,
+            "path": "/tmp/pytest-of-barberb/sourcegen-parent-v04/source-generation-immutable-parent-SDK-v2/ipfs_accelerate_py/agent_supervisor/rescue/__init__.py",
+            "sha256": "e8739a06f27803a3055de89f207f3ca63ee3c633e5be1f91a196e14b4d45f73c"
+          },
+          {
+            "bytes": 13498,
+            "path": "/tmp/pytest-of-barberb/sourcegen-parent-v04/source-generation-immutable-parent-SDK-v2/ipfs_accelerate_py/agent_supervisor/rescue/repair_authorization.py",
+            "sha256": "2d4c53800afda64493e93ddcfdcce1f769e47da95723c4394520e7c244db7433"
+          },
+          {
+            "bytes": 371401,
+            "path": "/tmp/pytest-of-barberb/sourcegen-parent-v04/source-generation-immutable-parent-SDK-v2/ipfs_accelerate_py/agent_supervisor/rescue/repair_candidate_owners.py",
+            "sha256": "efe23816e4bf8d7a9bd6c1de7d72cfaf74354679df2e60c964b71aa722f1dc12"
+          },
+          {
+            "bytes": 173604,
+            "path": "/tmp/pytest-of-barberb/sourcegen-parent-v04/source-generation-immutable-parent-SDK-v2/ipfs_accelerate_py/agent_supervisor/rescue/repair_validation_worker.py",
+            "sha256": "493333c631d287436957bb8418a4629e0d34f37c1214f096944c8e39361e40ec"
+          },
+          {
+            "bytes": 49532,
+            "path": "/tmp/pytest-of-barberb/sourcegen-parent-v04/source-generation-immutable-parent-SDK-v2/ipfs_accelerate_py/agent_supervisor/todo_daemon/engine.py",
+            "sha256": "e6e3e5fc0906cd312e305f46d5c7b12f48c726855561f28991de62ebee759b30"
+          },
+          {
+            "bytes": 51,
+            "path": "/tmp/pytest-of-barberb/sourcegen-parent-v04/source-generation-immutable-parent-SDK-v2/tests/fictional_owning_tests.py",
+            "sha256": "e78cdead1d0502579c48817a5cd38cf451c9e7879a9b75d0d7dfa85951a86779"
+          },
+          {
+            "bytes": 2118,
+            "path": "/tmp/pytest-of-barberb/sourcegen-parent-v04/source-generation-immutable-parent-SDK-v2/source-manifest.json",
+            "sha256": "c700750145a5fb210c21e30b4bdff9a691b307c10347cbbc7dc0f395297278b8"
+          }
+        ],
+        "sidecar16KiB_fit": true,
+        "sidecar_bytes": 2548,
+        "two512KiB_banks_fit": true
+      },
+      {
+        "aggregate_raw_bytes": 842139,
+        "bank_raw_bytes": [
+          434431,
+          407708
+        ],
+        "max_source_path_ASCII_bytes": 154,
+        "oneMiB_aggregate_fit": true,
+        "original768KiB_fit": false,
+        "population": "immutable-qualification12",
+        "raw_files": 12,
+        "root_not_created": true,
+        "root_spelling_only": "/tmp/pytest-of-barberb/sourcegen-parent-v04/source-generation-immutable-parent-A-v2",
+        "rows": [
+          {
+            "bytes": 40208,
+            "path": "/tmp/pytest-of-barberb/sourcegen-parent-v04/source-generation-immutable-parent-A-v2/ipfs_accelerate_py/__init__.py",
+            "sha256": "5083369f823be18cd467346f6f3b955925ec65bedafe9eb28a61ca8897997c03"
+          },
+          {
+            "bytes": 188967,
+            "path": "/tmp/pytest-of-barberb/sourcegen-parent-v04/source-generation-immutable-parent-A-v2/ipfs_accelerate_py/agent_supervisor/__init__.py",
+            "sha256": "3c16dfa0ab9f73de44418dcdb44996fbf0f293daaf7ce9979d2e42a7bb1a2436"
+          },
+          {
+            "bytes": 1827,
+            "path": "/tmp/pytest-of-barberb/sourcegen-parent-v04/source-generation-immutable-parent-A-v2/ipfs_accelerate_py/agent_supervisor/rescue/__init__.py",
+            "sha256": "e8739a06f27803a3055de89f207f3ca63ee3c633e5be1f91a196e14b4d45f73c"
+          },
+          {
+            "bytes": 13498,
+            "path": "/tmp/pytest-of-barberb/sourcegen-parent-v04/source-generation-immutable-parent-A-v2/ipfs_accelerate_py/agent_supervisor/rescue/repair_authorization.py",
+            "sha256": "2d4c53800afda64493e93ddcfdcce1f769e47da95723c4394520e7c244db7433"
+          },
+          {
+            "bytes": 371401,
+            "path": "/tmp/pytest-of-barberb/sourcegen-parent-v04/source-generation-immutable-parent-A-v2/ipfs_accelerate_py/agent_supervisor/rescue/repair_candidate_owners.py",
+            "sha256": "efe23816e4bf8d7a9bd6c1de7d72cfaf74354679df2e60c964b71aa722f1dc12"
+          },
+          {
+            "bytes": 173604,
+            "path": "/tmp/pytest-of-barberb/sourcegen-parent-v04/source-generation-immutable-parent-A-v2/ipfs_accelerate_py/agent_supervisor/rescue/repair_validation_worker.py",
+            "sha256": "493333c631d287436957bb8418a4629e0d34f37c1214f096944c8e39361e40ec"
+          },
+          {
+            "bytes": 49532,
+            "path": "/tmp/pytest-of-barberb/sourcegen-parent-v04/source-generation-immutable-parent-A-v2/ipfs_accelerate_py/agent_supervisor/todo_daemon/engine.py",
+            "sha256": "e6e3e5fc0906cd312e305f46d5c7b12f48c726855561f28991de62ebee759b30"
+          },
+          {
+            "bytes": 51,
+            "path": "/tmp/pytest-of-barberb/sourcegen-parent-v04/source-generation-immutable-parent-A-v2/tests/fictional_owning_tests.py",
+            "sha256": "e78cdead1d0502579c48817a5cd38cf451c9e7879a9b75d0d7dfa85951a86779"
+          },
+          {
+            "bytes": 65,
+            "path": "/tmp/pytest-of-barberb/sourcegen-parent-v04/source-generation-immutable-parent-A-v2/ipfs_accelerate_py/agent_supervisor/rescue/scientific_executor.py",
+            "sha256": "f01730f8fac13ea1751043a7a57d82a9b5c9058b39a6af80caf378109122e192"
+          },
+          {
+            "bytes": 68,
+            "path": "/tmp/pytest-of-barberb/sourcegen-parent-v04/source-generation-immutable-parent-A-v2/ipfs_accelerate_py/agent_supervisor/rescue/native_executor_health.py",
+            "sha256": "296bd2b3f96e4868098badeea27e8762b5ec8f43d897605dfd6d93d9ce28b025"
+          },
+          {
+            "bytes": 68,
+            "path": "/tmp/pytest-of-barberb/sourcegen-parent-v04/source-generation-immutable-parent-A-v2/ipfs_accelerate_py/agent_supervisor/rescue/native_catalogue_probe.py",
+            "sha256": "6d246fb9ab4a09ab536388c3eb1301ecdcb14944ebe8a0d7d5d3e89534d2c5ef"
+          },
+          {
+            "bytes": 2850,
+            "path": "/tmp/pytest-of-barberb/sourcegen-parent-v04/source-generation-immutable-parent-A-v2/source-manifest.json",
+            "sha256": "5f019d79aa9478c5ebc9c0405d591272cf1539fb844e96e63471bc0eb796ae9f"
+          }
+        ],
+        "sidecar16KiB_fit": true,
+        "sidecar_bytes": 3293,
+        "two512KiB_banks_fit": true
+      }
+    ],
+    "qualification12_roles_are_fictional_source_DATA": true,
+    "retained_comparison_root": {
+      "aggregate_raw_bytes": 841116,
+      "bank_raw_bytes": [
+        434431,
+        406685
+      ],
+      "max_source_path_ASCII_bytes": 146,
+      "oneMiB_aggregate_fit": true,
+      "original768KiB_fit": false,
+      "population": "sdk-control9",
+      "raw_files": 9,
+      "root_not_created": true,
+      "root_spelling_only": "/tmp/pytest-of-barberb/sourcegen-parent-v02/source-generation-immutable-SDK",
+      "rows": [
+        {
+          "bytes": 40208,
+          "path": "/tmp/pytest-of-barberb/sourcegen-parent-v02/source-generation-immutable-SDK/ipfs_accelerate_py/__init__.py",
+          "sha256": "5083369f823be18cd467346f6f3b955925ec65bedafe9eb28a61ca8897997c03"
+        },
+        {
+          "bytes": 188967,
+          "path": "/tmp/pytest-of-barberb/sourcegen-parent-v02/source-generation-immutable-SDK/ipfs_accelerate_py/agent_supervisor/__init__.py",
+          "sha256": "3c16dfa0ab9f73de44418dcdb44996fbf0f293daaf7ce9979d2e42a7bb1a2436"
+        },
+        {
+          "bytes": 1827,
+          "path": "/tmp/pytest-of-barberb/sourcegen-parent-v02/source-generation-immutable-SDK/ipfs_accelerate_py/agent_supervisor/rescue/__init__.py",
+          "sha256": "e8739a06f27803a3055de89f207f3ca63ee3c633e5be1f91a196e14b4d45f73c"
+        },
+        {
+          "bytes": 13498,
+          "path": "/tmp/pytest-of-barberb/sourcegen-parent-v02/source-generation-immutable-SDK/ipfs_accelerate_py/agent_supervisor/rescue/repair_authorization.py",
+          "sha256": "2d4c53800afda64493e93ddcfdcce1f769e47da95723c4394520e7c244db7433"
+        },
+        {
+          "bytes": 371401,
+          "path": "/tmp/pytest-of-barberb/sourcegen-parent-v02/source-generation-immutable-SDK/ipfs_accelerate_py/agent_supervisor/rescue/repair_candidate_owners.py",
+          "sha256": "efe23816e4bf8d7a9bd6c1de7d72cfaf74354679df2e60c964b71aa722f1dc12"
+        },
+        {
+          "bytes": 173604,
+          "path": "/tmp/pytest-of-barberb/sourcegen-parent-v02/source-generation-immutable-SDK/ipfs_accelerate_py/agent_supervisor/rescue/repair_validation_worker.py",
+          "sha256": "493333c631d287436957bb8418a4629e0d34f37c1214f096944c8e39361e40ec"
+        },
+        {
+          "bytes": 49532,
+          "path": "/tmp/pytest-of-barberb/sourcegen-parent-v02/source-generation-immutable-SDK/ipfs_accelerate_py/agent_supervisor/todo_daemon/engine.py",
+          "sha256": "e6e3e5fc0906cd312e305f46d5c7b12f48c726855561f28991de62ebee759b30"
+        },
+        {
+          "bytes": 51,
+          "path": "/tmp/pytest-of-barberb/sourcegen-parent-v02/source-generation-immutable-SDK/tests/fictional_owning_tests.py",
+          "sha256": "e78cdead1d0502579c48817a5cd38cf451c9e7879a9b75d0d7dfa85951a86779"
+        },
+        {
+          "bytes": 2028,
+          "path": "/tmp/pytest-of-barberb/sourcegen-parent-v02/source-generation-immutable-SDK/source-manifest.json",
+          "sha256": "5bea77c432bea3919180666218f6ff953667171d46486bb1b19c45a79ca400ff"
+        }
+      ],
+      "sidecar16KiB_fit": true,
+      "sidecar_bytes": 2458,
+      "two512KiB_banks_fit": true
+    },
+    "source_snapshot_schema_unchanged": "agent-supervisor/immutable-source-snapshot@1"
+  },
+  "preparation3_helpers_constructor_and_early_full_review_refusal_ASTs_preserved": true,
+  "project_imports": false,
+  "prospective_new_cases": 48,
+  "prospective_new_functions": 9,
+  "rebased_from_frozen_v04": {
+    "bytes": 35478,
+    "path": "/tmp/legal-ir-phase2-reviewed-admission-source-20261108-v01/resource-census-compatible-port-v01/runtime-owner-v4-trainer-compatibility-v01/ordinary-immutable-source-parent-delegation-private-v01/Main-current-immutable-parent-consumer-private-v04/private-current-Main-immutable-parent-consumer-static-manifest-v04.json",
+    "sha256": "009d8c65a577480c5fd84265d6c51ec4e4dd0e422ce7faa34b7dcdeb43ef42fd"
+  },
+  "records": [
+    {
+      "before": {
+        "bytes": 403800,
+        "path": "/tmp/lift-sync-accelerate-all-main-20261114/ipfs_accelerate_py/agent_supervisor/rescue/scientific_executor.py",
+        "sha256": "64049d366c929aedaacfe4d494dab5b87507ef3fb8f4488e0273e013bfc4c70f"
+      },
+      "before_copy": {
+        "bytes": 403800,
+        "path": "/tmp/legal-ir-phase2-reviewed-admission-source-20261108-v01/resource-census-compatible-port-v01/runtime-owner-v4-trainer-compatibility-v01/ordinary-immutable-source-parent-delegation-private-v01/Main-current-immutable-parent-consumer-private-v05/before/ipfs_accelerate_py/agent_supervisor/rescue/scientific_executor.py",
+        "sha256": "64049d366c929aedaacfe4d494dab5b87507ef3fb8f4488e0273e013bfc4c70f"
+      },
+      "before_full9": {
+        "st_ctime_ns": 1794727109349392214,
+        "st_dev": 66306,
+        "st_gid": 1000,
+        "st_ino": 28989005,
+        "st_mode": 33188,
+        "st_mtime_ns": 1794727109346729589,
+        "st_nlink": 1,
+        "st_size": 403800,
+        "st_uid": 1000
+      },
+      "candidate": {
+        "bytes": 409242,
+        "path": "/tmp/legal-ir-phase2-reviewed-admission-source-20261108-v01/resource-census-compatible-port-v01/runtime-owner-v4-trainer-compatibility-v01/ordinary-immutable-source-parent-delegation-private-v01/Main-current-immutable-parent-consumer-private-v05/A-candidates/ipfs_accelerate_py/agent_supervisor/rescue/scientific_executor.py",
+        "sha256": "fdeed037860bc1be8ae66dcc66c9e8ce1e9df8830262a37bb1009c15ac891897"
+      },
+      "candidate_mode": 256,
+      "patch": {
+        "bytes": 9498,
+        "path": "/tmp/legal-ir-phase2-reviewed-admission-source-20261108-v01/resource-census-compatible-port-v01/runtime-owner-v4-trainer-compatibility-v01/ordinary-immutable-source-parent-delegation-private-v01/Main-current-immutable-parent-consumer-private-v05/scientific_executor.py.patch",
+        "sha256": "8bc495d1dd89c6d5d0b7ae7b4357395c0dd04bceefccc20e1dafbf57b7d50720"
+      },
+      "relative_path": "ipfs_accelerate_py/agent_supervisor/rescue/scientific_executor.py"
+    },
+    {
+      "before": {
+        "bytes": 127726,
+        "path": "/tmp/lift-sync-accelerate-all-main-20261114/tests/unit/agent_supervisor/test_scientific_closed_capacity_continuation.py",
+        "sha256": "871957c140e7686f888c7e16919d97aece43afc5f5a6cea7fc3225c3d16af73a"
+      },
+      "before_copy": {
+        "bytes": 127726,
+        "path": "/tmp/legal-ir-phase2-reviewed-admission-source-20261108-v01/resource-census-compatible-port-v01/runtime-owner-v4-trainer-compatibility-v01/ordinary-immutable-source-parent-delegation-private-v01/Main-current-immutable-parent-consumer-private-v05/before/tests/unit/agent_supervisor/test_scientific_closed_capacity_continuation.py",
+        "sha256": "871957c140e7686f888c7e16919d97aece43afc5f5a6cea7fc3225c3d16af73a"
+      },
+      "before_full9": null,
+      "candidate": {
+        "bytes": 159795,
+        "path": "/tmp/legal-ir-phase2-reviewed-admission-source-20261108-v01/resource-census-compatible-port-v01/runtime-owner-v4-trainer-compatibility-v01/ordinary-immutable-source-parent-delegation-private-v01/Main-current-immutable-parent-consumer-private-v05/A-candidates/tests/unit/agent_supervisor/test_scientific_closed_capacity_continuation.py",
+        "sha256": "0712cc2dde748fd805802619d0e6363a20f94d5c5f13fda52645a1fecd4a63f7"
+      },
+      "candidate_mode": 256,
+      "observed_canonical_before_Source1": {
+        "bytes": 127673,
+        "path": "/tmp/lift-sync-accelerate-all-main-20261114/tests/unit/agent_supervisor/test_scientific_closed_capacity_continuation.py",
+        "sha256": "76bae590028f4f63e21821aa70655a9ce7ee9d5ad686cb7b0efa22baebce734f"
+      },
+      "observed_canonical_before_Source1_full9": {
+        "st_ctime_ns": 1794727109357392312,
+        "st_dev": 66306,
+        "st_gid": 1000,
+        "st_ino": 5378508,
+        "st_mode": 33204,
+        "st_mtime_ns": 1794727109355586082,
+        "st_nlink": 1,
+        "st_size": 127673,
+        "st_uid": 1000
+      },
+      "patch": {
+        "bytes": 37124,
+        "path": "/tmp/legal-ir-phase2-reviewed-admission-source-20261108-v01/resource-census-compatible-port-v01/runtime-owner-v4-trainer-compatibility-v01/ordinary-immutable-source-parent-delegation-private-v01/Main-current-immutable-parent-consumer-private-v05/test_scientific_closed_capacity_continuation.py.patch",
+        "sha256": "60074976c89787edf3e9d13bd37b082cdb0cb377fdebfdcd19ff3e04b9b20694"
+      },
+      "prospective_baseline_is_exact_Source1_fixture_fix": true,
+      "relative_path": "tests/unit/agent_supervisor/test_scientific_closed_capacity_continuation.py",
+      "requires_fresh_actual_Source1_full9_before_adoption": true
+    }
+  ],
+  "schema": "private-current-Main-immutable-parent-consumer-graft@5",
+  "selected_new_function_case_counts": {
+    "tests/unit/agent_supervisor/test_scientific_closed_capacity_continuation.py::test_source_generation_current_profile_has_three_distinct_explicit_contracts": 3,
+    "tests/unit/agent_supervisor/test_scientific_closed_capacity_continuation.py::test_source_generation_current_profile_refuses_crossed_versions": 4,
+    "tests/unit/agent_supervisor/test_scientific_closed_capacity_continuation.py::test_source_generation_legacy_profiles_cannot_accept_parent_policy": 2,
+    "tests/unit/agent_supervisor/test_scientific_closed_capacity_continuation.py::test_source_generation_parent_join_keeps_physical_code_and_canonical_locks_distinct": 1,
+    "tests/unit/agent_supervisor/test_scientific_closed_capacity_continuation.py::test_source_generation_parent_join_refuses_each_crossed_attestation_field": 15,
+    "tests/unit/agent_supervisor/test_scientific_closed_capacity_continuation.py::test_source_generation_parent_join_refuses_unbound_roots_identity_and_child_custody": 18,
+    "tests/unit/agent_supervisor/test_scientific_closed_capacity_continuation.py::test_source_generation_parent_profile_cannot_relabel_an_old_policy": 3,
+    "tests/unit/agent_supervisor/test_scientific_closed_capacity_continuation.py::test_source_generation_parent_profile_reaches_complete_existing_SDK_metadata_reader": 1,
+    "tests/unit/agent_supervisor/test_scientific_closed_capacity_continuation.py::test_source_generation_parent_profile_rejects_same_byte_other_R_role_identity": 1
+  },
+  "static_checks": [
+    "stdlib AST parse only",
+    "all existing test definitions AST exact",
+    "only one owner function and one owning helper changed",
+    "all preparation@3 definitions and early refusal AST exact",
+    "both historical768KiB fixture ASTs exact",
+    "new fixture builders named parent/package_v2; package helper requires explicit@2 schema"
+  ],
+  "status": "PRIVATE_UNINSTALLED_UNQUALIFIED_PROSPECTIVE_AFTER_SOURCE1_BASELINE",
+  "tests_or_collection_executed": false
+}

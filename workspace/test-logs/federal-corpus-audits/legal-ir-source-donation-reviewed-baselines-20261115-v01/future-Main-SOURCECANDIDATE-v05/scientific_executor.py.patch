@@ -1,0 +1,147 @@
+--- a/ipfs_accelerate_py/agent_supervisor/rescue/scientific_executor.py
++++ b/ipfs_accelerate_py/agent_supervisor/rescue/scientific_executor.py
+@@ -4222,6 +4222,90 @@
+ 
+ 
+ 
++def _source_generation_current_qualification_profile(value, *, policy=None):
++    """Select one explicit metadata contract; never upgrade an old receipt."""
++    pairs = {
++        ('agent-supervisor/scientific-source-generation-current-v5-qualification@1',
++         'closed_v5_current_Source'): None,
++        ('agent-supervisor/scientific-source-generation-current-v5-qualification@1',
++         'closed_v5_current_immutable_Source'): 'agent-supervisor/immutable-source-qualification@1',
++        ('agent-supervisor/scientific-source-generation-current-v5-qualification@2',
++         'closed_v5_current_immutable_parent_Source'): 'agent-supervisor/immutable-source-qualification@2',
++    }
++    need(type(value.get('schema')) is str and type(value.get('qualification_profile')) is str,
++         'source_generation_current_v5_profile_required')
++    pair = (value['schema'], value['qualification_profile'])
++    need(pair in pairs, 'source_generation_current_v5_profile_required')
++    expected = pairs[pair]
++    if policy is not None:
++        validation = policy['validation']
++        if expected is None:
++            matches = 'source_qualification' not in validation
++        else:
++            actual = validation.get('source_qualification')
++            matches = type(actual) is dict and actual.get('schema') == expected
++        need(matches, 'source_generation_v5_qualification_profile_policy_mismatch')
++    return expected
++
++
++def _source_generation_delegated_source_binding(policy, plan, summary, custody, report,
++        request_ref, invocation, profile):
++    """Join archived parent delegation DATA; acquire no lock or process.
++
++    The existing SDK verifier owns the original Source42 derivation, actual
++    held FD/nonce/ancestry checks and later genuine closure. This reader binds
++    its saved attestation to physical source identities and the same report;
++    it does not claim an independently current Git or kernel observation.
++    """
++    h = health_owner()
++    mode = 'delegated-original-parent-read/v1'
++    source_profile = policy['validation']['source_qualification']
++    h._keys(source_profile, {'schema', 'snapshot', 'required_source_bodies', 'source_custody_mode'},
++            'source_generation_delegated_policy_shape')
++    need(source_profile['schema'] == 'agent-supervisor/immutable-source-qualification@2'
++         and source_profile['source_custody_mode'] == mode,
++         'source_generation_delegated_policy_required')
++    bindings = plan.get('source_root_bindings')
++    physical = [str(h._path(policy['datasets_root'])), str(h._path(plan['candidate_root']))]
++    need(physical[1] == str(Path(profile['main_entrypoint']['path']).parents[3])
++         and type(bindings) is list and len(bindings) == 2,
++         'source_generation_delegated_physical_roots_changed')
++    canonical = []
++    for binding, physical_root in zip(bindings, physical, strict=True):
++        h._keys(binding, {'physical_root', 'canonical_root'}, 'source_generation_delegated_root_binding_shape')
++        need(binding['physical_root'] == physical_root
++             and type(binding['canonical_root']) is str,
++             'source_generation_delegated_root_binding_changed')
++        canonical.append(str(h._path(binding['canonical_root'])))
++    need(canonical[0] == str(ORIGINAL_NAMED_ROOTS[0].parents[1])
++         and len(set(canonical)) == len(set(physical)) == 2,
++         'source_generation_delegated_canonical_roots_changed')
++    identity = plan.get('parent_identity')
++    h._keys(identity, {'pid', 'birth'}, 'source_generation_delegated_parent_identity_shape')
++    nonce = plan.get('parent_nonce_sha256')
++    need(h._integer(identity['pid'], 1, 2**63-1)
++         and type(identity['birth']) is str and identity['birth'].isascii()
++         and identity['birth'].isdecimal() and 0 < len(identity['birth']) <= 32
++         and int(identity['birth']) > 0
++         and type(nonce) is str and len(nonce) == 64 and set(nonce) <= set('0123456789abcdef'),
++         'source_generation_delegated_parent_identity_or_nonce_changed')
++    observation = report.get('parent_source_observation')
++    h._bound(observation)
++    need(observation['path'] == plan.get('parent_source_observation_path')
++         and h._path(observation['path']).parent == invocation
++         and plan.get('execution_request_path') == request_ref['path'],
++         'source_generation_delegated_original_observation_or_request_changed')
++    joined = dict(source_custody_mode=mode, parent_source_observation=observation,
++        parent_nonce_sha256=nonce, parent_identity=identity, source_root_bindings=bindings)
++    need(all(_source_generation_same(frame.get(key), expected)
++             for frame in (report, summary, custody) for key, expected in joined.items())
++         and report.get('schema') == 'immutable-source-parent-delegated-validation@1'
++         and report.get('source_READ_closed') is False
++         and report.get('source_READ_admission_complete') is False,
++         'source_generation_delegated_original_parent_report_binding_changed')
++    return physical, canonical
++
++
+ def _source_generation_qualification(reference, profile, selected):
+     """The new technical epoch requires the CURRENT canonical owned-v5 SDK.
+ 
+@@ -4239,9 +4323,9 @@
+         'invocation_root', 'owning_test_root', 'required_raw_subjects', 'source_inventory_subjects', 'owning_test_sources',
+         'expected_function_case_counts', 'runtime_activation_or_task_authority'},
+         'source_generation_current_v5_qualification_shape')
+-    need(value['schema'] == 'agent-supervisor/scientific-source-generation-current-v5-qualification@1'
+-         and value['qualification_profile'] in ('closed_v5_current_Source', 'closed_v5_current_immutable_Source')
+-         and value['runtime_activation_or_task_authority'] is False,
++    source_qualification_schema = _source_generation_current_qualification_profile(value)
++    delegated_source = source_qualification_schema == 'agent-supervisor/immutable-source-qualification@2'
++    need(value['runtime_activation_or_task_authority'] is False,
+          'source_generation_current_v5_profile_required')
+     owner_ref = value['qualification_owner_source_ref']; h._bound(owner_ref)
+     actual_reader_ref = owner.descriptor(Path(owner.__file__).absolute())
+@@ -4258,8 +4342,7 @@
+              'source_generation_original_incoming_SDK_or_source_generation_changed')
+         policy = source_data['policy']
+         immutable_source = 'source_qualification' in policy['validation']
+-        need((value['qualification_profile'] == 'closed_v5_current_immutable_Source') == immutable_source,
+-             'source_generation_v5_qualification_profile_policy_mismatch')
++        _source_generation_current_qualification_profile(value, policy=policy)
+         plan = h._document(value['plan_ref'])
+         request = h._document(value['request_ref']); terminal = h._document(value['terminal_ref'])
+         invocation = h._path(value['invocation_root'])
+@@ -4309,10 +4392,17 @@
+              'source_generation_incoming_parent_not_archived_DATA_only')
+         parent = archived['original_parent_source_closeout']
+         custody = parent['parent_source_custody']
+-        source_roots = [str(h._path(policy['datasets_root'])), str(h._path(plan['candidate_root']))]
+-        need(source_roots[0] == str(ORIGINAL_NAMED_ROOTS[0].parents[1])
+-             and source_roots[1] == str(Path(profile['main_entrypoint']['path']).parents[3])
+-             and custody['source_closed'] is True and custody['native_closed'] is True,
++        if delegated_source:
++            delegated_report = h._document(h.descriptor(Path(request['attempt_directory'])/'exports/trusted-validation.json'))
++            physical_roots, source_roots = _source_generation_delegated_source_binding(
++                policy, plan, summary, custody, delegated_report, value['request_ref'], invocation, profile)
++        else:
++            source_roots = [str(h._path(policy['datasets_root'])), str(h._path(plan['candidate_root']))]
++            need(source_roots[0] == str(ORIGINAL_NAMED_ROOTS[0].parents[1])
++                 and source_roots[1] == str(Path(profile['main_entrypoint']['path']).parents[3]),
++                 'source_generation_original_current_v5_not_closed')
++            physical_roots = source_roots
++        need(custody['source_closed'] is True and custody['native_closed'] is True,
+              'source_generation_original_current_v5_not_closed')
+         for receipt, root in zip(custody['source_receipts'], source_roots):
+             h._keys(receipt, {'schema_version', 'canonical_root', 'cooperative', 'lock_path', 'mode', 'waited_seconds'},
+@@ -4324,7 +4414,7 @@
+                  'source_generation_current_v5_two_original_Source_roots_required')
+         subjects = value['required_raw_subjects']; package = value['source_inventory_subjects']
+         tests = value['owning_test_sources']
+-        datasets = ORIGINAL_NAMED_ROOTS[0].parents[1]
++        datasets = Path(physical_roots[0]) if delegated_source else ORIGINAL_NAMED_ROOTS[0].parents[1]
+         paths = [str(datasets/relative) for relative in (
+             'ipfs_datasets_py/logic/backends/process.py',
+             'ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_daemon_resources.py',

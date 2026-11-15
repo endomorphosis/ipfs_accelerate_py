@@ -1722,6 +1722,7 @@ def test_source_generation_fifteen_preparation_preserves_exact_legacy_one_contra
     value = case['value']; prior = h._document(value['prior_profile_snapshot_ref'])
     stage = _source_generation_copy.deepcopy(prior); replacements = []
     for row in value['replacements']:
+        Path(row['before_ref']['path']).chmod(0o600)
         after = _source_generation_canonical_DATA(Path(row['before_ref']['path']),
                                                   h._bound(row['after_ref']))
         stage['source_descriptors'][row['slot']] = after

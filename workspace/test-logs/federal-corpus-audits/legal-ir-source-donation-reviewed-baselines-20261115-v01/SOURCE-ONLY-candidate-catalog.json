@@ -1,0 +1,156 @@
+{
+  "coherent_prior_Source6_body_vector": [
+    "64049d366c929aedaacfe4d494dab5b87507ef3fb8f4488e0273e013bfc4c70f",
+    "871957c140e7686f888c7e16919d97aece43afc5f5a6cea7fc3225c3d16af73a",
+    "c226ce3ffa246ee4fc4b5acbb5b601979e1205832d9b412907384ef32fba18e9",
+    "493333c631d287436957bb8418a4629e0d34f37c1214f096944c8e39361e40ec",
+    "91d75735d13bcc5b39ab6971b1f66f88251e2941370ebda8ea3335e4d226c850",
+    "9ed87fbb27cc9679e073eab05dc96f3fd7c05f6e4005c36efdadf65ab6d2790f"
+  ],
+  "current_shared_A6_are_unqualified_WIP": true,
+  "entries": [
+    {
+      "relative_path": "workspace/test-logs/federal-corpus-audits/legal-ir-source-donation-reviewed-baselines-20261115-v01/coherent-reviewed-Source6v03-baseline/ipfs_accelerate_py/agent_supervisor/rescue/scientific_executor.py",
+      "scope": "COHERENT_PRIOR_REVIEWED_SOURCE_ONLY_NO_QUALIFICATION_TRANSFER",
+      "source_ref": {
+        "bytes": 403800,
+        "path": "/tmp/legal-ir-phase2-reviewed-admission-source-20261108-v01/resource-census-compatible-port-v01/runtime-owner-v4-trainer-compatibility-v01/ordinary-immutable-source-parent-delegation-private-v01/Main-current-preparation-only-v03/ipfs_accelerate_py/agent_supervisor/rescue/scientific_executor.py",
+        "sha256": "64049d366c929aedaacfe4d494dab5b87507ef3fb8f4488e0273e013bfc4c70f"
+      }
+    },
+    {
+      "relative_path": "workspace/test-logs/federal-corpus-audits/legal-ir-source-donation-reviewed-baselines-20261115-v01/coherent-reviewed-Source6v03-baseline/tests/unit/agent_supervisor/test_scientific_closed_capacity_continuation.py",
+      "scope": "COHERENT_PRIOR_REVIEWED_SOURCE_ONLY_NO_QUALIFICATION_TRANSFER",
+      "source_ref": {
+        "bytes": 127726,
+        "path": "/tmp/legal-ir-phase2-reviewed-admission-source-20261108-v01/resource-census-compatible-port-v01/runtime-owner-v4-trainer-compatibility-v01/ordinary-immutable-source-parent-delegation-private-v01/Main-current-preparation-legacy-fixture-correction-private-v01/A-candidates/tests/unit/agent_supervisor/test_scientific_closed_capacity_continuation.py",
+        "sha256": "871957c140e7686f888c7e16919d97aece43afc5f5a6cea7fc3225c3d16af73a"
+      }
+    },
+    {
+      "relative_path": "workspace/test-logs/federal-corpus-audits/legal-ir-source-donation-reviewed-baselines-20261115-v01/coherent-reviewed-Source6v03-baseline/ipfs_accelerate_py/agent_supervisor/rescue/repair_candidate_owners.py",
+      "scope": "COHERENT_PRIOR_REVIEWED_SOURCE_ONLY_NO_QUALIFICATION_TRANSFER",
+      "source_ref": {
+        "bytes": 371509,
+        "path": "/tmp/legal-ir-phase2-reviewed-admission-source-20261108-v01/resource-census-compatible-port-v01/runtime-owner-v4-trainer-compatibility-v01/ordinary-at2-current-nativeV3-semantic-merge-private-v02/current-SDK4-peer-namespace-epoch-private-v04/frozen/ipfs_accelerate_py/agent_supervisor/rescue/repair_candidate_owners.py",
+        "sha256": "c226ce3ffa246ee4fc4b5acbb5b601979e1205832d9b412907384ef32fba18e9"
+      }
+    },
+    {
+      "relative_path": "workspace/test-logs/federal-corpus-audits/legal-ir-source-donation-reviewed-baselines-20261115-v01/coherent-reviewed-Source6v03-baseline/ipfs_accelerate_py/agent_supervisor/rescue/repair_validation_worker.py",
+      "scope": "COHERENT_PRIOR_REVIEWED_SOURCE_ONLY_NO_QUALIFICATION_TRANSFER",
+      "source_ref": {
+        "bytes": 173604,
+        "path": "/tmp/legal-ir-phase2-reviewed-admission-source-20261108-v01/resource-census-compatible-port-v01/runtime-owner-v4-trainer-compatibility-v01/ordinary-at2-current-nativeV3-semantic-merge-private-v02/current-SDK4-peer-namespace-epoch-private-v04/frozen/ipfs_accelerate_py/agent_supervisor/rescue/repair_validation_worker.py",
+        "sha256": "493333c631d287436957bb8418a4629e0d34f37c1214f096944c8e39361e40ec"
+      }
+    },
+    {
+      "relative_path": "workspace/test-logs/federal-corpus-audits/legal-ir-source-donation-reviewed-baselines-20261115-v01/coherent-reviewed-Source6v03-baseline/test/api/test_agent_supervisor_productive_owner_v3.py",
+      "scope": "COHERENT_PRIOR_REVIEWED_SOURCE_ONLY_NO_QUALIFICATION_TRANSFER",
+      "source_ref": {
+        "bytes": 351657,
+        "path": "/tmp/legal-ir-phase2-reviewed-admission-source-20261108-v01/resource-census-compatible-port-v01/runtime-owner-v4-trainer-compatibility-v01/ordinary-at2-current-nativeV3-semantic-merge-private-v02/current-SDK4-peer-namespace-epoch-private-v04/frozen/test/api/test_agent_supervisor_productive_owner_v3.py",
+        "sha256": "91d75735d13bcc5b39ab6971b1f66f88251e2941370ebda8ea3335e4d226c850"
+      }
+    },
+    {
+      "relative_path": "workspace/test-logs/federal-corpus-audits/legal-ir-source-donation-reviewed-baselines-20261115-v01/coherent-reviewed-Source6v03-baseline/tests/unit/agent_supervisor/test_repair_worker_execution_custody.py",
+      "scope": "COHERENT_PRIOR_REVIEWED_SOURCE_ONLY_NO_QUALIFICATION_TRANSFER",
+      "source_ref": {
+        "bytes": 33812,
+        "path": "/tmp/legal-ir-phase2-reviewed-admission-source-20261108-v01/resource-census-compatible-port-v01/runtime-owner-v4-trainer-compatibility-v01/ordinary-at2-current-nativeV3-semantic-merge-private-v02/current-SDK4-peer-namespace-epoch-private-v04/frozen/tests/unit/agent_supervisor/test_repair_worker_execution_custody.py",
+        "sha256": "9ed87fbb27cc9679e073eab05dc96f3fd7c05f6e4005c36efdadf65ab6d2790f"
+      }
+    },
+    {
+      "relative_path": "workspace/test-logs/federal-corpus-audits/legal-ir-source-donation-reviewed-baselines-20261115-v01/future-Main-SOURCECANDIDATE-v05/A-candidates/ipfs_accelerate_py/agent_supervisor/rescue/scientific_executor.py",
+      "scope": "UNQUALIFIED_FUTURE_MAIN_SOURCECANDIDATE",
+      "source_ref": {
+        "bytes": 409242,
+        "path": "/tmp/legal-ir-phase2-reviewed-admission-source-20261108-v01/resource-census-compatible-port-v01/runtime-owner-v4-trainer-compatibility-v01/ordinary-immutable-source-parent-delegation-private-v01/Main-current-immutable-parent-consumer-private-v05/A-candidates/ipfs_accelerate_py/agent_supervisor/rescue/scientific_executor.py",
+        "sha256": "fdeed037860bc1be8ae66dcc66c9e8ce1e9df8830262a37bb1009c15ac891897"
+      }
+    },
+    {
+      "relative_path": "workspace/test-logs/federal-corpus-audits/legal-ir-source-donation-reviewed-baselines-20261115-v01/future-Main-SOURCECANDIDATE-v05/A-candidates/tests/unit/agent_supervisor/test_scientific_closed_capacity_continuation.py",
+      "scope": "UNQUALIFIED_FUTURE_MAIN_SOURCECANDIDATE",
+      "source_ref": {
+        "bytes": 159795,
+        "path": "/tmp/legal-ir-phase2-reviewed-admission-source-20261108-v01/resource-census-compatible-port-v01/runtime-owner-v4-trainer-compatibility-v01/ordinary-immutable-source-parent-delegation-private-v01/Main-current-immutable-parent-consumer-private-v05/A-candidates/tests/unit/agent_supervisor/test_scientific_closed_capacity_continuation.py",
+        "sha256": "0712cc2dde748fd805802619d0e6363a20f94d5c5f13fda52645a1fecd4a63f7"
+      }
+    },
+    {
+      "relative_path": "workspace/test-logs/federal-corpus-audits/legal-ir-source-donation-reviewed-baselines-20261115-v01/future-Main-SOURCECANDIDATE-v05/scientific_executor.py.patch",
+      "scope": "UNQUALIFIED_FUTURE_MAIN_SOURCECANDIDATE",
+      "source_ref": {
+        "bytes": 9498,
+        "path": "/tmp/legal-ir-phase2-reviewed-admission-source-20261108-v01/resource-census-compatible-port-v01/runtime-owner-v4-trainer-compatibility-v01/ordinary-immutable-source-parent-delegation-private-v01/Main-current-immutable-parent-consumer-private-v05/scientific_executor.py.patch",
+        "sha256": "8bc495d1dd89c6d5d0b7ae7b4357395c0dd04bceefccc20e1dafbf57b7d50720"
+      }
+    },
+    {
+      "relative_path": "workspace/test-logs/federal-corpus-audits/legal-ir-source-donation-reviewed-baselines-20261115-v01/future-Main-SOURCECANDIDATE-v05/test_scientific_closed_capacity_continuation.py.patch",
+      "scope": "UNQUALIFIED_FUTURE_MAIN_SOURCECANDIDATE",
+      "source_ref": {
+        "bytes": 37124,
+        "path": "/tmp/legal-ir-phase2-reviewed-admission-source-20261108-v01/resource-census-compatible-port-v01/runtime-owner-v4-trainer-compatibility-v01/ordinary-immutable-source-parent-delegation-private-v01/Main-current-immutable-parent-consumer-private-v05/test_scientific_closed_capacity_continuation.py.patch",
+        "sha256": "60074976c89787edf3e9d13bd37b082cdb0cb377fdebfdcd19ff3e04b9b20694"
+      }
+    },
+    {
+      "relative_path": "workspace/test-logs/federal-corpus-audits/legal-ir-source-donation-reviewed-baselines-20261115-v01/future-Main-SOURCECANDIDATE-v05/private-current-Main-immutable-parent-consumer-static-manifest-v05.json",
+      "scope": "UNQUALIFIED_FUTURE_MAIN_SOURCECANDIDATE",
+      "source_ref": {
+        "bytes": 37503,
+        "path": "/tmp/legal-ir-phase2-reviewed-admission-source-20261108-v01/resource-census-compatible-port-v01/runtime-owner-v4-trainer-compatibility-v01/ordinary-immutable-source-parent-delegation-private-v01/Main-current-immutable-parent-consumer-private-v05/private-current-Main-immutable-parent-consumer-static-manifest-v05.json",
+        "sha256": "b0d66a8a81fca6e35a1466fdff83bd176acc42410d66c2f5d72ead0f28f522bd"
+      }
+    },
+    {
+      "relative_path": "workspace/test-logs/federal-corpus-audits/legal-ir-source-donation-reviewed-baselines-20261115-v01/future-Main-SOURCECANDIDATE-v05/prospective-ordered48-pytest-nodeids.json",
+      "scope": "UNQUALIFIED_FUTURE_MAIN_SOURCECANDIDATE",
+      "source_ref": {
+        "bytes": 9426,
+        "path": "/tmp/legal-ir-phase2-reviewed-admission-source-20261108-v01/resource-census-compatible-port-v01/runtime-owner-v4-trainer-compatibility-v01/ordinary-immutable-source-parent-delegation-private-v01/Main-current-immutable-parent-consumer-private-v05/prospective-ordered48-pytest-nodeids.json",
+        "sha256": "84c2aef15c643a007ce0311760b3b5445f2ca17ca0d7371d487b8af81c64ba50"
+      }
+    },
+    {
+      "relative_path": "workspace/test-logs/federal-corpus-audits/legal-ir-source-donation-reviewed-baselines-20261115-v01/future-Main-SOURCECANDIDATE-v05/selected-new-function-case-counts.json",
+      "scope": "UNQUALIFIED_FUTURE_MAIN_SOURCECANDIDATE",
+      "source_ref": {
+        "bytes": 1449,
+        "path": "/tmp/legal-ir-phase2-reviewed-admission-source-20261108-v01/resource-census-compatible-port-v01/runtime-owner-v4-trainer-compatibility-v01/ordinary-immutable-source-parent-delegation-private-v01/Main-current-immutable-parent-consumer-private-v05/selected-new-function-case-counts.json",
+        "sha256": "31ccd1e7ce54abf435c707814b4c681fa53f995c0d445527081c6e78dddbb54b"
+      }
+    },
+    {
+      "relative_path": "workspace/test-logs/federal-corpus-audits/legal-ir-source-donation-reviewed-baselines-20261115-v01/future-Main-SOURCECANDIDATE-v06/private-current-Main-immutable-parent-consumer-baseline-metadata-v06.json",
+      "scope": "UNQUALIFIED_FUTURE_MAIN_BASELINE_METADATA",
+      "source_ref": {
+        "bytes": 41474,
+        "path": "/tmp/legal-ir-phase2-reviewed-admission-source-20261108-v01/resource-census-compatible-port-v01/runtime-owner-v4-trainer-compatibility-v01/ordinary-immutable-source-parent-delegation-private-v01/Main-current-immutable-parent-consumer-private-v06/private-current-Main-immutable-parent-consumer-baseline-metadata-v06.json",
+        "sha256": "c55cce756e7cd0ec115e64ec3d42987df8cf2b1673245dabe8d23b0e2265409d"
+      }
+    },
+    {
+      "relative_path": "workspace/test-logs/federal-corpus-audits/legal-ir-source-donation-reviewed-baselines-20261115-v01/future-Main-SOURCECANDIDATE-v06/private-future-Main-package-copyfit-peer-SDK-c226-v01.json",
+      "scope": "STATIC_COPY_FIT_ONLY_NOT_CASE_OR_16MIB_QUALIFICATION",
+      "source_ref": {
+        "bytes": 34066,
+        "path": "/tmp/legal-ir-phase2-reviewed-admission-source-20261108-v01/resource-census-compatible-port-v01/runtime-owner-v4-trainer-compatibility-v01/ordinary-immutable-source-parent-delegation-private-v01/private-future-Main-package-copyfit-peer-SDK-c226-v01.json",
+        "sha256": "bfb99f930a65a3cf931dd222d0aa9622b2a81bcefae19bb0e813d80b0c28320e"
+      }
+    }
+  ],
+  "failed_Main94_and_peer_fallback58_preserved": true,
+  "future_Main_pair": "fdeed037/0712cc2d",
+  "private_archives_checkpoints_weights_models_excluded": true,
+  "private_assets_included": false,
+  "qualification_granted": false,
+  "runtime_activation_authorized": false,
+  "schema": "legal-ir-source-donation-candidate-catalog@1",
+  "scope": "SOURCE_PRESERVATION_ONLY"
+}

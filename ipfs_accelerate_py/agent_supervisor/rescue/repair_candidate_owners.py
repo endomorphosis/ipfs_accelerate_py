@@ -1231,7 +1231,8 @@ def _v5_validation_namespace_evidence(policy, plan, report):
     """Bind saved V5 namespace DATA without changing legacy/V3 validation."""
     if not _v5_ordinary_validation(policy):
         return
-    profiles = _v5_control_namespace_profiles(policy)
+    profiles = (policy["validation"]["normal_namespace_profiles"] if _reviewed_parent_policy(policy)
+                else _v5_control_namespace_profiles(policy))
     need(canonical(plan.get('normal_namespace_profiles', [])) == canonical(profiles)
          and canonical(report.get('declared_normal_namespace_profiles', [])) == canonical(profiles),
          'original V5 immutable control namespace declaration differs')
@@ -1589,6 +1590,76 @@ class _V5ValidationSourceCustody:
             try: time.sleep(.1)
             except BaseException: pass
 
+    def close_failed_operational_verification(self, completed, witness, error):
+        """Close only this proven original's Source scopes, never accept/retry it.
+
+        Any absent, changed, incomplete or expired original proof stays UNKNOWN.
+        No inspector, resource mutation, new census or new deadline is added.
+        """
+        try:
+            need(isinstance(error, Exception) and not self.closed,
+                 "ordinary failed verification on the same open custody required")
+            self.clock()
+            if self.policy.get("schema") in ("reviewed-preservation-parent/v1", "reviewed-preservation-parent/v3"):
+                if (_reviewed_parent_guard is not _REVIEWED_PARENT_GUARD_OBJECT
+                        or _reviewed_parent_guard.__code__ is not _REVIEWED_PARENT_GUARD_CODE):
+                    raise ValueError("reviewed parent callable bindings changed: guard")
+                _reviewed_parent_guard()
+            need(type(getattr(self, "_released_operational_raw", None)) is bytes
+                 and type(getattr(self, "_released_stdout_raw", None)) is bytes
+                 and type(getattr(self, "_released_wait_raw", None)) is bytes,
+                 "independently verified pre-metadata original closure is absent")
+            observation = self.checked_execution(completed, witness)
+            need(observation.completion_kind == "completed" and observation.output_capture == "complete"
+                 and completed.returncode == self.process.returncode == 0
+                 and completed.stdout.encode("utf-8") == self._released_stdout_raw,
+                 "same complete original successful SDK terminal required")
+            need(checked_descriptor(self.request_pin) == self.raw
+                 and checked_descriptor(self.wait_ref) == self._released_wait_raw,
+                 "original request or waited terminal bytes changed")
+            terminal = json_object(self._released_stdout_raw)
+            operational = _validation_released_operational_evidence_v1(
+                self.context["plan"], self.request_pin, terminal, Path(self.context["invocation"]))
+            need(_validation_released_operational_projection_v1(operational, terminal)
+                 == self._released_operational_raw, "original operational proof changed")
+            self.guard(); self.clock()
+        except Exception:
+            return False
+        try:
+            self.stack.close()
+        except BaseException:
+            return False
+        # Irreversible Source closure precedes every later evidence write.
+        self.closed = True
+        self.source_exit_finished_at = time.monotonic()
+        value = {"schema": "agent-supervisor/v5-validation-failed-operational-source-closeout@1",
+            "request": self.request_pin, "original_wait": self.wait_ref,
+            "execution_observation": self.execution_ref,
+            "closure_kind": "released_original_metadata_verification_failed",
+            "SDK_returncode": completed.returncode,
+            "verification_error_type": type(error).__name__[:128],
+            "source_closed": True, "native_closed": True, "storage_status": "released",
+            "source_receipts": self.receipts,
+            "operational_projection_sha256": hashlib.sha256(self._released_operational_raw).hexdigest(),
+            "authority_deadline_monotonic": self.deadline,
+            "source_exit_finished_at_monotonic": self.source_exit_finished_at,
+            "late_source_close": self.source_exit_finished_at >= self.deadline,
+            "validation_accepted": False, "original_success_authenticated": False,
+            "native_execution_authenticated": False, "parent_handle_issued": False,
+            "storage_release_authorized": False, "retry_authorized": False,
+            "further_productive_work": False}
+        try:
+            new_json(Path(self.context["invocation"]) / "failed-operational-source-closeout.json", value)
+        except Exception as write_error:
+            # Preserve the original failed operation; closed Source cannot be
+            # put back into UNKNOWN merely because its metadata write failed.
+            try:
+                BaseException.add_note(error, "Failed operational Source closeout evidence write: "
+                    + type(write_error).__name__[:128])
+            except Exception:
+                pass
+        return True
+
     def finish(self, completed, witness):
         # The bounded observation was persisted before record-count/code/proof gates.
         self.clock(); self.guard()
@@ -1611,6 +1682,17 @@ class _V5ValidationSourceCustody:
             need(observation.completion_kind == "completed" and self.process.returncode == 0,
                  "original V5 success requires actual/public zero and completed capture")
             self.clock()
+            if self.policy.get("schema") in ("reviewed-preservation-parent/v1", "reviewed-preservation-parent/v3"):
+                if (_reviewed_parent_guard is not _REVIEWED_PARENT_GUARD_OBJECT
+                        or _reviewed_parent_guard.__code__ is not _REVIEWED_PARENT_GUARD_CODE):
+                    raise ValueError("reviewed parent callable bindings changed: guard")
+                _reviewed_parent_guard()
+                operational = _validation_released_operational_evidence_v1(
+                    self.context["plan"], self.request_pin, terminal, Path(self.context["invocation"]))
+                self._released_operational_raw = _validation_released_operational_projection_v1(operational, terminal)
+                self._released_stdout_raw = raw
+                self._released_wait_raw = checked_descriptor(self.wait_ref)
+                self.clock()
             summary = verify_validation_evidence(self.policy, self.context["plan"], self.request_pin,
                 terminal, Path(self.context["invocation"]))
             value = {"closure_kind": "existing_verified_success", "storage_status": "released",
@@ -1731,6 +1813,7 @@ def original_runner_wait(policy, argv, cwd, timeout, *, validation_context=None,
         _reviewed_parent_check_plan_v1(policy, validation_context)
     custody = (_V5ValidationSourceCustody(policy, argv, cwd, timeout, validation_context)
                if _v5_ordinary_validation(policy) else None)
+    completed = None; witness = None
     try:
         """Observe the actual Popen owned by the unchanged public engine helper."""
         from ipfs_accelerate_py.agent_supervisor.todo_daemon import engine
@@ -1818,6 +1901,21 @@ def original_runner_wait(policy, argv, cwd, timeout, *, validation_context=None,
             # failed observation, not UNKNOWN custody of an open Source stack.
             if custody.closed:
                 raise
+            failed_close = None
+            if capture_parent_success or (type(policy) is dict and policy.get("schema") in (
+                    "reviewed-preservation-parent/v1", "reviewed-preservation-parent/v3")):
+                try:
+                    if (_reviewed_parent_guard is not _REVIEWED_PARENT_GUARD_OBJECT
+                            or _reviewed_parent_guard.__code__ is not _REVIEWED_PARENT_GUARD_CODE):
+                        raise ValueError("reviewed parent callable bindings changed: guard")
+                    _reviewed_parent_guard()
+                    failed_close = _reviewed_parent_failed_close_method_v1(custody)
+                except BaseException:
+                    failed_close = None
+            if isinstance(error, Exception) and type(failed_close) is types.MethodType and failed_close.__self__ is custody:
+                failed_close(completed, witness, error)
+                if custody.closed:
+                    raise
             if custody.process is not None or custody.spawn_attempted:
                 custody.hold(error)
             try:
@@ -2052,8 +2150,22 @@ def validate(args):
         **({"parent_source_closeout": witness["parent_source_closeout"]} if _v5_ordinary_validation(policy) else {})})
 
 
-def verify_validation_evidence(policy, plan, request_pin, terminal, invocation):
-    qualification = _source_qualification_plan(policy, plan, invocation)
+def _reviewed_parent_failed_close_method_v1(custody):
+    """Authenticate the fixed owner method; this lookup closes no resource."""
+    if (_reviewed_parent_guard is not _REVIEWED_PARENT_GUARD_OBJECT
+            or _reviewed_parent_guard.__code__ is not _REVIEWED_PARENT_GUARD_CODE):
+        raise ValueError("reviewed parent callable bindings changed: guard")
+    _reviewed_parent_guard()
+    need(type(custody) is _V5ValidationSourceCustody, "same authenticated original custody class required")
+    method = getattr(custody, "close_failed_operational_verification", None)
+    need(type(method) is types.MethodType and method.__self__ is custody
+         and method.__func__ is vars(_V5ValidationSourceCustody)["close_failed_operational_verification"],
+         "reviewed parent callable bindings changed: failed operational close method")
+    return method
+
+
+def _validation_released_operational_evidence_v1(plan, request_pin, terminal, invocation):
+    """Existing released-success checks only; no semantic or authority grant."""
     request = json_object(checked_descriptor(request_pin))
     wait = json_object(ordinary_bytes(invocation / "runner-wait.json"))
     need(wait["request"] == request_pin and wait["original_process_owner_returned"] is True
@@ -2077,6 +2189,19 @@ def verify_validation_evidence(policy, plan, request_pin, terminal, invocation):
     need(Path(terminal["result"]) == attempt / "logs/result.json" and owner["schema"] == "owned-validation-result/v1"
          and owner["completed"] is True and type(owner["returncode"]) is int and owner["returncode"] == 0
          and owner["request_sha256"] == request_pin["sha256"], "original result mismatch")
+    return request, wait, reservation, record, native, attempt
+
+
+def _validation_released_operational_projection_v1(operational, terminal):
+    """Detached bounded original DATA; it is not a capability or close action."""
+    return canonical({"request": operational[0], "wait": operational[1],
+        "terminal": terminal, "attempt_directory": str(operational[5])})
+
+
+def verify_validation_evidence(policy, plan, request_pin, terminal, invocation):
+    qualification = _source_qualification_plan(policy, plan, invocation)
+    request, wait, reservation, record, native, attempt = _validation_released_operational_evidence_v1(
+        plan, request_pin, terminal, invocation)
     report = json_object(ordinary_bytes(attempt / "exports/trusted-validation.json"))
     native_profile = _reviewed_parent_policy(policy)
     delegated_source = _immutable_source_parent_enabled(policy)

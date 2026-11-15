@@ -5098,3 +5098,436 @@ def test_immutable_source_qualification_report_cannot_retag_other_profile_DATA(m
         owners.verify_validation_evidence(policy, plan, request, terminal, s.invocation)
     assert Path(report['path']).read_bytes() == owners.canonical(dict(schema=offered_schema, passed=True)) + b'\n'
     assert not (s.invocation / 'source-qualification-receipt.json').exists()
+
+
+# The original reviewed Native parent has no repair control_release field.
+# These controls cross the real success verifier's namespace gate, then stop
+# at a named, deliberately modeled packet join. They mint no parent handle,
+# Source proof, Native execution, admission, or final validation acceptance.
+class _ReviewedParentNamespaceJoinReached(RuntimeError):
+    pass
+
+
+def _reviewed_parent_namespace_success_scope_v1(scope, parent_schema, monkeypatch):
+    s = scope
+    profile = {"profile": "reviewed-preservation-normal-namespaces/v2",
+        "fullname": "ipfs_datasets_py.logic.backends",
+        "path": str(s.attempt / "modeled-unimported-namespace"),
+        "device": 41, "inode": 73, "initializer_absent": True}
+    s.policy["schema"] = parent_schema
+    s.policy["validation"].update(
+        ordinary_scratch_profile={"schema": "owned-validation-ordinary-scratch-live/v1"},
+        normal_namespace_profiles=[copy.deepcopy(profile)])
+    s.policy["operation"] = {"fixture_only": True, "no_native_operation_claimed": True}
+    s.plan.update(schema={"reviewed-preservation-parent/v1": "reviewed-preservation-native-worker/v1",
+        "reviewed-preservation-parent/v3": "reviewed-preservation-native-worker/v3"}[parent_schema],
+        operation=copy.deepcopy(s.policy["operation"]), normal_namespace_profiles=[copy.deepcopy(profile)],
+        parent_nonce_sha256="d" * 64)
+    report_path = s.attempt / "exports/trusted-validation.json"
+    s.report = json.loads(report_path.read_bytes())
+    s.report.update(schema=s.plan["schema"], source_READ_closed=False,
+        source_READ_admission_complete=False, source_custody_mode="delegated-original-parent-read/v1",
+        parent_nonce_sha256=s.plan["parent_nonce_sha256"],
+        declared_normal_namespace_profiles=[copy.deepcopy(profile)])
+    s.report["native_binding"] = put(s.attempt / "exports/reviewed-preservation-native-binding.json",
+        {"fixture_only": True, "not_a_native_result": True})
+    s.namespace_join_calls = []
+
+    def reached_native_join(*args, **kwargs):
+        s.namespace_join_calls.append(True)
+        raise _ReviewedParentNamespaceJoinReached("modeled native join reached after namespace proof")
+
+    monkeypatch.setattr(owners, "_reviewed_parent_binding_v3", reached_native_join)
+    return s
+
+
+def _persist_reviewed_parent_namespace_success_scope_v1(scope):
+    # Only this test's authored ordinary DATA is changed. No original evidence
+    # or resource owner is entered, and the real packet join remains a sentinel.
+    plan_path = scope.invocation / "validation-plan.json"
+    plan_path.chmod(0o600)
+    plan_path.write_bytes(owners.canonical(scope.plan) + b"\n")
+    plan_path.chmod(0o400)
+    scope.report["plan_sha256"] = pin(plan_path)["sha256"]
+    report_path = scope.attempt / "exports/trusted-validation.json"
+    report_path.chmod(0o600)
+    report_path.write_bytes(owners.canonical(scope.report) + b"\n")
+    report_path.chmod(0o400)
+
+
+@pytest.mark.parametrize("parent_schema", ["reviewed-preservation-parent/v1", "reviewed-preservation-parent/v3"])
+def test_reviewed_parent_success_verifier_uses_own_namespace_without_repair_control_release(
+        reviewed_parent_modeled_durability_scope, monkeypatch, parent_schema):
+    s = _reviewed_parent_namespace_success_scope_v1(
+        reviewed_parent_modeled_durability_scope, parent_schema, monkeypatch)
+    assert "control_release" not in s.policy
+    before = copy.deepcopy((s.policy, s.plan))
+    _persist_reviewed_parent_namespace_success_scope_v1(s)
+    with pytest.raises(_ReviewedParentNamespaceJoinReached, match="after namespace proof"):
+        owners.verify_validation_evidence(s.policy, s.plan, s.request_pin, s.terminal, s.invocation)
+    assert s.namespace_join_calls == [True]
+    assert (s.policy, s.plan) == before
+    assert not (s.invocation / "parent-source-closeout.json").exists()
+    assert not (s.invocation / "source-custody-unknown.json").exists()
+
+
+@pytest.mark.parametrize("parent_schema", ["reviewed-preservation-parent/v1", "reviewed-preservation-parent/v3"])
+@pytest.mark.parametrize("mutation", ["missing_plan", "missing_report", "changed_plan", "changed_report",
+    "crossed_both", "boolean_inode"])
+def test_reviewed_parent_success_verifier_refuses_crossed_policy_plan_report_namespaces(
+        reviewed_parent_modeled_durability_scope, monkeypatch, parent_schema, mutation):
+    s = _reviewed_parent_namespace_success_scope_v1(
+        reviewed_parent_modeled_durability_scope, parent_schema, monkeypatch)
+    if mutation == "missing_plan":
+        s.plan.pop("normal_namespace_profiles")
+    elif mutation == "missing_report":
+        s.report.pop("declared_normal_namespace_profiles")
+    elif mutation == "changed_plan":
+        s.plan["normal_namespace_profiles"][0]["inode"] += 1
+    elif mutation == "changed_report":
+        s.report["declared_normal_namespace_profiles"][0]["inode"] += 1
+    elif mutation == "crossed_both":
+        s.plan["normal_namespace_profiles"][0]["inode"] += 1
+        s.report["declared_normal_namespace_profiles"][0]["inode"] += 1
+    else:
+        s.report["declared_normal_namespace_profiles"][0]["inode"] = True
+    _persist_reviewed_parent_namespace_success_scope_v1(s)
+    with pytest.raises(ValueError, match="V5 immutable control namespace declaration differs"):
+        owners.verify_validation_evidence(s.policy, s.plan, s.request_pin, s.terminal, s.invocation)
+    assert s.namespace_join_calls == []
+    assert not (s.invocation / "parent-source-closeout.json").exists()
+
+
+# New failure-close controls model process/Source boundaries explicitly and use
+# the real tiny saved operational artifacts. They execute no SDK, Native tool,
+# Source lease, release, retry, original capability or separate runner.
+class _BoundedFailedCloseUnknown(RuntimeError):
+    pass
+
+
+def _bounded_failed_close_poison(*args, **kwargs):
+    raise AssertionError("unauthenticated failed-close callable was invoked")
+
+
+def _bounded_failed_close_rewrite(path, value):
+    path.chmod(0o600)
+    path.write_bytes(value if type(value) is bytes else owners.canonical(value) + b"\n")
+    path.chmod(0o400)
+    return pin(path)
+
+
+@pytest.fixture
+def bounded_reviewed_failed_close_scope(typed_v5_modeled_boundaries,
+        reviewed_parent_modeled_durability_scope, monkeypatch):
+    s = typed_v5_modeled_boundaries
+    r = reviewed_parent_modeled_durability_scope
+    c = s.c
+    # Preserve the preparation fixture's preauthored wait. The real finish must
+    # publish its own wait exactly once in a separate fresh run invocation.
+    r.prepared_invocation = r.invocation
+    r.invocation = r.invocation.parent / "fresh-failed-close-invocation"
+    r.invocation.mkdir(mode=0o700)
+    engine_ref = pin(Path(s.engine.__file__).absolute())
+    c.engine_source = engine_ref
+    c.policy = copy.deepcopy(r.policy)
+    c.policy["schema"] = "reviewed-preservation-parent/v3"
+    c.policy["source_descriptors"] = [engine_ref]
+    c.policy["validation"]["ordinary_scratch_profile"] = {"schema": "owned-validation-ordinary-scratch-live/v1"}
+    request = json.loads(Path(r.request_pin["path"]).read_bytes())
+    request.update(timeout_seconds=300, storage_bytes=16777216)
+    c.request_pin = put(r.invocation / "modeled-failure-close-request.json", request)
+    c.raw = owners.checked_descriptor(c.request_pin)
+    c.request = request
+    r.terminal["reservation"]["record"]["validation_request_sha256"] = c.request_pin["sha256"]
+    result_path = r.attempt / "logs/result.json"
+    result = json.loads(result_path.read_bytes())
+    result["request_sha256"] = c.request_pin["sha256"]
+    _bounded_failed_close_rewrite(result_path, result)
+    c.context = {"plan": r.plan, "invocation": r.invocation, "frozen": {}}
+    f = SimpleNamespace(base=s, real=r, c=c, terminal=r.terminal, events=s.events,
+        held=[], failure=KeyError("modeled metadata failure"), completed=None,
+        metadata_calls=0, delegation_calls=0, failed_write_seen=False,
+        output_capture="complete", missing_observation=False, metadata_hook=None)
+    # This fixture's Source/runtime authenticity is modeled, as in the existing
+    # typed boundary fixture. Separate unmocked controls below own real callable
+    # guard refusal. No issued Native handle or original success is fabricated.
+    def modeled_reviewed_guard():
+        return None
+    monkeypatch.setattr(owners, "_reviewed_parent_guard", modeled_reviewed_guard)
+    monkeypatch.setattr(owners, "_REVIEWED_PARENT_GUARD_OBJECT", modeled_reviewed_guard)
+    monkeypatch.setattr(owners, "_REVIEWED_PARENT_GUARD_CODE", modeled_reviewed_guard.__code__)
+    class ModeledCompletedPopen:
+        def __init__(self, command, **kwargs):
+            self.args = list(command)
+            self.pid = 4101
+            self.returncode = 0
+        def communicate(self, **kwargs):
+            return owners.canonical(f.terminal).decode(), ""
+        def poll(self):
+            pytest.fail("failed-close fixture must use the original typed observation")
+        def wait(self, *args, **kwargs):
+            pytest.fail("failed-close fixture must never reap or launch a process")
+    monkeypatch.setattr(owners, "_ORIGINAL_POPEN", ModeledCompletedPopen)
+    monkeypatch.setattr(s.engine.subprocess, "Popen", ModeledCompletedPopen)
+    monkeypatch.setattr(owners, "proc_identity", lambda pid: {"pid": pid, "birth": "12345"})
+    # Model construction/dispatch without changing the production class's
+    # CPython allocation slots. Unmocked guard negatives remain separate below.
+    monkeypatch.setattr(owners, "_V5ValidationSourceCustody", lambda *args, **kwargs: c)
+    def modeled_trusted_dispatch(selected):
+        assert selected is c
+        return type(c).close_failed_operational_verification.__get__(c, type(c))
+    monkeypatch.setattr(owners, "_reviewed_parent_failed_close_method_v1", modeled_trusted_dispatch)
+    monkeypatch.setattr(s.engine, "time", SimpleNamespace(monotonic=lambda: s.now["value"]))
+    # Run the unchanged engine emitter against this explicit fake communicate
+    # boundary. No synthetic code is compiled under a canonical source name.
+    actual_record = c.record_execution
+    def modeled_record(completed, engine, records):
+        f.completed = completed
+        if f.missing_observation:
+            object.__setattr__(completed, "execution_observation", None)
+        elif f.output_capture != "complete":
+            before = completed.execution_observation
+            values = {name: getattr(before, name) for name in owners._V5_EXECUTION_FIELDS}
+            values["output_capture"] = f.output_capture
+            object.__setattr__(completed, "execution_observation", engine.CommandExecutionObservation(**values))
+        return actual_record(completed, engine, records)
+    c.record_execution = modeled_record
+    def metadata_failure(*args, **kwargs):
+        f.metadata_calls += 1
+        if f.metadata_hook is not None:
+            f.metadata_hook(*args, **kwargs)
+        raise f.failure
+    monkeypatch.setattr(owners, "verify_validation_evidence", metadata_failure)
+    def held(error):
+        f.held.append(error)
+        raise _BoundedFailedCloseUnknown("modeled existing UNKNOWN hold")
+    c.hold = held
+    return f
+
+
+def _run_bounded_failed_close_scope(scope):
+    c = scope.c
+    return owners.original_runner_wait(c.policy, c.argv, scope.real.invocation, 360,
+        validation_context=c.context)
+
+
+@pytest.mark.parametrize("metadata_stage", ["early_qualification", "report", "delegation"])
+def test_reviewed_failed_close_rethrows_metadata_error_after_same_original_Source_exit(
+        bounded_reviewed_failed_close_scope, monkeypatch, metadata_stage):
+    f = bounded_reviewed_failed_close_scope
+    if metadata_stage == "early_qualification":
+        actual_verifier = next(state[0] for name, state in owners._REVIEWED_PARENT_FUNCTIONS
+            if name == "verify_validation_evidence")
+        monkeypatch.setattr(owners, "verify_validation_evidence", actual_verifier)
+        def early(*args, **kwargs):
+            f.metadata_calls += 1
+            assert type(f.c._released_operational_raw) is bytes
+            raise f.failure
+        monkeypatch.setattr(owners, "_source_qualification_plan", early)
+    elif metadata_stage == "delegation":
+        def verified(*args):
+            f.metadata_calls += 1
+            return {"modeled_semantic_summary": True}
+        monkeypatch.setattr(owners, "verify_validation_evidence", verified)
+        def later(*args, **kwargs):
+            f.delegation_calls += 1
+            raise f.failure
+        monkeypatch.setattr(owners, "_reviewed_parent_check_worker_delegation", later)
+    before = len(owners._REVIEWED_PARENT_CAPABILITIES)
+    with pytest.raises(KeyError) as caught:
+        _run_bounded_failed_close_scope(f)
+    assert caught.value is f.failure
+    assert f.metadata_calls == 1
+    assert f.delegation_calls == (1 if metadata_stage == "delegation" else 0)
+    assert f.c.closed is True and f.events.count("source_exit") == 1 and f.held == []
+    record = json.loads((f.real.invocation / "failed-operational-source-closeout.json").read_bytes())
+    assert record["source_closed"] is record["native_closed"] is True
+    assert record["closure_kind"] == "released_original_metadata_verification_failed"
+    assert record["SDK_returncode"] == 0 and record["storage_status"] == "released"
+    for name in ("validation_accepted", "original_success_authenticated", "native_execution_authenticated",
+            "parent_handle_issued", "storage_release_authorized", "retry_authorized", "further_productive_work"):
+        assert record[name] is False
+    assert record["authority_deadline_monotonic"] == f.c.deadline == 1360.0
+    assert len(owners._REVIEWED_PARENT_CAPABILITIES) == before
+    assert f.base.native_calls == [] and not (f.real.invocation / "parent-source-closeout.json").exists()
+    assert (f.real.prepared_invocation / "runner-wait.json").is_file()
+
+
+@pytest.mark.parametrize("fault", ["retained_row", "request_sha", "owner_birth", "native_lease",
+    "live_descendant", "out_of_group", "tracking_error", "result_request",
+    "incomplete_EOF", "unknown_EOF", "missing_observation", "changed_stdout", "changed_request",
+    "changed_wait", "expired_original"])
+def test_reviewed_failed_close_unproven_original_never_closes_Source(
+        bounded_reviewed_failed_close_scope, fault):
+    f = bounded_reviewed_failed_close_scope
+    reservation = f.terminal["reservation"]
+    if fault == "retained_row":
+        reservation["record"]["status"] = "retained"
+    elif fault == "request_sha":
+        reservation["record"]["validation_request_sha256"] = "f" * 64
+    elif fault == "owner_birth":
+        reservation["record"]["owner_birth"] = "54321"
+    elif fault == "native_lease":
+        reservation["resource_lease"]["lease_id"] = "foreign-lease"
+    elif fault == "live_descendant":
+        reservation["process_observation"]["live_processes"] = 1
+    elif fault == "out_of_group":
+        reservation["process_observation"]["out_of_group_live_identities"] = [{"pid": 77}]
+    elif fault == "tracking_error":
+        reservation["process_observation"]["tracking_error"] = "modeled uncertainty"
+    elif fault == "result_request":
+        p = f.real.attempt / "logs/result.json"
+        value = json.loads(p.read_bytes()); value["request_sha256"] = "f" * 64
+        _bounded_failed_close_rewrite(p, value)
+    elif fault in ("incomplete_EOF", "unknown_EOF"):
+        f.output_capture = "incomplete" if fault == "incomplete_EOF" else "unknown"
+    elif fault == "missing_observation":
+        f.missing_observation = True
+    else:
+        def change(*args, **kwargs):
+            assert type(f.c._released_operational_raw) is bytes
+            if fault == "changed_stdout":
+                object.__setattr__(f.completed, "stdout", f.completed.stdout + " ")
+            elif fault == "changed_request":
+                _bounded_failed_close_rewrite(Path(f.c.request_pin["path"]), {"changed": True})
+            elif fault == "changed_wait":
+                p = Path(f.c.wait_ref["path"])
+                value = json.loads(p.read_bytes()); value["returncode"] = 9
+                _bounded_failed_close_rewrite(p, value)
+            else:
+                f.base.now["value"] = f.c.deadline
+        f.metadata_hook = change
+    with pytest.raises(_BoundedFailedCloseUnknown):
+        _run_bounded_failed_close_scope(f)
+    assert f.c.closed is False and "source_exit" not in f.events
+    assert len(f.held) == 1 and f.base.native_calls == []
+    assert not isinstance(f.held[0], FileExistsError)
+    if fault in ("changed_stdout", "changed_request", "changed_wait", "expired_original"):
+        assert f.metadata_calls == 1 and f.held == [f.failure]
+        assert type(f.c._released_operational_raw) is bytes
+    else:
+        assert f.metadata_calls == 0 and isinstance(f.held[0], ValueError)
+        expected = ("terminal EOF" if fault in ("incomplete_EOF", "unknown_EOF") else
+            "typed immutable original V5 execution observation" if fault == "missing_observation" else
+            "original runner PID/birth/wait binding differs" if fault == "owner_birth" else
+            "original descendant custody remains unknown" if fault in ("live_descendant", "out_of_group", "tracking_error") else
+            "original result mismatch" if fault == "result_request" else
+            "original native/storage closure is not proven")
+        assert expected in str(f.held[0])
+    assert f.c.deadline == 1360.0
+    assert not (f.real.invocation / "failed-operational-source-closeout.json").exists()
+
+
+def test_reviewed_failed_close_preserves_detached_SDK_attestation_when_metadata_mutates_its_DATA_copy(
+        bounded_reviewed_failed_close_scope):
+    f = bounded_reviewed_failed_close_scope
+    def changed_copy(policy, plan, request_pin, terminal, invocation):
+        terminal["reservation"]["record"]["status"] = "changed-by-semantic-callback"
+    f.metadata_hook = changed_copy
+    with pytest.raises(KeyError) as caught:
+        _run_bounded_failed_close_scope(f)
+    assert caught.value is f.failure and f.c.closed and f.held == []
+    assert f.metadata_calls == 1
+    assert f.events.count("source_exit") == 1
+    record = json.loads((f.real.invocation / "failed-operational-source-closeout.json").read_bytes())
+    assert record["storage_status"] == "released" and record["validation_accepted"] is False
+
+
+def test_reviewed_failed_close_Source_exit_error_retains_existing_UNKNOWN(
+        bounded_reviewed_failed_close_scope):
+    f = bounded_reviewed_failed_close_scope
+    def failing_close():
+        f.events.append("source_exit_failed")
+        raise OSError("modeled Source exit failed")
+    f.c.stack.close = failing_close
+    with pytest.raises(_BoundedFailedCloseUnknown):
+        _run_bounded_failed_close_scope(f)
+    assert f.c.closed is False and f.events.count("source_exit_failed") == 1
+    assert f.metadata_calls == 1
+    assert f.held == [f.failure] and f.base.native_calls == []
+    assert not (f.real.invocation / "failed-operational-source-closeout.json").exists()
+
+
+def test_reviewed_failed_close_late_irreversible_Source_exit_never_accepts_or_renews(
+        bounded_reviewed_failed_close_scope):
+    f = bounded_reviewed_failed_close_scope
+    def late_close():
+        f.events.append("source_exit")
+        f.base.now["value"] = 1361.0
+    f.c.stack.close = late_close
+    with pytest.raises(KeyError) as caught:
+        _run_bounded_failed_close_scope(f)
+    assert caught.value is f.failure and f.c.closed and f.held == []
+    assert f.metadata_calls == 1
+    record = json.loads((f.real.invocation / "failed-operational-source-closeout.json").read_bytes())
+    assert record["late_source_close"] is True and record["validation_accepted"] is False
+    assert record["authority_deadline_monotonic"] == f.c.deadline == 1360.0
+
+
+def test_reviewed_failed_close_evidence_write_error_cannot_reenter_UNKNOWN_after_Source_exit(
+        bounded_reviewed_failed_close_scope, monkeypatch):
+    f = bounded_reviewed_failed_close_scope
+    original = owners.new_json
+    def failing_evidence(path, value):
+        if Path(path).name == "failed-operational-source-closeout.json":
+            assert f.c.closed and f.events.count("source_exit") == 1
+            f.failed_write_seen = True
+            raise OSError("modeled failed-closeout metadata write")
+        return original(path, value)
+    monkeypatch.setattr(owners, "new_json", failing_evidence)
+    with pytest.raises(KeyError) as caught:
+        _run_bounded_failed_close_scope(f)
+    assert caught.value is f.failure and f.c.closed and f.held == []
+    assert f.metadata_calls == 1 and f.failed_write_seen is True
+    assert any("OSError" in note for note in caught.value.__notes__)
+    assert (f.real.invocation / "runner-wait.json").is_file()
+    assert (f.real.invocation / "runner-execution-observation.json").is_file()
+    assert not (f.real.invocation / "failed-operational-source-closeout.json").exists()
+
+
+@pytest.mark.parametrize("mode", ["ordinary", "BaseException"])
+def test_reviewed_failed_close_does_not_expand_ordinary_or_BaseException_disposition(
+        bounded_reviewed_failed_close_scope, mode):
+    f = bounded_reviewed_failed_close_scope
+    if mode == "ordinary":
+        f.c.policy["schema"] = "explicit-modeled-verifier-only"
+    else:
+        f.failure = KeyboardInterrupt("modeled interruption remains UNKNOWN")
+    with pytest.raises(_BoundedFailedCloseUnknown):
+        _run_bounded_failed_close_scope(f)
+    assert f.c.closed is False and "source_exit" not in f.events and f.held == [f.failure]
+    assert f.metadata_calls == 1
+    assert not (f.real.invocation / "failed-operational-source-closeout.json").exists()
+
+
+@pytest.mark.parametrize("helper", ["_validation_released_operational_evidence_v1",
+    "_validation_released_operational_projection_v1", "_reviewed_parent_failed_close_method_v1"])
+@pytest.mark.parametrize("mutation", ["identity", "code"])
+def test_reviewed_failed_close_guard_refuses_helper_changes_before_dispatch(monkeypatch, helper, mutation):
+    custody = object.__new__(owners._V5ValidationSourceCustody)
+    function = getattr(owners, helper)
+    if mutation == "identity":
+        monkeypatch.setattr(owners, helper, _bounded_failed_close_poison)
+    else:
+        monkeypatch.setattr(function, "__code__", _bounded_failed_close_poison.__code__)
+    with pytest.raises(ValueError, match="(?i)(changed|binding)"):
+        # The actual dispatch authenticates this unchanged guard before calling
+        # a selector whose function object or __code__ may have been replaced.
+        owners._reviewed_parent_guard()
+        owners._reviewed_parent_failed_close_method_v1(custody)
+
+
+@pytest.mark.parametrize("mutation", ["instance", "class", "code"])
+def test_reviewed_failed_close_guard_refuses_replaced_recovery_method_before_call(monkeypatch, mutation):
+    cls = owners._V5ValidationSourceCustody
+    custody = object.__new__(cls)
+    custody.closed = False
+    if mutation == "instance":
+        custody.close_failed_operational_verification = _bounded_failed_close_poison.__get__(custody, cls)
+    elif mutation == "class":
+        monkeypatch.setattr(cls, "close_failed_operational_verification", _bounded_failed_close_poison)
+    else:
+        monkeypatch.setattr(cls.close_failed_operational_verification, "__code__", _bounded_failed_close_poison.__code__)
+    with pytest.raises(ValueError, match="(?i)(changed|binding)"):
+        owners._reviewed_parent_failed_close_method_v1(custody)
+    assert custody.closed is False

@@ -1,0 +1,11 @@
+{
+  "tests/unit/agent_supervisor/test_scientific_closed_capacity_continuation.py::test_source_generation_current_profile_has_three_distinct_explicit_contracts": 3,
+  "tests/unit/agent_supervisor/test_scientific_closed_capacity_continuation.py::test_source_generation_current_profile_refuses_crossed_versions": 4,
+  "tests/unit/agent_supervisor/test_scientific_closed_capacity_continuation.py::test_source_generation_legacy_profiles_cannot_accept_parent_policy": 2,
+  "tests/unit/agent_supervisor/test_scientific_closed_capacity_continuation.py::test_source_generation_parent_join_keeps_physical_code_and_canonical_locks_distinct": 1,
+  "tests/unit/agent_supervisor/test_scientific_closed_capacity_continuation.py::test_source_generation_parent_join_refuses_each_crossed_attestation_field": 15,
+  "tests/unit/agent_supervisor/test_scientific_closed_capacity_continuation.py::test_source_generation_parent_join_refuses_unbound_roots_identity_and_child_custody": 18,
+  "tests/unit/agent_supervisor/test_scientific_closed_capacity_continuation.py::test_source_generation_parent_profile_cannot_relabel_an_old_policy": 3,
+  "tests/unit/agent_supervisor/test_scientific_closed_capacity_continuation.py::test_source_generation_parent_profile_reaches_complete_existing_SDK_metadata_reader": 1,
+  "tests/unit/agent_supervisor/test_scientific_closed_capacity_continuation.py::test_source_generation_parent_profile_rejects_same_byte_other_R_role_identity": 1
+}
