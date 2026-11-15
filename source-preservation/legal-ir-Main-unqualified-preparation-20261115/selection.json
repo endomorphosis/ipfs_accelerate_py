@@ -1,0 +1,184 @@
+{
+  "PREPARATION_COMPLETE": false,
+  "Source_admission": false,
+  "adoption": false,
+  "at_UTC": "2026-11-15T21:16:31.854660+00:00",
+  "coverage_observations": [
+    {
+      "commit": "62d117e7e0a11a77c76ad53b7b5d17fae79968a5",
+      "local_object_clone": "/tmp/legal-ir-Root-current-source3-preserve-20261115-v07/A",
+      "repository": "A",
+      "role": "Source86_recorded_preservation_tip",
+      "selected_blob_matches": [],
+      "tree_entries_examined_as_metadata": 29593
+    },
+    {
+      "commit": "a3cec71ab49e951d977ecd25c16984c6d4031d86",
+      "local_object_clone": "/tmp/legal-ir-v11-source6-offbox-preserve-20261115-v01/R",
+      "repository": "R",
+      "role": "Source86_recorded_preservation_tip",
+      "selected_blob_matches": [],
+      "tree_entries_examined_as_metadata": 41231
+    },
+    {
+      "commit": "2d4ad8b84d7ef5024c895925393eeb1ea60279e2",
+      "local_object_clone": "/tmp/lift-sync-accelerate-all-main-20261114",
+      "repository": "A",
+      "role": "Source86_recorded_public_main",
+      "selected_blob_matches": [],
+      "tree_entries_examined_as_metadata": 29556
+    },
+    {
+      "commit": "8336d39eebe6922efcb77d669091593d3a37537b",
+      "local_object_clone": "/tmp/datasets-publish-main-20261114",
+      "repository": "R",
+      "role": "Source86_recorded_public_main",
+      "selected_blob_matches": [],
+      "tree_entries_examined_as_metadata": 41215
+    }
+  ],
+  "coverage_verdict": "Exact four blobs absent from the locally available recorded Source86 preservation tip trees and recorded public-main trees. The Source86 record has no explicit four-version destination witness.",
+  "destination_selection": "Coordinator existing source-preservation owner must choose its existing immutable source-only destination and supply actual commit/readback witnesses. No destination or publication result is invented here.",
+  "existing_publisher_owner": "Sync coordinator; no new actor or plan hierarchy",
+  "model_Lean_legal_or_corpus_admission": false,
+  "remaining_full_CLI4_comparison_at3_transition_qualified": false,
+  "reviewer_actions": {
+    "existing_four_Python_files_and_source_only_metadata_read": true,
+    "private_selection_JSON_only_write": true,
+    "product_imports_tests_Source_Git_mutations_runtime_APIs_release_or_publication": false,
+    "read_only_Git_tree_metadata_comparison": true
+  },
+  "runtime_admission": false,
+  "schema": "existing-private-Main-at2-explicit15-four-Python-source-only-preservation-selection/v1",
+  "scientific_activation": false,
+  "scope_limits": {
+    "historical_preservation_commits_not_claimed_exhaustively_checked": true,
+    "no_fetch_or_new_anonymous_network_probe_performed_for_this_selection": true,
+    "no_qualification_follows_from_storage_integrity": true,
+    "no_unbounded_remote_or_whole_host_absence_claim": true
+  },
+  "selected": [
+    {
+      "Git_blob_SHA1": "19c0f189d12c85f36bf4d8fe27347e1cf594b040",
+      "admission": false,
+      "adoption": false,
+      "candidate_family": "Main-physical-R-preparation-candidates-v01",
+      "identity": {
+        "st_ctime_ns": 1794707350820172682,
+        "st_dev": 66306,
+        "st_gid": 1000,
+        "st_ino": 56934229,
+        "st_mode": 33024,
+        "st_mtime_ns": 1794707004085228027,
+        "st_nlink": 1,
+        "st_size": 406588,
+        "st_uid": 1000
+      },
+      "mode": 256,
+      "qualification": false,
+      "relative_source_path": "ipfs_accelerate_py/agent_supervisor/rescue/scientific_executor.py",
+      "role": "Main-five-source-mapped-metadata-at2-proposal",
+      "source_ref": {
+        "bytes": 406588,
+        "path": "/tmp/legal-ir-phase2-reviewed-admission-source-20261108-v01/resource-census-compatible-port-v01/runtime-owner-v4-trainer-compatibility-v01/ordinary-immutable-source-parent-delegation-private-v01/Main-physical-R-preparation-candidates-v01/ipfs_accelerate_py/agent_supervisor/rescue/scientific_executor.py",
+        "sha256": "e84b1c95e2c4c50310657dd90c5ac9d24015512195dcf610cc63b00698cac55f"
+      }
+    },
+    {
+      "Git_blob_SHA1": "cc1d8c3861f4e752d3c0368a100ddce07113f946",
+      "admission": false,
+      "adoption": false,
+      "candidate_family": "Main-physical-R-preparation-candidates-v01",
+      "identity": {
+        "st_ctime_ns": 1794707350871980255,
+        "st_dev": 66306,
+        "st_gid": 1000,
+        "st_ino": 56934233,
+        "st_mode": 33024,
+        "st_mtime_ns": 1794707292943597594,
+        "st_nlink": 1,
+        "st_size": 148965,
+        "st_uid": 1000
+      },
+      "mode": 256,
+      "qualification": false,
+      "relative_source_path": "tests/unit/agent_supervisor/test_scientific_closed_capacity_continuation.py",
+      "role": "owning-tests-five-source-mapped-metadata-at2-proposal",
+      "source_ref": {
+        "bytes": 148965,
+        "path": "/tmp/legal-ir-phase2-reviewed-admission-source-20261108-v01/resource-census-compatible-port-v01/runtime-owner-v4-trainer-compatibility-v01/ordinary-immutable-source-parent-delegation-private-v01/Main-physical-R-preparation-candidates-v01/tests/unit/agent_supervisor/test_scientific_closed_capacity_continuation.py",
+        "sha256": "f59b5048a2b2e3d1650a6b650e376bb9e0362ae3a909887907c380de23023ad4"
+      }
+    },
+    {
+      "Git_blob_SHA1": "252baea649f6d6d2671f99e1e4be1af4bae909ca",
+      "admission": false,
+      "adoption": false,
+      "candidate_family": "Main-physical-R-preparation-candidates-v02-explicit15",
+      "identity": {
+        "st_ctime_ns": 1794716898217885808,
+        "st_dev": 66306,
+        "st_gid": 1000,
+        "st_ino": 55361024,
+        "st_mode": 33204,
+        "st_mtime_ns": 1794716898217885808,
+        "st_nlink": 1,
+        "st_size": 412304,
+        "st_uid": 1000
+      },
+      "mode": 436,
+      "qualification": false,
+      "relative_source_path": "ipfs_accelerate_py/agent_supervisor/rescue/scientific_executor.py",
+      "role": "Main-explicit15-preparation-only-proposal",
+      "source_ref": {
+        "bytes": 412304,
+        "path": "/tmp/legal-ir-phase2-reviewed-admission-source-20261108-v01/resource-census-compatible-port-v01/runtime-owner-v4-trainer-compatibility-v01/ordinary-immutable-source-parent-delegation-private-v01/Main-physical-R-preparation-candidates-v02-explicit15/ipfs_accelerate_py/agent_supervisor/rescue/scientific_executor.py",
+        "sha256": "84628496bf1e86d9a9580e6e393ce89782c61215c0c77640a07cb51f1a969213"
+      }
+    },
+    {
+      "Git_blob_SHA1": "4677abb45d4d9fd781a72520d01eb8abf8e2996e",
+      "admission": false,
+      "adoption": false,
+      "candidate_family": "Main-physical-R-preparation-candidates-v02-explicit15",
+      "identity": {
+        "st_ctime_ns": 1794717057129922934,
+        "st_dev": 66306,
+        "st_gid": 1000,
+        "st_ino": 56016171,
+        "st_mode": 33204,
+        "st_mtime_ns": 1794717057129922934,
+        "st_nlink": 1,
+        "st_size": 157910,
+        "st_uid": 1000
+      },
+      "mode": 436,
+      "qualification": false,
+      "relative_source_path": "tests/unit/agent_supervisor/test_scientific_closed_capacity_continuation.py",
+      "role": "owning-tests-explicit15-preparation-only-proposal",
+      "source_ref": {
+        "bytes": 157910,
+        "path": "/tmp/legal-ir-phase2-reviewed-admission-source-20261108-v01/resource-census-compatible-port-v01/runtime-owner-v4-trainer-compatibility-v01/ordinary-immutable-source-parent-delegation-private-v01/Main-physical-R-preparation-candidates-v02-explicit15/tests/unit/agent_supervisor/test_scientific_closed_capacity_continuation.py",
+        "sha256": "677409f854c1f0f03a559c999e86ab3b230553a03cbb84fa02c2abea56e9e09b"
+      }
+    }
+  ],
+  "selected_bytes": 1125767,
+  "selected_file_count": 4,
+  "selection_excludes": [
+    "patch/manifest/audit JSON copies",
+    "runtime receipts/logs and databases",
+    "ZIP or other archives",
+    "model weights and checkpoints",
+    "native/compiled/toolchain assets",
+    "private legal/corpus assets"
+  ],
+  "software_qualification": false,
+  "source86_parent_record_commit_reported_by_Root": "d421507c",
+  "source86_record_ref": {
+    "bytes": 16409,
+    "path": "/tmp/lift-sync-root-main-20261114/maintenance/submodule-reconciliation-20261114/source-preservation-completion-20261115.json",
+    "sha256": "a7090c039267133dc06c6ad441f629846523dd94fbe5d30b9d478c9eb8408e96"
+  },
+  "status": "MINIMAL_SOURCE_ONLY_SELECTION_FOR_EXISTING_COORDINATOR_PRESERVATION_OWNER"
+}
