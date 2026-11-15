@@ -4053,3 +4053,165 @@ def test_source_qualification_cancelled_profile_is_not_a_default_or_completed_fa
     with pytest.raises((ValueError,KeyError,FileNotFoundError)):c.finish(completed,witness)
     assert c.closed is False and 'source_exit'not in s.events
     assert not any(call[0]=='cancelled_retained' for call in s.native_calls)
+
+
+@pytest.fixture
+def failed_retained_source_custody_DATA(typed_v5_modeled_boundaries, monkeypatch):
+    s = typed_v5_modeled_boundaries
+    c = s.c
+    c.policy['validation']['source_qualification'] = {'explicit_modeled_source_mode': True}
+    c.request['selected_checks'] = ['explicit reported command selector DATA']
+    c.context['plan'] = {'attempt_directory': str(s.invocation / 'attempt-DATA')}
+    s.terminal['reservation'].update(status='retained', cleanup_error=None)
+    s.terminal['reservation']['record']['status'] = 'retained'
+    s.terminal['failure'] = {'error_type': 'RuntimeError', 'returncode': 7,
+        'error': 'validation command failed with returncode 7', 'received_signals': [],
+        'executed_checks': list(c.request['selected_checks'])}
+    checks = []
+    def plan(policy, selected, invocation):
+        assert policy is c.policy and selected is c.context['plan'] and invocation == c.context['invocation']
+        checks.append('plan'); s.events.append('source_plan')
+        return {'explicit_modeled_plan_DATA': True}
+    monkeypatch.setattr(owners, '_source_qualification_plan', plan)
+    def old_failure(*args, **kwargs):
+        raise ValueError('modeled old failed-report qualification remains closed')
+    monkeypatch.setattr(owners, '_source_qualification_failed_custody', old_failure)
+    verdict = {'value': {'verdict': 'proven_original_failed_retained_native_closed',
+        'source_custody_closed': True, 'storage_release_authorized': False}}
+    def inspector(terminal, raw, **arguments):
+        if arguments.get('cleanup_profile') != 'failed_retained_v5':
+            return {'verdict': 'requires_original_native_cleanup', 'source_custody_closed': False,
+                'storage_release_authorized': False}
+        assert terminal == s.terminal and raw == c.raw
+        assert arguments['returncode'] == c.process.returncode == 1
+        assert arguments['owner_pid'] == c.identity['pid'] and arguments['owner_birth'] == c.identity['birth']
+        assert arguments['original_wait_deadline_monotonic'] == c.deadline == 1360.0
+        assert arguments['cleanup_profile'] == 'failed_retained_v5'
+        assert checks == ['plan'] and not c.closed
+        s.native_calls.append(('failed_retained', terminal, arguments)); s.events.append('native_inspector')
+        return verdict['value']
+    c.inspector = inspector
+    return SimpleNamespace(base=s, c=c, checks=checks, verdict=verdict, inspector=inspector)
+
+
+@pytest.mark.parametrize('worker_output', ['absent', 'partial-unsealed', 'unaccepted-sealed'])
+def test_completed_failed_retained_closes_Source_without_qualifying_worker_report(failed_retained_source_custody_DATA, worker_output):
+    f = failed_retained_source_custody_DATA; s = f.base
+    path = Path(f.c.context['plan']['attempt_directory']) / 'exports/trusted-validation.json'
+    if worker_output != 'absent':
+        path.parent.mkdir(parents=True)
+        path.write_bytes(b'{partial' if worker_output == 'partial-unsealed' else b'{"passed":true}\n')
+        path.chmod(0o600 if worker_output == 'partial-unsealed' else 0o400)
+    before = path.read_bytes() if path.exists() else None
+    completed = s.result(kind='completed', public=1, actual=1)
+    result = f.c.finish(completed, s.record(completed))
+    assert result['closure_kind'] == 'original_failed_retained_native_closed'
+    assert result['source_closed'] is result['native_closed'] is True and result['storage_status'] == 'retained'
+    assert result['storage_release_authorized'] is result['retry_authorized'] is False
+    assert 'verified_checks' not in result and s.verified == []
+    assert s.events.index('source_plan') < s.events.index('native_inspector') < s.events.index('source_exit')
+    assert (path.read_bytes() if path.exists() else None) == before
+    wait = json.loads(Path(f.c.wait_ref['path']).read_bytes())
+    assert wait['returncode'] == wait['actual_process_returncode'] == 1
+    assert not (s.invocation / 'source-qualification-receipt.json').exists()
+    # Neither reported selectors nor an absent report establish actual case counts.
+
+
+@pytest.mark.parametrize('fault', ['timeout_kind', 'wrong_public', 'not_waited', 'incomplete_capture',
+    'wrong_pid', 'wrong_birth', 'wrong_engine_origin', 'source_guard', 'source_plan', 'unknown_native',
+    'expired_before', 'expired_after_inspection', 'wrong_profile_verdict', 'zero_worker', 'boolean_worker',
+    'other_error', 'received_signal', 'repair_mode'])
+def test_completed_failed_retained_unproven_provenance_never_closes_Source(failed_retained_source_custody_DATA, monkeypatch, fault):
+    f = failed_retained_source_custody_DATA; s = f.base; c = f.c
+    options = dict(kind='completed', public=1, actual=1)
+    if fault == 'timeout_kind': options.update(kind='timeout', public=124)
+    elif fault == 'wrong_public': options['public'] = 7
+    elif fault == 'not_waited': options['waited'] = False
+    elif fault == 'incomplete_capture': options['output'] = 'incomplete'
+    elif fault == 'wrong_pid': options['edits'] = {'process_pid': c.process.pid+1}
+    elif fault == 'wrong_birth': pass
+    elif fault == 'wrong_engine_origin': c.engine_source = {**c.engine_source, 'path': '/untrusted/engine.py'}
+    elif fault == 'source_guard':
+        def guard(): raise ValueError('modeled original source changed')
+        c.guard = guard
+    elif fault == 'source_plan':
+        def plan(*args): raise ValueError('modeled source plan changed')
+        monkeypatch.setattr(owners, '_source_qualification_plan', plan)
+    elif fault == 'unknown_native':
+        f.verdict['value'] = {'verdict': 'requires_original_native_cleanup', 'source_custody_closed': False,
+            'storage_release_authorized': False}
+    elif fault == 'expired_before': s.now['value'] = c.deadline
+    elif fault == 'expired_after_inspection':
+        def inspector(*args, **kwargs):
+            result = f.inspector(*args, **kwargs); s.now['value'] = c.deadline; return result
+        c.inspector = inspector
+    elif fault == 'wrong_profile_verdict':
+        f.verdict['value'] = {'verdict': 'proven_original_cancelled_retained_native_closed',
+            'source_custody_closed': True, 'storage_release_authorized': False}
+    elif fault == 'zero_worker': s.terminal['failure']['returncode'] = 0
+    elif fault == 'boolean_worker': s.terminal['failure']['returncode'] = True
+    elif fault == 'other_error': s.terminal['failure']['error'] = 'different failure'
+    elif fault == 'received_signal': s.terminal['failure']['received_signals'] = [15]
+    else:
+        c.policy['validation'].pop('source_qualification')
+    completed = s.result(**options); witness = s.record(completed)
+    if fault == 'wrong_birth': witness['runner_identity'] = {**c.identity, 'birth': '99999'}
+    # Nonmatching frames keep the old classifier/report path, which is not a
+    # source-qualification cleanup grant. Do not reinterpret their reports.
+    with pytest.raises((ValueError, KeyError, FileNotFoundError)):
+        c.finish(completed, witness)
+    assert c.closed is False and 'source_exit' not in s.events and s.verified == []
+    assert not (s.invocation / 'source-qualification-receipt.json').exists()
+
+
+def test_completed_failed_retained_late_Source_exit_is_closed_without_acceptance(failed_retained_source_custody_DATA):
+    f = failed_retained_source_custody_DATA; s = f.base; c = f.c
+    original = c.stack.close
+    def late_close():
+        original(); s.now['value'] = c.deadline
+    c.stack.close = late_close
+    completed = s.result(kind='completed', public=1, actual=1)
+    with pytest.raises(ValueError, match='Source exit completed after'):
+        c.finish(completed, s.record(completed))
+    late = json.loads((s.invocation / 'source-custody-late-close.json').read_bytes())
+    assert c.closed is True and late['source_closed'] is True and late['validation_accepted'] is False
+    assert late['storage_release_authorized'] is late['retry_authorized'] is False
+    assert not (s.invocation / 'source-qualification-receipt.json').exists()
+
+
+def test_source_qualification_validate_persists_failed_cleanup_without_report_acceptance(metadata_scope, monkeypatch):
+    """Current immutable@1 public metadata flow; original runner is modeled DATA."""
+    s, policy, expected_plan = _immutable_qualification_ready_plan(metadata_scope)
+    policy_pin = pin(s.scope.state / 'qualified-owner-policy.json')
+    assert s.profile['schema'] == 'agent-supervisor/immutable-source-qualification@1'
+    monkeypatch.setattr(owners, 'checked_policy', lambda *a, **k: policy)
+    result_custody = {'source_closed': True, 'native_closed': True,
+        'closure_kind': 'original_failed_retained_native_closed', 'storage_status': 'retained',
+        'storage_release_authorized': False, 'retry_authorized': False}
+    calls = []
+    def original_runner(offered, argv, cwd, timeout, *, validation_context):
+        calls.append('original_runner_DATA')
+        plan = validation_context['plan']
+        assert offered is policy and timeout == 360
+        assert owners._source_qualification_plan(policy, plan, s.invocation)['profile'] == s.profile
+        assert owners.canonical(plan) == owners.canonical(expected_plan)
+        assert 'source_parent' not in validation_context
+        assert owners.original_execution_request(s.invocation) == validation_context['request_pin']
+        assert argv[argv.index('--request') + 1] == validation_context['request_pin']['path']
+        return SimpleNamespace(returncode=1, stdout='{"explicit_completed_failed_cli_DATA":true}', stderr=''), {
+            'parent_source_custody': copy.deepcopy(result_custody)}
+    monkeypatch.setattr(owners, 'original_runner_wait', original_runner)
+    def forbidden(*a, **k):
+        pytest.fail('cleanup-only public failure entered qualification, negative diagnosis or hold')
+    for name in ('verify_validation_evidence', 'capture_negative_validation', '_source_qualification_failed_custody'):
+        monkeypatch.setattr(owners, name, forbidden)
+    monkeypatch.setattr(owners._V5ValidationSourceCustody, 'hold', forbidden)
+    args = SimpleNamespace(policy=Path(policy_pin['path']), policy_sha256=policy_pin['sha256'],
+        freeze_path=Path(s.snapshot_pin['path']), source_commitment=s.snapshot['source_commitment'],
+        candidate_root=s.scope.control, invocation_root=s.invocation,
+        receipt_path=s.invocation / 'source-qualification-receipt.json')
+    assert owners.validate(args) == 1
+    saved = json.loads((s.invocation / 'failed-source-qualification.json').read_bytes())
+    assert saved['parent_source_custody'] == result_custody and saved['passed'] is False
+    assert saved['storage_closed'] is saved['semantic_negative'] is saved['retry_authorized'] is False
+    assert calls == ['original_runner_DATA'] and not args.receipt_path.exists()
