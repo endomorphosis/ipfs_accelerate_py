@@ -4215,3 +4215,886 @@ def test_source_qualification_validate_persists_failed_cleanup_without_report_ac
     assert saved['parent_source_custody'] == result_custody and saved['passed'] is False
     assert saved['storage_closed'] is saved['semantic_negative'] is saved['retry_authorized'] is False
     assert calls == ['original_runner_DATA'] and not args.receipt_path.exists()
+
+
+# Explicit mixed-V3 original-parent controls. Local byte rows below are modeled
+# inventory, never a compiler result, issued handle, Source proof or Native grant.
+@pytest.fixture
+def reviewed_parent_packet_join_scope_v3(reviewed_parent_packet_join_scope):
+    old = reviewed_parent_packet_join_scope
+    binding, durable = copy.deepcopy(old.binding), copy.deepcopy(old.durable)
+    packet = list(old.packet)
+    # Extend the existing owned fixture by exactly the six mixed-sort files.
+    for folder, suffix in (("project", "lean"), ("executed-inputs", "lean"), ("compiled", "olean")):
+        for index in (33, 34) if folder != "compiled" else (6, 7):
+            relative = folder + "/Mixed%02d." % index + suffix
+            raw = owners.canonical({"fixture_only": True, "mixed_v3": relative}) + b"\n"
+            reference = put(old.attempt / old.operation["packet_root"] / relative, raw)
+            info = Path(reference["path"]).stat()
+            packet.append((relative, raw))
+            binding["packet_inventory"].append({"path": relative, "bytes": len(raw), "sha256": reference["sha256"]})
+            durable.append({"path": old.operation["packet_root"] + "/" + relative, "bytes": len(raw),
+                "sha256": reference["sha256"], "device": info.st_dev, "inode": info.st_ino})
+    binding["schema"] = "reviewed-preservation-native-binding/v3"
+    binding["packet_inventory"].sort(key=lambda row: row["path"])
+    binding["packet_sha256"] = owners.digest(binding["packet_inventory"])
+    assert len(packet) == len(durable) == len(binding["packet_inventory"]) == 83
+    return SimpleNamespace(attempt=old.attempt, operation=copy.deepcopy(old.operation), binding=binding,
+        durable=durable, packet=tuple(sorted(packet)), source=old.source)
+
+
+def test_reviewed_parent_v3_joins_all83_modeled_rows_without_issuing_a_handle(reviewed_parent_packet_join_scope_v3):
+    s = reviewed_parent_packet_join_scope_v3
+    result = owners._reviewed_parent_packet_binding_v3(s.operation, s.binding, s.durable, attempt_directory=s.attempt)
+    expected = tuple((row["path"], row["bytes"], row["sha256"], row["device"], row["inode"])
+                     for row in sorted(s.durable, key=lambda row: row["path"]))
+    assert result == expected and len(result) == 83
+    assert all(type(row) is tuple and len(row) == 5 for row in result)
+
+
+@pytest.mark.parametrize("fault", ["missing", "extra", "reorder", "duplicate", "partition", "receipt",
+    "packet", "graph", "admission", "preparation", "durability", "inode_bool", "device_bool", "domain"])
+def test_reviewed_parent_v3_refuses_incomplete_or_crossed83_metadata(reviewed_parent_packet_join_scope_v3, fault):
+    s = reviewed_parent_packet_join_scope_v3
+    binding, durable = copy.deepcopy(s.binding), copy.deepcopy(s.durable)
+    if fault == "missing": binding["packet_inventory"].pop()
+    elif fault == "extra": binding["packet_inventory"].append(dict(binding["packet_inventory"][-1], path="unexpected.bin"))
+    elif fault == "reorder": binding["packet_inventory"].reverse()
+    elif fault == "duplicate": binding["packet_inventory"][-1] = dict(binding["packet_inventory"][0])
+    elif fault == "partition": binding["packet_inventory"][-1]["path"] = "wrong/Last.lean"
+    elif fault == "receipt": binding["receipt_sha256"] = "f" * 64
+    elif fault == "packet": binding["packet_sha256"] = "f" * 64
+    elif fault in ("graph", "admission", "preparation"): binding[fault + "_sha256"] = "f" * 64
+    elif fault == "durability": durable.pop()
+    elif fault == "inode_bool": durable[0]["inode"] = True
+    elif fault == "device_bool": durable[0]["device"] = True
+    else: binding["schema"] = "reviewed-preservation-native-binding/v1"
+    with pytest.raises(ValueError):
+        owners._reviewed_parent_packet_binding_v3(s.operation, binding, durable, attempt_directory=s.attempt)
+
+
+@pytest.mark.parametrize("direction", ["old_reader_new_packet", "new_reader_old_packet"])
+def test_reviewed_parent_v3_and_v2_inventory_domains_cannot_be_retagged(
+        reviewed_parent_packet_join_scope, reviewed_parent_packet_join_scope_v3, direction):
+    # The old-owner RED for 83 files is meaningful even after falsely retagging
+    # its schema: the old exact77 predicate cannot consume this complete83 set.
+    if direction == "old_reader_new_packet":
+        s = reviewed_parent_packet_join_scope_v3
+        binding = copy.deepcopy(s.binding); binding["schema"] = "reviewed-preservation-native-binding/v1"
+        function = owners._reviewed_parent_packet_binding_v1
+    else:
+        s = reviewed_parent_packet_join_scope
+        binding = copy.deepcopy(s.binding); binding["schema"] = "reviewed-preservation-native-binding/v3"
+        function = owners._reviewed_parent_packet_binding_v3
+    with pytest.raises(ValueError, match=("complete original77-file native packet" if direction == "old_reader_new_packet" else "complete original83-file native packet")):
+        function(s.operation, binding, s.durable, attempt_directory=s.attempt)
+
+
+def test_reviewed_parent_v3_worker_walks_the_same83_owned_files(reviewed_parent_packet_join_scope_v3):
+    from ipfs_accelerate_py.agent_supervisor.rescue import repair_validation_worker as worker
+    s = reviewed_parent_packet_join_scope_v3
+    collector = object.__new__(worker.ReviewedPreservationNativeCollectorV3)
+    collector.packet_root = s.attempt / s.operation["packet_root"]
+    assert collector._packet() == s.packet
+    # These objects exercise only ordinary inventory; no fake valid capability.
+    old = object.__new__(worker.ReviewedPreservationNativeCollectorV1)
+    old.packet_root = collector.packet_root
+    with pytest.raises(ValueError, match="fixed profile"):
+        old._packet()
+
+
+@pytest.mark.parametrize("offered", ["none", "object", "dict", "json", "unissued"])
+def test_reviewed_parent_v3_refuses_unissued_capabilities_before_native_resolution(monkeypatch, offered):
+    value = {"none": None, "object": object(), "dict": {"original_success_authenticated": True},
+        "json": json.loads('{"schema":"reviewed-preservation-admitted-parent-success/v3"}'),
+        "unissued": object.__new__(owners.VerifiedReviewedPreservationParentSuccess)}[offered]
+    def forbidden(*args, **kwargs):
+        pytest.fail("unissued V3 parent handle reached native owner")
+    monkeypatch.setattr(owners, "_parent_native_owner", forbidden)
+    with pytest.raises(ValueError, match="(?i)(issued|handle)"):
+        owners.load_parent_verified_reviewed_preservation_v3(value, (), None, {}, {},
+            expected_receipt_sha256="a" * 64, expected_packet_sha256="b" * 64,
+            expected_binary_sha256={}, expected_preservation_sha256="c" * 64,
+            expected_graph_sha256="d" * 64, expected_admission_sha256="e" * 64,
+            toolchain="leanprover/lean4:v4.34.1")
+
+
+@pytest.mark.parametrize("version", ["legacy", "mixed"])
+def test_reviewed_parent_public_policy_versions_refuse_each_others_schema_before_root_io(tmp_path, version):
+    schema = "reviewed-preservation-parent/v3" if version == "legacy" else "reviewed-preservation-parent/v1"
+    value = dict(schema=schema, datasets_root=None, source_root=None, python=None,
+        source_descriptors=None, validation=None, operation=None)
+    reference = put(tmp_path / "wrong-domain-policy.json", value)
+    function = (owners.checked_reviewed_preservation_parent_policy_v1 if version == "legacy"
+                else owners.checked_reviewed_preservation_parent_policy_v3)
+    with pytest.raises(ValueError, match="closed reviewed parent policy required"):
+        function(Path(reference["path"]), reference["sha256"])
+
+
+@pytest.mark.parametrize("worker_schema,parent_schema", [
+    ("reviewed-preservation-native-worker/v1", "reviewed-preservation-parent/v1"),
+    ("reviewed-preservation-native-worker/v3", "reviewed-preservation-parent/v1"),
+    ("reviewed-preservation-native-worker/v1", "reviewed-preservation-parent/v3"),
+    ("reviewed-preservation-native-worker/v99", "reviewed-preservation-parent/v3"),
+])
+def test_reviewed_parent_v3_worker_rejects_crossed_domains_before_any_operation(worker_schema, parent_schema):
+    from ipfs_accelerate_py.agent_supervisor.rescue import repair_validation_worker as worker
+    with pytest.raises(ValueError, match="explicit reviewed native worker profile required"):
+        worker.reviewed_preservation_native_operation_v3({"schema": worker_schema}, {"schema": parent_schema})
+
+
+def prepare_reviewed_parent_native_fixture_inputs_v3(path, control, *, datasets_root):
+    """Encode the SAME release component, never independently regenerate it.
+
+    The caller's existing admitted fictional fixture owns all signing. This
+    function copies only public raw inputs and never runs a tool or issues a
+    Native/parent capability. The original preparation/graph/admission pins
+    must also appear in the exact D closure request selected by Root.
+    """
+    helper = reviewed_parent_original_R_fixture_module_v1(Path(datasets_root))
+    assert control["admission"]["fixture_only"] is True
+    assert control["admission"]["provenance_kind"] == "fictional_fixture"
+    arguments = helper.reviewed_native_arguments_v3(control)
+    prepared = control["preparation"]
+    value = {"schema": "reviewed-preservation-fixture-native-inputs/v3", "fixture_only": True,
+        "provenance_kind": "fictional_fixture", "preparation": {"manifest_json": prepared.manifest_json,
+            "files": [[name, body] for name, body in prepared.files]},
+        **{name: reviewed_parent_fixture_tree_encode_v1(control[name]) for name in ("graph", "admission", "args", "kwargs")},
+        **{name: arguments[name] for name in ("expected_preservation_sha256", "expected_graph_sha256",
+                                            "expected_admission_sha256", "toolchain")}}
+    raw = owners.canonical(value) + b"\n"
+    assert len(raw) <= 4 * 1024**2
+    reference = put(Path(path), raw)
+    return {"native_inputs": reference, **{name: value[name] for name in
+        ("expected_preservation_sha256", "expected_graph_sha256", "expected_admission_sha256", "toolchain")}}
+
+
+def test_reviewed_preservation_parent_actual_native_child_v3():
+    """One future original-parent child body, separately gated from UNIT cases."""
+    import os
+    import importlib
+    names = ("IPFS_REVIEWED_PRESERVATION_PLAN", "IPFS_REVIEWED_PRESERVATION_ATTEMPT", "IPFS_REVIEWED_PRESERVATION_PACKET_ROOT")
+    if os.environ.get("IPFS_DATASETS_RUN_NATIVE_LEAN") != "1" or not all(os.environ.get(name) for name in names):
+        pytest.skip("explicit original-parent reviewed native child enrollment required")
+    plan_path, attempt, packet_root = (Path(os.environ[name]) for name in names)
+    plan = owners.json_object(owners.ordinary_bytes(plan_path, 4 * 1024**2))
+    assert plan["schema"] == "reviewed-preservation-native-worker/v3"
+    policy = owners.json_object(owners.checked_descriptor(plan["policy"]))
+    operation = plan["operation"]
+    assert operation == policy["operation"] and plan["native_inputs"] == operation["native_inputs"]
+    assert operation["nodeid"] == str(Path(__file__).absolute()) + "::test_reviewed_preservation_parent_actual_native_child_v3"
+    assert attempt == Path(plan["attempt_directory"]) and packet_root == attempt / operation["packet_root"]
+    assert not packet_root.exists()
+    helper = reviewed_parent_original_R_fixture_module_v1(Path(policy["datasets_root"]))
+    reference = operation["native_inputs"]
+    raw = owners.ordinary_bytes(Path(reference["path"]), 4 * 1024**2)
+    assert pin(Path(reference["path"])) == reference
+    value = owners.json_object(raw)
+    assert set(value) == {"schema", "fixture_only", "provenance_kind", "preparation", "graph", "admission", "args", "kwargs",
+                          "expected_preservation_sha256", "expected_graph_sha256", "expected_admission_sha256", "toolchain"}
+    assert value["schema"] == "reviewed-preservation-fixture-native-inputs/v3" and value["fixture_only"] is True
+    assert value["provenance_kind"] == "fictional_fixture" and set(value["preparation"]) == {"manifest_json", "files"}
+    shared = importlib.import_module("ipfs_datasets_py.logic.autoformal.legal_corpus_shared_lake")
+    prepared = shared.ReviewedPreservationCorpusPreparation(value["preparation"]["manifest_json"],
+        tuple((name, body) for name, body in value["preparation"]["files"]))
+    control = {"shared": shared, "preparation": prepared,
+        "graph": reviewed_parent_fixture_tree_decode_v1(value["graph"]),
+        "admission": reviewed_parent_fixture_tree_decode_v1(value["admission"]),
+        "args": reviewed_parent_fixture_tree_decode_v1(value["args"]),
+        "kwargs": reviewed_parent_fixture_tree_decode_v1(value["kwargs"]),
+        "graph_sha": value["expected_graph_sha256"], "admission_sha": value["expected_admission_sha256"]}
+    assert control["admission"]["fixture_only"] is True and control["admission"]["provenance_kind"] == "fictional_fixture"
+    arguments = helper.reviewed_native_arguments_v3(control)
+    for name in ("expected_preservation_sha256", "expected_graph_sha256", "expected_admission_sha256", "toolchain"):
+        assert arguments[name] == value[name] == operation[name]
+    binaries = operation["expected_binary_sha256"]
+    executable = next(path for path in binaries if Path(path).name == "lake")
+    # Existing original R functions own every validation, compiler and reader.
+    handle = helper.reviewed_live_build_v3_fixture(control, executable, packet_root)
+    packet = helper.reviewed_live_success_packet_v2(packet_root)
+    assert len(packet) == 83
+    result = helper.reviewed_live_load_v3_fixture(control, handle, packet)
+    assert result["native_execution_authenticated"] is result["live_native_success_authenticated"] is True
+    assert result["original_success_authenticated"] is result["original_admitted_parent_custody_authenticated"] is False
+    assert result["retained_packet_sha256"] == helper.native.reviewed_norm_preservation_packet_sha256_v3(packet)
+    assert result["training_mask"] == result["evaluation_gold_mask"] == 0
+    assert all(flag is False for flag in result["authority"].values())
+    assert result["release_ready"] is result["Lean_admitted"] is False
+    assert json.loads(dict(packet)["build-receipt.json"])["binary_sha256"] == binaries
+
+
+# Public tagged-DATA depth controls. These stop at an inert operation-ID gate;
+# they do not create an invocation, Source lease, process or parent capability.
+def _reviewed_parent_public_depth_value(dict_edges, list_edges, *, version=3):
+    logical = 0
+    for kind in reversed(["dict"] * dict_edges + ["list"] * list_edges):
+        logical = {"next": logical} if kind == "dict" else [logical]
+    value = {"schema": "reviewed-preservation-fixture-native-inputs/v3" if version == 3
+        else "reviewed-preservation-fixture-native-inputs/v1",
+        "fixture_only": True, "provenance_kind": "fictional_fixture",
+        "preparation": {"manifest_json": "{}", "files": []},
+        "graph": reviewed_parent_fixture_tree_encode_v1({}),
+        "admission": reviewed_parent_fixture_tree_encode_v1({}),
+        "args": reviewed_parent_fixture_tree_encode_v1(()),
+        "kwargs": reviewed_parent_fixture_tree_encode_v1(logical),
+        "expected_preservation_sha256": "a" * 64, "expected_graph_sha256": "b" * 64,
+        "expected_admission_sha256": "c" * 64, "toolchain": "leanprover/lean4:v4.34.1"}
+    return value, logical
+
+
+def _reviewed_parent_public_raw_depth(value):
+    pending, count, maximum = [(value, 0)], 0, 0
+    while pending:
+        row, depth = pending.pop(); count += 1; maximum = max(maximum, depth)
+        if type(row) is dict: pending.extend((child, depth + 1) for child in row.values())
+        elif type(row) is list: pending.extend((child, depth + 1) for child in row)
+    return count, maximum
+
+
+def _reviewed_parent_public_depth_policy(scope, value, label, *, version=3):
+    policy = copy.deepcopy(scope.policy)
+    policy["schema"] = "reviewed-preservation-parent/v3" if version == 3 else "reviewed-preservation-parent/v1"
+    native = put(scope.root / (label + "-public.json"), value)
+    # A deliberately invalid operation ID is the FIRST post-tree gate. Reaching
+    # this named refusal proves only the parser boundary, never Native success.
+    policy["operation"] = {"operation_id": None, "packet_root": None, "nodeid": None,
+        "expected_source_sha256": None, "expected_binary_sha256": None,
+        "native_argv": None, "native_data": None, "native_inputs": native,
+        **{key: value[key] for key in ("expected_graph_sha256", "expected_admission_sha256",
+                                      "expected_preservation_sha256", "toolchain")}}
+    reference = put(scope.root / (label + "-policy.json"), policy)
+    return Path(reference["path"]), reference["sha256"], native
+
+
+@pytest.mark.parametrize("version,dict_edges,list_edges,raw_depth,accepted", [
+    (2, 20, 1, 64, True), (2, 21, 0, 65, False),
+    (3, 64, 0, 194, True), (3, 63, 2, 195, False),
+])
+def test_reviewed_parent_public_depth_bound_matches_closed_tagged_codec(
+        reviewed_parent_normal_namespace_v2_scope, version, dict_edges, list_edges, raw_depth, accepted):
+    scope = reviewed_parent_normal_namespace_v2_scope
+    value, logical = _reviewed_parent_public_depth_value(dict_edges, list_edges, version=version)
+    assert _reviewed_parent_public_raw_depth(value)[1] == raw_depth
+    if dict_edges + list_edges <= 64:
+        assert reviewed_parent_fixture_tree_decode_v1(value["kwargs"]) == logical
+    else:
+        # The enlarged serialized envelope cannot relax the old logical64 codec.
+        with pytest.raises(AssertionError): reviewed_parent_fixture_tree_decode_v1(value["kwargs"])
+    path, digest, _ = _reviewed_parent_public_depth_policy(scope, value, "depth-bound", version=version)
+    function = (owners.checked_reviewed_preservation_parent_policy_v3 if version == 3
+                else owners.checked_reviewed_preservation_parent_policy_v1)
+    message = "^exact reviewed operation ID required$" if accepted else "^bounded public native input DATA tree required$"
+    with pytest.raises(ValueError, match=message): function(path, digest)
+    assert not (scope.root / "attempts").exists()
+
+
+def test_reviewed_parent_v3_policy_accepts_encoded_public_fixture_above_legacy_depth(
+        reviewed_parent_normal_namespace_v2_scope):
+    scope = reviewed_parent_normal_namespace_v2_scope
+    offered = owners.os.environ.get("IPFS_REVIEWED_PARENT_V3_POLICY_PUBLIC_INPUTS")
+    if offered:
+        # Optional selected original DATA is hash-authenticated and read-only.
+        # It is not a callback, capability or serialized authenticity boolean.
+        reference = json.loads(offered)
+        value = owners.json_object(owners.checked_descriptor(reference))
+        assert value["schema"] == "reviewed-preservation-fixture-native-inputs/v3"
+        assert value["fixture_only"] is True and value["provenance_kind"] == "fictional_fixture"
+    else:
+        # Portable authored DATA reproduces raw67 without private workspace paths.
+        value, _ = _reviewed_parent_public_depth_value(17, 7)
+    count, depth = _reviewed_parent_public_raw_depth(value)
+    assert count <= 2_000_000 and 64 < depth <= 194
+    for key in ("graph", "admission", "args", "kwargs"):
+        decoded = reviewed_parent_fixture_tree_decode_v1(value[key])
+        assert owners.canonical(reviewed_parent_fixture_tree_encode_v1(decoded)) == owners.canonical(value[key])
+    path, digest, _ = _reviewed_parent_public_depth_policy(scope, value, "selected-public")
+    with pytest.raises(ValueError, match="^exact reviewed operation ID required$"):
+        owners.checked_reviewed_preservation_parent_policy_v3(path, digest)
+    assert not (scope.root / "attempts").exists()
+
+
+@pytest.mark.parametrize("forbidden", ["private_key", "signers"])
+def test_reviewed_parent_v3_expanded_envelope_still_refuses_private_DATA(
+        reviewed_parent_normal_namespace_v2_scope, forbidden):
+    scope = reviewed_parent_normal_namespace_v2_scope
+    value, _ = _reviewed_parent_public_depth_value(17, 7)
+    value["preparation"][forbidden] = []
+    path, digest, _ = _reviewed_parent_public_depth_policy(scope, value, "private-DATA")
+    with pytest.raises(ValueError, match="^private signer or signing key DATA is forbidden$"):
+        owners.checked_reviewed_preservation_parent_policy_v3(path, digest)
+    assert not (scope.root / "attempts").exists()
+
+
+def test_reviewed_parent_v3_expanded_envelope_keeps_two_million_node_limit(
+        reviewed_parent_normal_namespace_v2_scope):
+    scope = reviewed_parent_normal_namespace_v2_scope
+    value, _ = _reviewed_parent_public_depth_value(0, 0)
+    # Intentionally malformed shallow DATA exceeds the raw node budget before
+    # any tagged decoding. Zero values keep the serialized body below4MiB.
+    value["kwargs"] = [0] * 2_000_000
+    assert len(owners.canonical(value)) < 4 * 1024**2
+    path, digest, _ = _reviewed_parent_public_depth_policy(scope, value, "node-bound")
+    with pytest.raises(ValueError, match="^bounded public native input DATA tree required$"):
+        owners.checked_reviewed_preservation_parent_policy_v3(path, digest)
+    assert not (scope.root / "attempts").exists()
+
+
+def test_reviewed_parent_v3_expanded_envelope_keeps_four_MiB_input_limit(
+        reviewed_parent_normal_namespace_v2_scope):
+    scope = reviewed_parent_normal_namespace_v2_scope
+    value, _ = _reviewed_parent_public_depth_value(0, 0)
+    value["preparation"]["manifest_json"] = "x" * (4 * 1024**2)
+    path, digest, native = _reviewed_parent_public_depth_policy(scope, value, "byte-bound")
+    assert native["bytes"] > 4 * 1024**2
+    with pytest.raises(ValueError, match="^bounded original public native input DATA descriptor required$"):
+        owners.checked_reviewed_preservation_parent_policy_v3(path, digest)
+    assert not (scope.root / "attempts").exists()
+
+
+# Canonical Source roots below are metadata only. Tiny Git worktrees exercise
+# the maintained Source42 resolver; the existing /proc fixture remains modeled.
+@pytest.fixture
+def reviewed_parent_linked_source_roots(reviewed_parent_source_delegation_scope, tmp_path, monkeypatch):
+    scope = reviewed_parent_source_delegation_scope
+    # Test-owned Git configuration: no ambient templates, hooks, credentials or
+    # signing program may run while constructing these ordinary metadata trees.
+    templates = tmp_path / "git-templates-empty"; templates.mkdir(mode=0o700)
+    hooks = tmp_path / "git-hooks-empty"; hooks.mkdir(mode=0o700)
+    for key in tuple(owners.os.environ):
+        if key.startswith("GIT_"): monkeypatch.delenv(key, raising=False)
+    for key, value in {"GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_SYSTEM": owners.os.devnull,
+            "GIT_CONFIG_GLOBAL": owners.os.devnull, "GIT_TERMINAL_PROMPT": "0",
+            "GIT_TEMPLATE_DIR": str(templates), "GIT_CONFIG_COUNT": "3",
+            "GIT_CONFIG_KEY_0": "core.hooksPath", "GIT_CONFIG_VALUE_0": str(hooks),
+            "GIT_CONFIG_KEY_1": "commit.gpgSign", "GIT_CONFIG_VALUE_1": "false",
+            "GIT_CONFIG_KEY_2": "tag.gpgSign", "GIT_CONFIG_VALUE_2": "false",
+            "PATH": owners.os.pathsep.join((str(Path(sys.executable).parent), "/usr/bin", "/bin"))}.items():
+        monkeypatch.setenv(key, value)
+    git_prefix = ["/usr/bin/git", "-c", "core.hooksPath=" + str(hooks),
+        "-c", "commit.gpgSign=false", "-c", "tag.gpgSign=false", "-c", "init.templateDir=" + str(templates)]
+    module = owners.importlib.import_module("ipfs_datasets_py.optimizers.logic_theorem_optimizer.autoencoder_source_lease")
+    source_pin = pin(Path(module.__file__))
+    lanes = []
+    for index, root in enumerate(scope.roots):
+        for arguments in (("init", "--template=" + str(templates)), ("-c", "user.name=Source fixture", "-c", "user.email=source@example.invalid",
+                "commit", "--no-verify", "--no-gpg-sign", "--allow-empty", "-m", "fixture")):
+            result = owners.subprocess.run([*git_prefix, "-C", str(root), *arguments],
+                capture_output=True, text=True, timeout=5)
+            assert result.returncode == 0, result.stderr
+        lane = tmp_path / ("linked-source-%d" % index)
+        result = owners.subprocess.run([*git_prefix, "-C", str(root), "worktree", "add", "--detach", str(lane), "HEAD"],
+            capture_output=True, text=True, timeout=5)
+        assert result.returncode == 0, result.stderr
+        lanes.append(lane)
+    binding = owners._reviewed_parent_prepare_source_root_binding(source_pin, lanes)
+    return SimpleNamespace(base=scope, module=module, source_pin=source_pin, lanes=tuple(lanes), binding=binding)
+
+
+def test_reviewed_parent_linked_worktree_Source_roots_keep_strict_canonical_FD_handoff(reviewed_parent_linked_source_roots):
+    s = reviewed_parent_linked_source_roots
+    expected = owners._reviewed_parent_check_source_root_binding(s.binding, s.source_pin, s.lanes)
+    assert expected == tuple(s.base.roots) and expected != s.lanes
+    arguments = {**s.base.args, "expected_roots": expected}
+    result = owners.verify_reviewed_preservation_parent_source_observation_v1(owners.canonical(s.base.value), **arguments)
+    assert result["source_fds"] == s.base.value["source_fds"]
+    assert "original_success_authenticated" not in result and "source_closed" not in result
+
+
+@pytest.mark.parametrize("fault", ["physical_receipt_root", "physical_fd_root", "crossed_roots", "wrong_lock"])
+def test_reviewed_parent_canonical_root_bridge_refuses_mismatched_handoff(reviewed_parent_linked_source_roots, fault):
+    s = reviewed_parent_linked_source_roots
+    value = copy.deepcopy(s.base.value)
+    expected = owners._reviewed_parent_check_source_root_binding(s.binding, s.source_pin, s.lanes)
+    if fault == "physical_receipt_root": value["source_receipts"][0]["canonical_root"] = str(s.lanes[0])
+    elif fault == "physical_fd_root": value["source_fds"][0]["root"] = str(s.lanes[0])
+    elif fault == "crossed_roots": expected = tuple(reversed(expected))
+    else: value["source_fds"][0]["lock_path"] = str(s.lanes[0] / "workspace/control-plane/source-leases/source.lock")
+    with pytest.raises(ValueError):
+        owners.verify_reviewed_preservation_parent_source_observation_v1(owners.canonical(value),
+            **{**s.base.args, "expected_roots": expected})
+
+
+def test_reviewed_parent_canonical_binding_rechecks_without_Git_or_Source_after_prepare(
+        reviewed_parent_linked_source_roots, monkeypatch):
+    s = reviewed_parent_linked_source_roots
+    def forbidden(*args, **kwargs): pytest.fail("cached Source binding spawned a process")
+    monkeypatch.setattr(s.module.subprocess, "run", forbidden)
+    for _ in range(3):
+        assert owners._reviewed_parent_check_source_root_binding(s.binding, s.source_pin, s.lanes) == tuple(s.base.roots)
+
+
+@pytest.mark.parametrize("target", ["canonical_source_root", "_git", "_absolute"])
+@pytest.mark.parametrize("mutation", ["identity", "code"])
+def test_reviewed_parent_canonical_binding_refuses_Source_callable_drift(
+        reviewed_parent_linked_source_roots, monkeypatch, target, mutation):
+    s = reviewed_parent_linked_source_roots
+    def forbidden(*args, **kwargs): raise AssertionError("changed Source canonicalizer was invoked")
+    function = getattr(s.module, target)
+    if mutation == "identity": monkeypatch.setattr(s.module, target, forbidden)
+    else: monkeypatch.setattr(function, "__code__", forbidden.__code__)
+    with pytest.raises(ValueError, match="pinned canonical Source function changed"):
+        owners._reviewed_parent_check_source_root_binding(s.binding, s.source_pin, s.lanes)
+
+
+@pytest.mark.parametrize("fault", ["unissued", "source_pin", "physical_roots"])
+def test_reviewed_parent_canonical_binding_refuses_crossed_or_unissued_metadata(reviewed_parent_linked_source_roots, fault):
+    s = reviewed_parent_linked_source_roots; binding, source_pin, roots = s.binding, dict(s.source_pin), s.lanes
+    if fault == "unissued": binding = object.__new__(owners._ReviewedParentSourceRoots)
+    elif fault == "source_pin": source_pin["sha256"] = "f" * 64
+    else: roots = tuple(reversed(roots))
+    with pytest.raises(ValueError, match="canonical Source root binding"):
+        owners._reviewed_parent_check_source_root_binding(binding, source_pin, roots)
+
+
+def test_reviewed_parent_canonical_binding_preserves_duplicate_READ_roots(reviewed_parent_linked_source_roots):
+    s = reviewed_parent_linked_source_roots
+    raw = (s.lanes[0], s.lanes[0])
+    binding = owners._reviewed_parent_prepare_source_root_binding(s.source_pin, raw)
+    assert owners._reviewed_parent_check_source_root_binding(binding, s.source_pin, raw) == (s.base.roots[0], s.base.roots[0])
+
+
+# Ordinary @2 delegation controls. /proc, Source42 and Native boundaries below
+# are explicit DATA seams; no control establishes a genuine held lease/result.
+def _immutable_parent_plan_DATA(metadata_scope):
+    s=_immutable_source_qualification_RED_scope(metadata_scope)
+    policy=copy.deepcopy(s.policy)
+    profile=copy.deepcopy(s.profile)
+    profile.update(schema='agent-supervisor/immutable-source-qualification@2',
+        source_custody_mode='delegated-original-parent-read/v1')
+    policy['validation']['source_qualification']=profile
+    policy_pin=put(s.scope.state/'delegated-qualification-policy.json',policy)
+    nonce='4f'*32
+    context=dict(parent_identity={'pid':4100,'birth':'12345'},
+        parent_nonce_sha256=hashlib.sha256(bytes.fromhex(nonce)).hexdigest(),
+        parent_source_observation_path=str(s.invocation/'parent-source-observation.json'),
+        execution_request_path=str(owners.validation_control_directory(policy,s.snapshot,s.invocation)/'execution-request.json'),
+        source_root_bindings=[{'physical_root':root,'canonical_root':root}
+            for root in (policy['datasets_root'],str(s.scope.control))])
+    plan=owners.validation_plan(policy,policy_pin,s.snapshot,s.snapshot_pin,s.scope.control,s.invocation,
+        source_parent_context=context)
+    return SimpleNamespace(s=s,policy=policy,profile=profile,policy_pin=policy_pin,context=context,plan=plan)
+
+
+def test_immutable_source_parent_plan_is_explicit_and_keeps_snapshot_and_v5_request(metadata_scope):
+    f=_immutable_parent_plan_DATA(metadata_scope);s=f.s
+    snapshot_raw=Path(s.snapshot_pin['path']).read_bytes()
+    assert owners.checked_source_qualification(f.policy)['snapshot']==s.snapshot
+    assert owners._source_qualification_plan(f.policy,f.plan,s.invocation)['profile']==f.profile
+    assert {key:f.plan[key]for key in owners._IMMUTABLE_PARENT_FIELDS}==f.context
+    assert 'parent_nonce'not in f.plan and 'parent_nonce'not in s.snapshot
+    request=owners.validation_execution_request(f.policy,f.plan,put(s.invocation/'validation-plan.json',f.plan))
+    assert len(request)==18 and request['schema']=='owned-validation-request/v5'
+    assert {key:request[key]for key in ('cpu_slots','memory_mb','storage_bytes','child_process_slots','timeout_seconds')}==dict(
+        cpu_slots=1,memory_mb=1536,storage_bytes=16777216,child_process_slots=4,timeout_seconds=300)
+    assert f.plan['required_candidate_bodies']==[]
+    assert Path(s.snapshot_pin['path']).read_bytes()==snapshot_raw
+    assert owners._source_qualification_receipt_schema(owners.checked_source_qualification(f.policy))==\
+        'agent-supervisor/immutable-source-qualification-receipt@2'
+
+
+@pytest.mark.parametrize('fault',['mode-missing','mode-wrong','schema1-with-mode','extra-profile',
+    'retry-mixed','missing-context','wrong-parent-type','wrong-observation-path','wrong-public-path','extra-plan','omitted-source'])
+def test_immutable_source_parent_profile_and_complete_plan_fail_closed(metadata_scope,fault):
+    f=_immutable_parent_plan_DATA(metadata_scope);policy=copy.deepcopy(f.policy);plan=copy.deepcopy(f.plan)
+    if fault=='mode-missing':policy['validation']['source_qualification'].pop('source_custody_mode')
+    elif fault=='mode-wrong':policy['validation']['source_qualification']['source_custody_mode']='caller-held'
+    elif fault=='schema1-with-mode':policy['validation']['source_qualification']['schema']=f.s.profile['schema']
+    elif fault=='extra-profile':policy['validation']['source_qualification']['source_closed']=True
+    elif fault=='retry-mixed':policy['validation']['validation_ledger_busy_retry']={}
+    elif fault=='missing-context':
+        with pytest.raises(ValueError,match='trusted immutable parent plan context'):
+            owners.validation_plan(policy,f.policy_pin,f.s.snapshot,f.s.snapshot_pin,f.s.scope.control,f.s.invocation)
+        return
+    elif fault=='wrong-parent-type':plan['parent_identity']['pid']=True
+    elif fault=='wrong-observation-path':plan['parent_source_observation_path']+='.foreign'
+    elif fault=='wrong-public-path':plan['execution_request_path']=str(f.s.invocation/'execution-request.json')
+    elif fault=='extra-plan':plan['caller_claimed_Source_closed']=True
+    else:plan['source_pins'].pop(next(iter(plan['source_pins'])))
+    with pytest.raises(ValueError):
+        owners._source_qualification_plan(policy,plan,f.s.invocation)
+
+
+@pytest.fixture
+def immutable_parent_observation_DATA(reviewed_parent_source_delegation_scope,tmp_path):
+    s=reviewed_parent_source_delegation_scope
+    physical=[tmp_path/'published-D',tmp_path/'immutable-C']
+    for root in physical:root.mkdir()
+    rows=[{'physical_root':str(path),'canonical_root':str(root)}for path,root in zip(physical,s.roots)]
+    value=copy.deepcopy(s.value);value.update(schema='agent-supervisor/immutable-source-parent-observation@1',
+        source_root_bindings=rows)
+    arguments={key:item for key,item in s.args.items()if key!='expected_roots'}
+    arguments['expected_source_root_bindings']=rows
+    return SimpleNamespace(base=s,value=value,args=arguments,physical=physical,rows=rows)
+
+
+def test_immutable_source_parent_live_verifier_reuses_kernel_and_chain_without_source_admission(
+        immutable_parent_observation_DATA):
+    f=immutable_parent_observation_DATA;raw=owners.canonical(f.value)
+    value=owners.verify_immutable_source_parent_observation_v1(raw,**f.args)
+    assert set(value)=={'observation_sha256','request_sha256','nonce_sha256','parent_identity','source_fds','source_root_bindings'}
+    assert value['source_root_bindings']==f.rows and value['source_fds']==f.value['source_fds']
+    assert {call[2]for call in f.base.calls if call[0]=='fd'}=={30,31}
+    assert 'source_closed'not in value and 'native_closed'not in value and 'qualification_passed'not in value
+    # The same held-fd core still accepts the unchanged reviewed schema/default.
+    assert owners.verify_reviewed_preservation_parent_source_observation_v1(
+        owners.canonical(f.base.value),**f.base.args)['source_fds']==f.base.value['source_fds']
+
+
+@pytest.mark.parametrize('fault',['old-schema','missing-map','crossed-map','physical-root','canonical-root',
+    'extra-map-field','nonce','parent-birth','worker-chain','foreign-command','missing-fd','write-lock',
+    'unlocked','replaced-inode','write-receipt','boolean-fd','extra-observation','duplicate-json'])
+def test_immutable_source_parent_live_verifier_rejects_unheld_or_crossed_delegation(
+        immutable_parent_observation_DATA,fault):
+    f=immutable_parent_observation_DATA;value=copy.deepcopy(f.value)
+    if fault=='old-schema':value['schema']='reviewed-preservation-parent-source-observation/v1'
+    elif fault=='missing-map':value.pop('source_root_bindings')
+    elif fault=='crossed-map':value['source_root_bindings'].reverse()
+    elif fault=='physical-root':value['source_root_bindings'][0]['physical_root']+='.foreign'
+    elif fault=='canonical-root':value['source_root_bindings'][0]['canonical_root']+='.foreign'
+    elif fault=='extra-map-field':value['source_root_bindings'][0]['source_closed']=True
+    elif fault=='nonce':value['nonce']='00'*32
+    elif fault=='parent-birth':f.base.state['facts'][4100]['birth']='9999'
+    elif fault=='worker-chain':f.base.state['facts'][4101]['ppid']=9999
+    elif fault=='foreign-command':f.base.state['cmdline']=b'/foreign/runner\x00'
+    elif fault=='missing-fd':value['source_fds'][0]['fd']=999
+    elif fault=='write-lock':f.base.state['fd'][30]['fdinfo']=f.base.state['fd'][30]['fdinfo'].replace('READ','WRITE')
+    elif fault=='unlocked':f.base.state['fd'][30]['fdinfo']='flags: 0100002\n'
+    elif fault=='replaced-inode':value['source_fds'][0]['inode']+=1
+    elif fault=='write-receipt':value['source_receipts'][0]['mode']='write'
+    elif fault=='boolean-fd':value['source_fds'][0]['fd']=True
+    elif fault=='extra-observation':value['source_READ_closed']=True
+    raw=owners.canonical(value)
+    if fault=='duplicate-json':raw=raw[:-1]+b',"schema":"agent-supervisor/immutable-source-parent-observation@1"}'
+    with pytest.raises((ValueError,OSError)):
+        owners.verify_immutable_source_parent_observation_v1(raw,**f.args)
+
+
+def test_immutable_source_parent_archive_join_is_metadata_only_and_checks_all_five_fields(
+        immutable_parent_observation_DATA,tmp_path,monkeypatch):
+    f=immutable_parent_observation_DATA;invocation=tmp_path/'saved-invocation';invocation.mkdir()
+    policy={'python':sys.executable,'datasets_root':str(f.physical[0]),'validation':{'resource_ledger':str(tmp_path/'never-opened-ledger')}}
+    plan={'candidate_root':str(f.physical[1]),'parent_identity':f.value['parent_identity'],
+        'parent_nonce_sha256':f.args['expected_nonce_sha256'],
+        'parent_source_observation_path':str(invocation/'parent-source-observation.json'),
+        'execution_request_path':str(tmp_path/'published'/'execution-request.json'),'source_root_bindings':f.rows}
+    request=put(Path(plan['execution_request_path']),Path(f.value['request']['path']).read_bytes());value=copy.deepcopy(f.value)
+    value['request']=request
+    value['sdk_argv']=owners._immutable_source_parent_argv(policy,request)
+    observation=put(Path(plan['parent_source_observation_path']),value)
+    def forbidden(*args,**kwargs):pytest.fail('archived DATA verification invoked process/Source/Git observation')
+    for name in ('public_source_lease','_immutable_source_owner','_reviewed_parent_proc_stat',
+            '_reviewed_parent_fd_observation','_parent_source_child_chain','git_command'):
+        monkeypatch.setattr(owners,name,forbidden)
+    monkeypatch.setattr(owners.subprocess,'Popen',forbidden)
+    summary=owners._immutable_source_parent_saved_observation(policy,plan,request,invocation)
+    assert summary==dict(source_custody_mode='delegated-original-parent-read/v1',parent_source_observation=observation,
+        parent_nonce_sha256=plan['parent_nonce_sha256'],parent_identity=plan['parent_identity'],source_root_bindings=f.rows)
+    report={'schema':'immutable-source-parent-delegated-validation@1','source_READ_closed':False,
+        'source_READ_admission_complete':False,**summary}
+    assert owners._immutable_source_parent_report_binding(policy,plan,request,report,invocation)==summary
+    for key in summary:
+        bad=copy.deepcopy(report);bad[key]=None
+        with pytest.raises(ValueError,match='report parent/observation/root mapping'):
+            owners._immutable_source_parent_report_binding(policy,plan,request,bad,invocation)
+    owners._immutable_source_parent_receipts(value['source_receipts'],f.rows,value)
+    changed=copy.deepcopy(value['source_receipts']);changed[0]['waited_seconds']+=1
+    with pytest.raises(ValueError,match='observed Source receipts differ'):
+        owners._immutable_source_parent_receipts(changed,f.rows,value)
+    assert not (invocation/'source-qualification-receipt.json').exists()
+
+
+def test_immutable_source_parent_runtime_mapping_comes_only_from_original_resolver(tmp_path,monkeypatch):
+    import os
+    physical=[tmp_path/'published-R',tmp_path/'sealed-C'];canonical=[tmp_path/'primary-R',tmp_path/'sealed-C']
+    for root in set(physical+canonical):root.mkdir()
+    calls=[]
+    def resolver(root):calls.append(root);return canonical[physical.index(root)]
+    monkeypatch.setattr(owners,'_immutable_source_owner',lambda policy:(None,None,None,resolver))
+    monkeypatch.setattr(owners,'checked_source_qualification',lambda policy:{'root':physical[1],
+        'snapshot':{'binding':dict(namespace='ptr_lane_0',board_id='legal-ir',attempt_id='a'*32)}})
+    monkeypatch.setattr(owners,'proc_identity',lambda pid:{'pid':pid,'birth':'12345'})
+    policy={'datasets_root':str(physical[0]),'validation':{'attempt_root':str(tmp_path/'attempts'),
+        'ordinary_scratch_profile':{'schema':'owned-validation-ordinary-scratch-live/v1'},'source_qualification':{'fixture_only':True}}}
+    value=owners._immutable_source_parent_runtime(policy,tmp_path/'invocation')
+    assert calls==physical and value['source_root_bindings']==[{'physical_root':str(p),'canonical_root':str(c)}
+        for p,c in zip(physical,canonical)]
+    assert value['parent_identity']['pid']==os.getpid() and len(value['parent_nonce'])==64
+    assert hashlib.sha256(bytes.fromhex(value['parent_nonce'])).hexdigest()==value['parent_nonce_sha256']
+
+
+@pytest.mark.parametrize('slot',[0,1])
+def test_immutable_source_parent_live_owner_rejects_correlated_foreign_canonical_mapping(tmp_path,monkeypatch,slot):
+    import types
+    physical=[tmp_path/'published-R',tmp_path/'sealed-C']
+    canonical=[tmp_path/'primary-R',tmp_path/'primary-C']
+    for root in physical+canonical:root.mkdir()
+    foreign=tmp_path/'foreign-primary';foreign.mkdir()
+    rows=[{'physical_root':str(p),'canonical_root':str(c)}for p,c in zip(physical,canonical)]
+    # All untrusted future observation/receipt/plan copies can agree on the
+    # wrong row; real trusted resolver output still determines admission.
+    rows[slot]['canonical_root']=str(foreign)
+    module=types.ModuleType('explicit_Source42_boundary_DATA')
+    def original_generator_DATA():yield None
+    module.source_lease=SimpleNamespace(__wrapped__=original_generator_DATA)
+    calls=[]
+    def resolver(root):calls.append(root);return canonical[physical.index(root)]
+    module.canonical_source_root=resolver
+    frame=SimpleNamespace(f_globals=vars(module),f_locals={})
+    manager=SimpleNamespace(gen=SimpleNamespace(gi_code=original_generator_DATA.__code__,gi_frame=frame))
+    custody=SimpleNamespace(immutable_source_binding=(module,{'explicit_unexecuted_pin_DATA':True},
+        original_generator_DATA.__code__,resolver),context={'plan':{'source_root_bindings':rows}},
+        immutable_source_fds=[{'previous_slot_DATA':True}]if slot else [])
+    monkeypatch.setattr(owners,'checked_descriptor',lambda pin:b'explicit_Source42_DATA')
+    held=SimpleNamespace(canonical_root=str(foreign))
+    with pytest.raises(ValueError,match='Source42 mapping changed'):
+        owners._immutable_source_parent_record_fd(custody,manager,held,physical[slot])
+    assert calls==[physical[slot]]
+    assert len(custody.immutable_source_fds)==slot
+
+
+# PID1 parser/typed-join controls. All process, FD, parent Source and closeout
+# observations remain explicitly modeled DATA through the existing fixtures.
+def _immutable_parent_observation_PID1_DATA(scope):
+    scope.base.value['parent_identity']['pid'] = 1  # Also updates the fixture FD observer's captured identity.
+    scope.value['parent_identity']['pid'] = 1
+    scope.args['expected_parent_identity']['pid'] = 1
+    facts = scope.base.state['facts']
+    parent = facts.pop(4100)
+    parent.update(pid=1, ppid=0)
+    facts[1] = parent
+    facts[4101]['ppid'] = 1
+    for row in scope.base.state['fd'].values():
+        row['fdinfo'] = row['fdinfo'].replace('READ  4100 ', 'READ  1 ')
+    return scope
+
+
+@pytest.mark.parametrize('profile', ['ordinary', 'reviewed'])
+def test_parent_source_PID1_metadata_keeps_live_reader_contract(immutable_parent_observation_DATA, profile):
+    f = _immutable_parent_observation_PID1_DATA(immutable_parent_observation_DATA)
+    if profile == 'ordinary':
+        result = owners.verify_immutable_source_parent_observation_v1(owners.canonical(f.value), **f.args)
+    else:
+        result = owners.verify_reviewed_preservation_parent_source_observation_v1(
+            owners.canonical(f.base.value), **f.base.args)
+    assert type(result['parent_identity']['pid']) is int and result['parent_identity']['pid'] == 1
+    assert {call[1] for call in f.base.calls if call[0] == 'fd'} == {1}
+    assert 'source_closed' not in result and 'qualification_passed' not in result
+
+
+@pytest.mark.parametrize('profile', ['ordinary', 'reviewed'])
+@pytest.mark.parametrize('live', [True, False])
+def test_parent_source_observed_boolean_PID_is_not_typed_PID1(immutable_parent_observation_DATA, profile, live):
+    f = _immutable_parent_observation_PID1_DATA(immutable_parent_observation_DATA)
+    value = copy.deepcopy(f.value if profile == 'ordinary' else f.base.value)
+    value['parent_identity']['pid'] = True
+    assert value['parent_identity'] == f.args['expected_parent_identity']  # The Python equality trap under test.
+    raw = owners.canonical(value)
+    with pytest.raises(ValueError, match='typed observed parent Source identity'):
+        if live and profile == 'ordinary':
+            owners.verify_immutable_source_parent_observation_v1(raw, **f.args)
+        elif live:
+            owners.verify_reviewed_preservation_parent_source_observation_v1(raw, **f.base.args)
+        else:
+            owners._parent_source_observation_core(raw,
+                expected_request_sha256=f.args['expected_request_sha256'],
+                expected_parent_identity=f.args['expected_parent_identity'],
+                expected_nonce_sha256=f.args['expected_nonce_sha256'], expected_sdk_argv=f.args['expected_sdk_argv'],
+                expected_roots=f.base.roots,
+                expected_schema=('agent-supervisor/immutable-source-parent-observation@1' if profile == 'ordinary'
+                    else 'reviewed-preservation-parent-source-observation/v1'),
+                source_root_bindings=f.rows if profile == 'ordinary' else None, live=False)
+    assert f.base.calls == []  # Refused as typed metadata, before any modeled process/FD observation.
+
+
+@pytest.fixture
+def immutable_parent_PID1_archive_DATA(immutable_parent_observation_DATA, tmp_path, monkeypatch):
+    f = _immutable_parent_observation_PID1_DATA(immutable_parent_observation_DATA)
+    invocation = tmp_path / 'PID1-archive-DATA'
+    invocation.mkdir()
+    policy = {'python': sys.executable, 'datasets_root': str(f.physical[0]),
+        'validation': {'resource_ledger': str(tmp_path / 'never-opened-PID1-ledger')}}
+    plan = {'candidate_root': str(f.physical[1]), 'parent_identity': f.value['parent_identity'],
+        'parent_nonce_sha256': f.args['expected_nonce_sha256'],
+        'parent_source_observation_path': str(invocation / 'parent-source-observation.json'),
+        'execution_request_path': str(tmp_path / 'PID1-public' / 'execution-request.json'), 'source_root_bindings': f.rows}
+    request = put(Path(plan['execution_request_path']), Path(f.value['request']['path']).read_bytes())
+    value = copy.deepcopy(f.value)
+    value.update(request=request, sdk_argv=owners._immutable_source_parent_argv(policy, request))
+    observation = put(Path(plan['parent_source_observation_path']), value)
+    def forbidden(*args, **kwargs):
+        pytest.fail('PID1 archived DATA parser invoked live Source/Git/process/FD observation')
+    for name in ('public_source_lease', '_immutable_source_owner', '_reviewed_parent_proc_stat',
+            '_reviewed_parent_fd_observation', '_parent_source_child_chain', 'git_command'):
+        monkeypatch.setattr(owners, name, forbidden)
+    monkeypatch.setattr(owners.subprocess, 'Popen', forbidden)
+    summary = owners._immutable_source_parent_saved_observation(policy, plan, request, invocation)
+    return SimpleNamespace(base=f, policy=policy, plan=plan, request=request, observation=observation,
+        invocation=invocation, summary=summary)
+
+
+def test_immutable_parent_report_boolean_PID_cannot_equal_saved_PID1(immutable_parent_PID1_archive_DATA):
+    s = immutable_parent_PID1_archive_DATA
+    report = {'schema': 'immutable-source-parent-delegated-validation@1', 'source_READ_closed': False,
+        'source_READ_admission_complete': False, **copy.deepcopy(s.summary)}
+    assert owners._immutable_source_parent_report_binding(s.policy, s.plan, s.request, report, s.invocation) == s.summary
+    report['parent_identity']['pid'] = True
+    assert report['parent_identity'] == s.summary['parent_identity']
+    with pytest.raises(ValueError, match='report parent/observation/root mapping'):
+        owners._immutable_source_parent_report_binding(s.policy, s.plan, s.request, report, s.invocation)
+
+
+def _immutable_parent_PID1_closeout_DATA(scope, observation_scope, monkeypatch):
+    """Existing typed closeout reader, modeled engine/Source boundaries only."""
+    s = scope
+    f = _immutable_parent_observation_PID1_DATA(observation_scope)
+    s.c.request_pin = put(s.invocation / 'PID1-closeout-public/execution-request.json', s.c.raw)
+    closeout, old_ref = _typed_v5_modeled_closeout(s, monkeypatch)
+    s.c.policy.update(python=sys.executable, datasets_root=str(f.physical[0]))
+    s.c.policy['validation']['source_qualification'] = {'schema': 'agent-supervisor/immutable-source-qualification@2'}
+    plan = {'candidate_root': str(f.physical[1]), 'parent_identity': f.value['parent_identity'],
+        'parent_nonce_sha256': f.args['expected_nonce_sha256'],
+        'parent_source_observation_path': str(s.invocation / 'parent-source-observation.json'),
+        'execution_request_path': s.c.request_pin['path'], 'source_root_bindings': f.rows}
+    put(s.invocation / 'validation-plan.json', plan)
+    value = copy.deepcopy(f.value)
+    value.update(request=s.c.request_pin, sdk_argv=owners._immutable_source_parent_argv(s.c.policy, s.c.request_pin))
+    put(Path(plan['parent_source_observation_path']), value)
+    saved = owners._immutable_source_parent_saved_observation(s.c.policy, plan, s.c.request_pin, s.invocation)
+    summary = {'explicit_modeled_verifier': True, **copy.deepcopy(saved)}
+    custody = closeout['parent_source_custody']
+    custody.update(copy.deepcopy(saved))
+    custody['verified_checks'] = copy.deepcopy(summary)
+    custody['source_receipts'] = copy.deepcopy(value['source_receipts'])
+    path = Path(old_ref['path'])
+    path.chmod(0o600)
+    path.write_bytes(owners.canonical(closeout) + b'\n')
+    path.chmod(0o400)
+    return closeout, pin(path), summary
+
+
+@pytest.mark.parametrize('fault', ['custody_PID', 'verified_PID', 'receipt_cooperative'])
+def test_immutable_parent_archived_custody_preserves_exact_PID1_and_receipt_types(
+        typed_v5_modeled_boundaries, immutable_parent_observation_DATA, monkeypatch, fault):
+    s = typed_v5_modeled_boundaries
+    closeout, reference, summary = _immutable_parent_PID1_closeout_DATA(s, immutable_parent_observation_DATA, monkeypatch)
+    assert owners._verify_v5_parent_source_closeout(s.c.policy, s.c.request_pin, s.invocation, reference, summary) == closeout
+    custody = closeout['parent_source_custody']
+    if fault == 'custody_PID':
+        custody['parent_identity']['pid'] = True
+    elif fault == 'verified_PID':
+        custody['verified_checks']['parent_identity']['pid'] = True
+    else:
+        custody['source_receipts'][0]['cooperative'] = 1
+    path = Path(reference['path'])
+    path.chmod(0o600)
+    path.write_bytes(owners.canonical(closeout) + b'\n')
+    path.chmod(0o400)
+    with pytest.raises(ValueError, match='archived'):
+        owners._verify_v5_parent_source_closeout(s.c.policy, s.c.request_pin, s.invocation, pin(path), summary)
+
+
+def test_immutable_parent_receipt_boolean_PID_summary_refuses_before_parent_closeout(
+        immutable_parent_PID1_archive_DATA, tmp_path, monkeypatch):
+    """Actual receipt parser; upstream proof readers are explicitly modeled."""
+    s = immutable_parent_PID1_archive_DATA
+    invocation = tmp_path / 'PID1-receipt-DATA'
+    invocation.mkdir()
+    freeze = put(tmp_path / 'PID1-receipt-snapshot.json', {'explicit_snapshot_DATA': True})
+    profile = {'schema': 'agent-supervisor/immutable-source-qualification@2'}
+    commitment = 'a' * 64
+    context = {'profile': profile, 'snapshot_ref': freeze, 'snapshot': {'source_commitment': commitment},
+        'root': Path(s.plan['candidate_root'])}
+    policy = {'validation': {'source_qualification': profile}}
+    terminal = put(invocation / 'original-terminal.json', {'explicit_terminal_DATA': True})
+    put(invocation / 'validation-plan.json', {'explicit_plan_DATA': True})
+    bad_summary = copy.deepcopy(s.summary)
+    bad_summary['parent_identity']['pid'] = True
+    assert bad_summary == s.summary
+    receipt = {'schema': 'agent-supervisor/immutable-source-qualification-receipt@2', 'snapshot': freeze,
+        'source_qualification': profile, 'source_commitment': commitment, 'passed': True,
+        'source_closed': True, 'native_closed': True, 'processes_closed': True, 'storage_closed': True,
+        'cleanup_errors': [], 'original_receipt_reference': terminal['path'], 'original_receipt_descriptor': terminal,
+        'verified_checks': bad_summary, 'parent_source_closeout': {'explicit_unreached_closeout_DATA': True},
+        'repair_authority': False, 'adoption_authority': False, 'activation_authority': False, 'completion_authority': False}
+    receipt_pin = put(invocation / 'source-qualification-receipt.json', receipt)
+    args = SimpleNamespace(policy=tmp_path / 'unread-policy.json', policy_sha256='b' * 64,
+        receipt_path=Path(receipt_pin['path']), invocation_root=invocation, freeze_path=Path(freeze['path']),
+        candidate_root=context['root'], source_commitment=commitment)
+    monkeypatch.setattr(owners, 'checked_policy', lambda *a, **k: policy)
+    monkeypatch.setattr(owners, 'checked_source_qualification', lambda *a, **k: context)
+    monkeypatch.setattr(owners, '_source_qualification_plan', lambda *a, **k: context)
+    monkeypatch.setattr(owners, 'original_execution_request', lambda *a, **k: s.request)
+    monkeypatch.setattr(owners, 'verify_validation_evidence', lambda *a, **k: copy.deepcopy(s.summary))
+    def forbidden(*a, **k):
+        pytest.fail('typed-invalid receipt reached parent Source closeout reader')
+    monkeypatch.setattr(owners, 'verify_v5_parent_source_closeout', forbidden)
+    with pytest.raises(ValueError, match='immutable qualification verified summary differs'):
+        owners.verify_source_qualification(args)
+
+
+def test_delegated_parent_source_qualification_validate_persists_failed_cleanup_without_report_acceptance(metadata_scope, monkeypatch):
+    """Post-finish public metadata flow only; original runner is modeled DATA."""
+    f = _immutable_parent_plan_DATA(metadata_scope)
+    source_parent = {**copy.deepcopy(f.context), 'parent_nonce': '4f'*32}
+    monkeypatch.setattr(owners, 'checked_policy', lambda *a, **k: f.policy)
+    monkeypatch.setattr(owners, '_immutable_source_parent_runtime', lambda *a, **k: source_parent)
+    result_custody = {'source_closed': True, 'native_closed': True,
+        'closure_kind': 'original_failed_retained_native_closed', 'storage_status': 'retained',
+        'storage_release_authorized': False, 'retry_authorized': False}
+    calls = []
+    def original_runner(policy, argv, cwd, timeout, *, validation_context):
+        calls.append('original_runner_DATA')
+        plan = validation_context['plan']
+        assert owners._source_qualification_plan(policy, plan, f.s.invocation)['profile'] == f.profile
+        assert validation_context['source_parent'] == source_parent and timeout == 360
+        assert plan['execution_request_path'] == validation_context['request_pin']['path']
+        return SimpleNamespace(returncode=1, stdout='{"explicit_completed_failed_cli_DATA":true}', stderr=''), {
+            'parent_source_custody': copy.deepcopy(result_custody)}
+    monkeypatch.setattr(owners, 'original_runner_wait', original_runner)
+    def forbidden(*a, **k):
+        pytest.fail('cleanup-only public failure entered qualification, negative diagnosis or hold')
+    for name in ('verify_validation_evidence', 'capture_negative_validation', '_source_qualification_failed_custody'):
+        monkeypatch.setattr(owners, name, forbidden)
+    monkeypatch.setattr(owners._V5ValidationSourceCustody, 'hold', forbidden)
+    args = SimpleNamespace(policy=Path(f.policy_pin['path']), policy_sha256=f.policy_pin['sha256'],
+        freeze_path=Path(f.s.snapshot_pin['path']), source_commitment=f.s.snapshot['source_commitment'],
+        candidate_root=f.s.scope.control, invocation_root=f.s.invocation,
+        receipt_path=f.s.invocation/'source-qualification-receipt.json')
+    assert owners.validate(args) == 1
+    saved = json.loads((f.s.invocation/'failed-source-qualification.json').read_bytes())
+    assert saved['parent_source_custody'] == result_custody and saved['passed'] is False
+    assert saved['storage_closed'] is saved['semantic_negative'] is saved['retry_authorized'] is False
+    assert calls == ['original_runner_DATA'] and not args.receipt_path.exists()
+
+
+@pytest.mark.parametrize('delegated', [False, True])
+def test_immutable_source_qualification_report_cannot_retag_other_profile_DATA(metadata_scope, delegated):
+    """Modeled successful process metadata cannot cross @1/@2 report schemas."""
+    if delegated:
+        f = _immutable_parent_plan_DATA(metadata_scope)
+        s, policy, plan = f.s, f.policy, f.plan
+        plan_pin = put(s.invocation / 'validation-plan.json', plan)
+        local = put(s.invocation / 'execution-request.json', owners.validation_execution_request(policy, plan, plan_pin))
+        request = owners.publish_validation_request(policy, s.snapshot, s.invocation, local)
+        offered_schema = owners.WORK_SCHEMA
+    else:
+        s, policy, plan, plan_pin, request, _, _ = _immutable_qualification_bound_request_DATA(metadata_scope)
+        offered_schema = owners.IMMUTABLE_PARENT_WORKER_SCHEMA
+    attempt = Path(plan['attempt_directory'])
+    owner = {'pid': 4100, 'birth': '12345'}
+    record = dict(status='released', artifacts_durable_asserted=True, native_lease_id='f'*32,
+        validation_request_sha256=request['sha256'], owner_pid=owner['pid'], owner_birth=owner['birth'])
+    result = put(attempt / 'logs/result.json', dict(schema='owned-validation-result/v1',
+        completed=True, returncode=0, request_sha256=request['sha256']))
+    terminal = dict(result=result['path'], reservation=dict(status='released', record=record,
+        resource_lease=dict(released=True, lease_id=record['native_lease_id'], owner_pid=owner['pid']),
+        cleanup_error=None, process_observation=dict(live_processes=0, out_of_group_live_identities=[], tracking_error=False)))
+    engine = put(s.invocation / 'modeled-report-domain-engine.py', b'# Modeled process DATA only.\n')
+    put(s.invocation / 'runner-wait.json', dict(request=request, original_process_owner_returned=True,
+        returncode=0, stdout=owners.canonical(terminal).decode(), runner_identity=owner,
+        actual_Popen_returned=True, actual_process_waited=True, actual_process_returncode=0, engine_source=engine))
+    report = put(attempt / 'exports/trusted-validation.json', dict(schema=offered_schema, passed=True))
+    with pytest.raises(ValueError, match='trusted source/semantic result missing'):
+        owners.verify_validation_evidence(policy, plan, request, terminal, s.invocation)
+    assert Path(report['path']).read_bytes() == owners.canonical(dict(schema=offered_schema, passed=True)) + b'\n'
+    assert not (s.invocation / 'source-qualification-receipt.json').exists()

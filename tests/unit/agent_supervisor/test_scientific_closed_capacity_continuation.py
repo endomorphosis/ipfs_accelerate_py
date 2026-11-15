@@ -1586,3 +1586,190 @@ def test_source_generation_qualification_AST_metadata_parse_uses_bound_bytes_wit
     finally:
         h.close_historical_source_witness(review['witness'])
     assert not executor._source_generation_path(case['profile']).exists()
+
+
+@pytest.fixture
+def physical_R_fifteen_preparation_DATA(source_generation_profile_DATA, monkeypatch):
+    """Fictional constructor DATA, not a live import or Source qualification."""
+    h = _source_generation_health; put = _source_generation_canonical_DATA
+    root = source_generation_profile_DATA['root']/'explicit-fifteen-preparation-DATA'
+    prior = _source_generation_copy.deepcopy(source_generation_profile_DATA['current'])
+    stage = _source_generation_copy.deepcopy(prior)
+    canonical, physical = root/'canonical-datasets', root/'physical-datasets'
+    named = (canonical/'workspace/logs', canonical/'workspace/queues', canonical/'docs/evidence', root/'pytest')
+    for path in named: path.mkdir(parents=True)
+    monkeypatch.setattr(executor, 'ORIGINAL_NAMED_ROOTS', named)
+    monkeypatch.setattr(executor, 'health_owner', lambda: h)
+    binding = dict(physical_root=str(physical), canonical_root=str(canonical))
+    changed = ('ipfs_datasets_py/logic/backends/process.py',
+        'ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_daemon_resources.py',
+        'ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_resource_recovery.py',
+        'ipfs_datasets_py/optimizers/logic_theorem_optimizer/parented_phase_resources.py',
+        'scripts/ops/legal_ir/run_owned_validation.py')
+    replacements = []
+    for index, relative in enumerate(changed):
+        before = put(canonical/relative, ('# fictional prior changed role '+str(index)+'\n').encode())
+        after = put(physical/relative, ('# fictional current changed role '+str(index)+'\n').encode())
+        slot = len(prior['source_descriptors'])
+        prior['source_descriptors'].append(before); stage['source_descriptors'].append(after)
+        replacements.append(dict(slot=slot, before_ref=before, after_ref=after))
+    # Independent population: do not copy the implementation's role constant.
+    relatives = ('ipfs_datasets_py/__init__.py', 'ipfs_datasets_py/ipfs_backend_router.py',
+        'ipfs_datasets_py/logic/__init__.py', 'ipfs_datasets_py/optimizers/__init__.py',
+        'ipfs_datasets_py/optimizers/logic_theorem_optimizer/__init__.py',
+        'ipfs_datasets_py/optimizers/logic_theorem_optimizer/existing_resource_scheduler.py',
+        'ipfs_datasets_py/optimizers/logic_theorem_optimizer/proof_resource_safety.py',
+        'ipfs_datasets_py/optimizers/logic_theorem_optimizer/resource_scheduler.py',
+        'ipfs_datasets_py/optimizers/logic_theorem_optimizer/runtime_telemetry.py',
+        'ipfs_datasets_py/router_deps.py')
+    relocations = []
+    for index, relative in enumerate(relatives):
+        raw = ('# fictional unchanged dependency '+str(index)+'\n').encode()
+        before = put(canonical/relative, raw); after = put(physical/relative, raw)
+        slot = len(prior['source_descriptors'])
+        prior['source_descriptors'].append(before); stage['source_descriptors'].append(after)
+        relocations.append(dict(slot=slot, before_ref=before, after_ref=after))
+    oldref = put(root/'prior-profile.json', prior)
+    snapshot = put(root/'prior-profile-snapshot.json', prior)
+    namespace_path = physical/'ipfs_datasets_py/logic/backends'
+    info = namespace_path.lstat()
+    profile = dict(schema='native-embedded-physical-R-source@1', source_root_binding=binding,
+        source_descriptors=sorted([row['after_ref'] for row in replacements+relocations],
+                                  key=lambda pin: pin['path']),
+        normal_namespace_profiles=[dict(fullname='ipfs_datasets_py.logic.backends',
+            path=str(namespace_path), device=info.st_dev, inode=info.st_ino, initializer_absent=True)])
+    value = dict(schema='agent-supervisor/scientific-idle-source-preparation@3',
+        prior_profile_ref=oldref, prior_profile_snapshot_ref=snapshot,
+        profile_ref=put(root/'stage-profile.json', stage), source_relocations=relocations,
+        physical_source_profile=profile, replacements=replacements, source_root_binding=binding)
+    return dict(root=root, value=value, spec=put(root/'preparation.json', value),
+                relocations=relocations, physical_source_profile=profile)
+
+
+def test_source_generation_fifteen_preparation_is_only_constructor_DATA(physical_R_fifteen_preparation_DATA,
+        monkeypatch):
+    case = physical_R_fifteen_preparation_DATA
+    def forbidden(*_, **__): raise AssertionError('constructor DATA cannot launch a process')
+    monkeypatch.setattr(executor.subprocess, 'Popen', forbidden)
+    comparison = executor.prepare_idle_source_replacement(case['spec'])
+    assert comparison['schema'] == 'agent-supervisor/scientific-idle-source-comparison@3'
+    assert comparison['changed_source_count'] == 5 and comparison['relocated_source_count'] == 15
+    assert comparison['source_relocations'] == case['relocations']
+    assert comparison['physical_source_profile'] == case['physical_source_profile']
+    assert comparison['raw_inverse_verified'] is True
+    assert comparison['namespace_metadata_is_compile_evidence'] is False
+    assert comparison['native_driver_template_transition_unresolved'] is True
+    assert comparison['runtime_qualified'] is comparison['activation_ready'] is comparison['authority_granted'] is False
+
+
+@pytest.mark.parametrize('fault', ['missing', 'duplicate', 'reordered', 'changed-payload',
+    'canonical-after', 'wrong-role', 'boolean-slot', 'crossed-slot', 'wrong-size'])
+def test_source_generation_fifteen_preparation_rejects_relocation_mutations_DATA(
+        physical_R_fifteen_preparation_DATA, fault):
+    case = physical_R_fifteen_preparation_DATA; h = _source_generation_health
+    value = _source_generation_copy.deepcopy(case['value']); rows = value['source_relocations']
+    if fault == 'missing': rows.pop()
+    elif fault == 'duplicate': rows[-1] = _source_generation_copy.deepcopy(rows[0])
+    elif fault == 'reordered': rows.reverse()
+    elif fault == 'changed-payload': rows[0]['after_ref']['sha256'] = '1'*64
+    elif fault == 'canonical-after': rows[0]['after_ref']['path'] = rows[0]['before_ref']['path']
+    elif fault == 'wrong-role': rows[0]['before_ref']['path'] += '.unlisted'
+    elif fault == 'boolean-slot': rows[0]['slot'] = True
+    elif fault == 'crossed-slot': rows[0]['slot'] = value['replacements'][0]['slot']
+    else: rows[0]['after_ref']['bytes'] += 1
+    ref = _source_generation_canonical_DATA(case['root']/('bad-relocation-'+fault+'.json'), value)
+    with pytest.raises(ValueError): executor.prepare_idle_source_replacement(ref)
+    assert not executor._source_generation_path(h._profile(value['profile_ref'])).exists()
+
+
+@pytest.mark.parametrize('fault', ['profile-schema', 'profile-root', 'profile-order', 'profile-omission',
+    'namespace-name', 'namespace-path', 'boolean-device', 'zero-inode', 'initializer-present', 'extra-namespace'])
+def test_source_generation_fifteen_preparation_rejects_profile_namespace_mutations_DATA(
+        physical_R_fifteen_preparation_DATA, fault):
+    case = physical_R_fifteen_preparation_DATA
+    value = _source_generation_copy.deepcopy(case['value']); profile = value['physical_source_profile']
+    namespace = profile['normal_namespace_profiles'][0]
+    if fault == 'profile-schema': profile['schema'] = 'native-embedded-physical-R-source@0'
+    elif fault == 'profile-root': profile['source_root_binding']['physical_root'] += '-unbound'
+    elif fault == 'profile-order': profile['source_descriptors'].reverse()
+    elif fault == 'profile-omission': profile['source_descriptors'].pop()
+    elif fault == 'namespace-name': namespace['fullname'] = 'ipfs_datasets_py.logic'
+    elif fault == 'namespace-path': namespace['path'] += '/nested'
+    elif fault == 'boolean-device': namespace['device'] = True
+    elif fault == 'zero-inode': namespace['inode'] = 0
+    elif fault == 'initializer-present': namespace['initializer_absent'] = False
+    else: profile['normal_namespace_profiles'].append(dict(namespace))
+    ref = _source_generation_canonical_DATA(case['root']/('bad-profile-'+fault+'.json'), value)
+    with pytest.raises(ValueError): executor.prepare_idle_source_replacement(ref)
+
+
+def test_source_generation_fifteen_preparation_does_not_inherit_five_file_activation_DATA(
+        physical_R_fifteen_preparation_DATA):
+    case = physical_R_fifteen_preparation_DATA; h = _source_generation_health
+    value = {key: case['spec'] for key in executor.SOURCE_GENERATION_SPEC_KEYS}
+    value.update(schema=executor.SOURCE_GENERATION_SPEC_SCHEMA,
+        authorization='approve_technical_source_generation_without_execution_budget',
+        profile_ref=case['value']['profile_ref'], preparation_spec_ref=case['spec'])
+    ref = _source_generation_canonical_DATA(case['root']/'unqualified-full-review.json', value)
+    with pytest.raises(ValueError, match='source_generation_physical_CLI4_coherent_transition_unqualified'):
+        executor._source_generation_review(ref, value['profile_ref'], h._profile(value['profile_ref']), {})
+
+
+def test_source_generation_fifteen_preparation_preserves_exact_legacy_one_contract_DATA(
+        physical_R_fifteen_preparation_DATA, monkeypatch):
+    """The same-path five-row @1 result keeps its exact historical field set."""
+    case = physical_R_fifteen_preparation_DATA; h = _source_generation_health
+    value = case['value']; prior = h._document(value['prior_profile_snapshot_ref'])
+    stage = _source_generation_copy.deepcopy(prior); replacements = []
+    for row in value['replacements']:
+        after = _source_generation_canonical_DATA(Path(row['before_ref']['path']),
+                                                  h._bound(row['after_ref']))
+        stage['source_descriptors'][row['slot']] = after
+        replacements.append(dict(slot=row['slot'], before_ref=row['before_ref'], after_ref=after))
+    spec = dict(schema='agent-supervisor/scientific-idle-source-preparation@1',
+        prior_profile_ref=value['prior_profile_ref'],
+        prior_profile_snapshot_ref=value['prior_profile_snapshot_ref'],
+        profile_ref=_source_generation_canonical_DATA(case['root']/'legacy-stage-profile.json', stage),
+        replacements=replacements)
+    reference = _source_generation_canonical_DATA(case['root']/'legacy-preparation.json', spec)
+    def forbidden(*_, **__): raise AssertionError('preparation cannot issue or launch authority')
+    monkeypatch.setattr(executor.subprocess, 'Popen', forbidden)
+    monkeypatch.setattr(h, '_manager', forbidden)
+    comparison = executor.prepare_idle_source_replacement(reference)
+    assert comparison == dict(schema='agent-supervisor/scientific-idle-source-comparison@1',
+        spec_ref=reference, prior_profile_ref=spec['prior_profile_ref'],
+        prior_profile_snapshot_ref=spec['prior_profile_snapshot_ref'], profile_ref=spec['profile_ref'],
+        replacements=replacements, source_count=len(stage['source_descriptors']),
+        changed_source_count=5, raw_inverse_verified=True, current_source_profile_validated=True,
+        coherent_handover_validated=False, config_template_history_unresolved=True,
+        runtime_qualified=False, activation_ready=False, dispatch_ready=False,
+        hold_removal_authorized=False, authority_granted=False)
+    assert not executor._source_generation_path(stage).exists()
+
+
+@pytest.mark.parametrize('fault', ['legacy-root', 'legacy-relocations', 'legacy-physical-profile',
+    'unsupported-two', 'unknown-four', 'physical-missing-root',
+    'physical-missing-relocations', 'physical-missing-profile'])
+def test_source_generation_fifteen_preparation_keeps_schema_routes_closed_DATA(
+        physical_R_fifteen_preparation_DATA, fault):
+    case = physical_R_fifteen_preparation_DATA
+    value = _source_generation_copy.deepcopy(case['value'])
+    extras = {'source_root_binding', 'source_relocations', 'physical_source_profile'}
+    if fault.startswith('legacy-') or fault in ('unsupported-two', 'unknown-four'):
+        legacy = {key: item for key, item in value.items() if key not in extras}
+        if fault.startswith('legacy-'):
+            legacy['schema'] = 'agent-supervisor/scientific-idle-source-preparation@1'
+            key = {'legacy-root': 'source_root_binding', 'legacy-relocations': 'source_relocations',
+                   'legacy-physical-profile': 'physical_source_profile'}[fault]
+            legacy[key] = value[key]
+        else:
+            legacy['schema'] = 'agent-supervisor/scientific-idle-source-preparation@' + (
+                '2' if fault == 'unsupported-two' else '4')
+        value = legacy
+    else:
+        value.pop({'physical-missing-root': 'source_root_binding',
+                   'physical-missing-relocations': 'source_relocations',
+                   'physical-missing-profile': 'physical_source_profile'}[fault])
+    reference = _source_generation_canonical_DATA(case['root']/('schema-refusal-'+fault+'.json'), value)
+    with pytest.raises(ValueError): executor.prepare_idle_source_replacement(reference)
+    assert not executor._source_generation_path(_source_generation_health._profile(case['value']['profile_ref'])).exists()
