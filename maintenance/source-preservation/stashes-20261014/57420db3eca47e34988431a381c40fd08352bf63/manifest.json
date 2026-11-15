@@ -1,0 +1,115 @@
+{
+  "schema": "source-only-stash-snapshot/v1",
+  "original_stash_identity": "57420db3eca47e34988431a381c40fd08352bf63",
+  "original_stash_identity_is_metadata_not_a_parent": true,
+  "source_only": true,
+  "runtime_or_training_activation": false,
+  "original_stash_assets_or_history_published": false,
+  "archived_evidence_is_not_current_qualification": true,
+  "files": [
+    {
+      "original_path": "benchmarks/agent_supervisor/container_coding/terminal_context_audit.py",
+      "archive_path": "maintenance/source-preservation/stashes-20261014/57420db3eca47e34988431a381c40fd08352bf63/files/benchmarks/agent_supervisor/container_coding/terminal_context_audit.py",
+      "blob": "c6e050f851376211a377d8cf172c0dbeba6fbf3c",
+      "sha256": "e2e48012c790c5837a8bfa43f77727f19f7ec9ea65b02ee15bbd4ac0b9ad3fef",
+      "bytes": 87698,
+      "mode": "100644"
+    },
+    {
+      "original_path": "benchmarks/agent_supervisor/container_coding/terminal_repository_source_policy.py",
+      "archive_path": "maintenance/source-preservation/stashes-20261014/57420db3eca47e34988431a381c40fd08352bf63/files/benchmarks/agent_supervisor/container_coding/terminal_repository_source_policy.py",
+      "blob": "cf4e9a1e64b8316ffa12c33e7b6244a7fc4d87c9",
+      "sha256": "ff60d805ead9e7279c1c7e6105dd8453c9539024df492fd31240afcf25c46e37",
+      "bytes": 33754,
+      "mode": "100644"
+    },
+    {
+      "original_path": "benchmarks/agent_supervisor/container_coding/terminal_worker_capability.py",
+      "archive_path": "maintenance/source-preservation/stashes-20261014/57420db3eca47e34988431a381c40fd08352bf63/files/benchmarks/agent_supervisor/container_coding/terminal_worker_capability.py",
+      "blob": "ecc5708fae9caa8db6c722e199579bb0b713ae05",
+      "sha256": "c7b10eddfb4e1fdddb77b47a0dd4f6e1cdcc4669c848efa789f62427e7a61309",
+      "bytes": 9218,
+      "mode": "100644"
+    },
+    {
+      "original_path": "benchmarks/agent_supervisor/container_coding/terminal_world_packet_audit.py",
+      "archive_path": "maintenance/source-preservation/stashes-20261014/57420db3eca47e34988431a381c40fd08352bf63/files/benchmarks/agent_supervisor/container_coding/terminal_world_packet_audit.py",
+      "blob": "accc59a9b97f062d5e1bcc459de2b0ce3fff050c",
+      "sha256": "62149ac366941a9bf00e488c461be8ec5b9d8d4bd50f0628e211af4623b2a8c8",
+      "bytes": 16254,
+      "mode": "100644"
+    },
+    {
+      "original_path": "benchmarks/agent_supervisor/container_coding/test_terminal_worker_capability.py",
+      "archive_path": "maintenance/source-preservation/stashes-20261014/57420db3eca47e34988431a381c40fd08352bf63/files/benchmarks/agent_supervisor/container_coding/test_terminal_worker_capability.py",
+      "blob": "80b3be9c9f28dcf568b6fdd345f21ff8cdde39e6",
+      "sha256": "1794aa6c2cae1326d755405dccc2e2b16992bdbaaca0fa09236af46716eeee62",
+      "bytes": 20312,
+      "mode": "100644"
+    },
+    {
+      "original_path": "benchmarks/agent_supervisor/container_coding/test_terminal_world_native_preparation.py",
+      "archive_path": "maintenance/source-preservation/stashes-20261014/57420db3eca47e34988431a381c40fd08352bf63/files/benchmarks/agent_supervisor/container_coding/test_terminal_world_native_preparation.py",
+      "blob": "07798cf5f7330d352614aeb05c5dbbb049ec7f84",
+      "sha256": "d295533d6d880caccbc900658ff5c5e7b153675950014fccdc56c00a31daf05d",
+      "bytes": 26079,
+      "mode": "100644"
+    },
+    {
+      "original_path": "docs/agent_supervisor/evidence/world-nominations-20261014/qualification.json",
+      "archive_path": "maintenance/source-preservation/stashes-20261014/57420db3eca47e34988431a381c40fd08352bf63/files/docs/agent_supervisor/evidence/world-nominations-20261014/qualification.json",
+      "blob": "21aef55792c989d3ba4594713713fdaa0841140c",
+      "sha256": "e3573c757f84820fbcbb6ccecedbfe629749879700c76981326bc2df72cf82af",
+      "bytes": 12799,
+      "mode": "100644"
+    },
+    {
+      "original_path": "docs/agent_supervisor/reversible_codebase_views_plan.md",
+      "archive_path": "maintenance/source-preservation/stashes-20261014/57420db3eca47e34988431a381c40fd08352bf63/files/docs/agent_supervisor/reversible_codebase_views_plan.md",
+      "blob": "bf30e9a13477a7ffb03069485937c88921f3b673",
+      "sha256": "15c206e8e4b9382a0def4cef52ac8c474422334bee9237458260db908188d3e5",
+      "bytes": 78991,
+      "mode": "100644"
+    },
+    {
+      "original_path": "docs/agent_supervisor/terminal_token_metadata_plan.md",
+      "archive_path": "maintenance/source-preservation/stashes-20261014/57420db3eca47e34988431a381c40fd08352bf63/files/docs/agent_supervisor/terminal_token_metadata_plan.md",
+      "blob": "6357e9240c90a5c015fcbf6d65cada4b64898df0",
+      "sha256": "f35d40624cff5d008961032054b43ff1567ab3f109b92eac214c3b01017c3515",
+      "bytes": 70431,
+      "mode": "100644"
+    },
+    {
+      "original_path": "ipfs_accelerate_py/agent_supervisor/runtime/README.md",
+      "archive_path": "maintenance/source-preservation/stashes-20261014/57420db3eca47e34988431a381c40fd08352bf63/files/ipfs_accelerate_py/agent_supervisor/runtime/README.md",
+      "blob": "1559aeae464967000c6e911373097cfabc9daf77",
+      "sha256": "b1bee0d77d11aec5e4416f97de394ad52644fd0c4ae66d26c1628a915c16a876",
+      "bytes": 46567,
+      "mode": "100644"
+    },
+    {
+      "original_path": "ipfs_accelerate_py/agent_supervisor/runtime/repository_world_parent.py",
+      "archive_path": "maintenance/source-preservation/stashes-20261014/57420db3eca47e34988431a381c40fd08352bf63/files/ipfs_accelerate_py/agent_supervisor/runtime/repository_world_parent.py",
+      "blob": "3cea642c17bba8b9397084b5b573aad368d8604d",
+      "sha256": "c5e0a83f367fb540b1c37c38aaae8f3643e5aca8ee9c7e9ae592d6ce6eb1705f",
+      "bytes": 13105,
+      "mode": "100644"
+    },
+    {
+      "original_path": "ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+      "archive_path": "maintenance/source-preservation/stashes-20261014/57420db3eca47e34988431a381c40fd08352bf63/files/ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py",
+      "blob": "8bbce6413c57ba7ab913604fdb8ec5508fea852b",
+      "sha256": "bcaeeb4fa47d8df44f424844b393fa0b1ec2ec7ad5a45e35bf1f1c59fd92ab0c",
+      "bytes": 104974,
+      "mode": "100644"
+    },
+    {
+      "original_path": "test/api/test_repository_world_parent.py",
+      "archive_path": "maintenance/source-preservation/stashes-20261014/57420db3eca47e34988431a381c40fd08352bf63/files/test/api/test_repository_world_parent.py",
+      "blob": "32fbd751967863a9efa6347dc254577065209605",
+      "sha256": "d1027916a35af87e8120f3809ba6a523a30eb56e4f303fdfb55ffe63f40dc75b",
+      "bytes": 16506,
+      "mode": "100644"
+    }
+  ]
+}
