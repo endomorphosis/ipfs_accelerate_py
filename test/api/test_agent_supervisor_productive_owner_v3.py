@@ -5284,12 +5284,12 @@ def bounded_reviewed_failed_close_scope(typed_v5_modeled_boundaries,
     def modeled_record(completed, engine, records):
         f.completed = completed
         if f.missing_observation:
-            object.__setattr__(completed, "execution_observation", None)
+            object.__setattr__(completed, "_execution_observation", None)
         elif f.output_capture != "complete":
             before = completed.execution_observation
             values = {name: getattr(before, name) for name in owners._V5_EXECUTION_FIELDS}
             values["output_capture"] = f.output_capture
-            object.__setattr__(completed, "execution_observation", engine.CommandExecutionObservation(**values))
+            object.__setattr__(completed, "_execution_observation", engine.CommandExecutionObservation(**values))
         return actual_record(completed, engine, records)
     c.record_execution = modeled_record
     def metadata_failure(*args, **kwargs):
