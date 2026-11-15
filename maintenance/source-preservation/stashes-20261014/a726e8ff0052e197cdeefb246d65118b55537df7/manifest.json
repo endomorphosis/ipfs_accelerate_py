@@ -1,0 +1,43 @@
+{
+  "schema": "source-only-stash-snapshot/v1",
+  "original_stash_identity": "a726e8ff0052e197cdeefb246d65118b55537df7",
+  "original_stash_identity_is_metadata_not_a_parent": true,
+  "source_only": true,
+  "runtime_or_training_activation": false,
+  "original_stash_assets_or_history_published": false,
+  "archived_evidence_is_not_current_qualification": true,
+  "files": [
+    {
+      "original_path": "benchmarks/agent_supervisor/container_coding/terminal_live_metadata_census.py",
+      "archive_path": "maintenance/source-preservation/stashes-20261014/a726e8ff0052e197cdeefb246d65118b55537df7/files/benchmarks/agent_supervisor/container_coding/terminal_live_metadata_census.py",
+      "blob": "67791f42e142db3e43c68891c0366f0eee6aa6ec",
+      "sha256": "3cd01e054a27610008ba72614d9af9b2e693fcf5486dde2243dff914d53650a0",
+      "bytes": 30948,
+      "mode": "100644"
+    },
+    {
+      "original_path": "benchmarks/agent_supervisor/container_coding/terminal_semantic_metadata_policy.py",
+      "archive_path": "maintenance/source-preservation/stashes-20261014/a726e8ff0052e197cdeefb246d65118b55537df7/files/benchmarks/agent_supervisor/container_coding/terminal_semantic_metadata_policy.py",
+      "blob": "6dca199c29b9bfb57534051ddc2baf640a4ab930",
+      "sha256": "d71c54a53e518e155d5d31d06943f32f66c8cc03bccc66906ad0fb72bf4096cc",
+      "bytes": 5261,
+      "mode": "100644"
+    },
+    {
+      "original_path": "benchmarks/agent_supervisor/container_coding/test_terminal_live_metadata_census.py",
+      "archive_path": "maintenance/source-preservation/stashes-20261014/a726e8ff0052e197cdeefb246d65118b55537df7/files/benchmarks/agent_supervisor/container_coding/test_terminal_live_metadata_census.py",
+      "blob": "620e0a617cd62405414b32f12b4f1d7903994c25",
+      "sha256": "2191ea68094395e935de5bffd2a6ef53b6dc262b5068bb22a55aeee63a33a48a",
+      "bytes": 26974,
+      "mode": "100644"
+    },
+    {
+      "original_path": "docs/agent_supervisor/terminal_token_metadata_plan.md",
+      "archive_path": "maintenance/source-preservation/stashes-20261014/a726e8ff0052e197cdeefb246d65118b55537df7/files/docs/agent_supervisor/terminal_token_metadata_plan.md",
+      "blob": "0257fbd4a5aa1aca5a26a67f21ee24eef0eba23c",
+      "sha256": "109c10ee3b07431143fe452fcf36c35a70be11b11b674970a81ef4036ca99ca7",
+      "bytes": 11718,
+      "mode": "100644"
+    }
+  ]
+}
