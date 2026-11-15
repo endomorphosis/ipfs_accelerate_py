@@ -1697,7 +1697,7 @@ def original_runner_wait(policy, argv, cwd, timeout, *, validation_context=None,
         need(type(validation_context) is dict and type(validation_context.get("plan")) is dict,
              "predeclared reviewed parent validation context required")
         declared = validation_context["plan"]["policy"]
-        checked = checked_reviewed_preservation_parent_policy_v1(Path(declared["path"]), declared["sha256"])
+        checked = _reviewed_parent_checked_policy_v3(Path(declared["path"]), declared["sha256"], policy)
         need(canonical(checked) == canonical(policy), "closed original reviewed parent declaration required")
         _reviewed_parent_check_plan_v1(policy, validation_context)
     custody = (_V5ValidationSourceCustody(policy, argv, cwd, timeout, validation_context)
@@ -2046,7 +2046,7 @@ def verify_validation_evidence(policy, plan, request_pin, terminal, invocation):
          and owner["request_sha256"] == request_pin["sha256"], "original result mismatch")
     report = json_object(ordinary_bytes(attempt / "exports/trusted-validation.json"))
     native_profile = _reviewed_parent_policy(policy)
-    need(report["schema"] == (REVIEWED_PARENT_WORKER_SCHEMA if native_profile else WORK_SCHEMA) and report["passed"] is True
+    need(report["schema"] == (_reviewed_parent_domain_v3(_reviewed_parent_version_v3(policy))["worker_schema"] if native_profile else WORK_SCHEMA) and report["passed"] is True
          and (report["source_READ_closed"] is False if native_profile else report["source_READ_closed"] is True)
          and report["source_snapshot_stable"] is True
          and report["cleanup_errors"] == [] and report["error"] is None and report["junit_error"] is None and report["guard_denials"] == []
@@ -2099,7 +2099,7 @@ def verify_validation_evidence(policy, plan, request_pin, terminal, invocation):
     if native_profile:
         need(report.get("native_return_refusal") is None, "reviewed worker recorded a failed native build return")
         need(terminal.get("admitted") is False
-             and plan["schema"] == REVIEWED_PARENT_WORKER_SCHEMA and plan["operation"] == policy["operation"]
+             and plan["schema"] == _reviewed_parent_domain_v3(_reviewed_parent_version_v3(policy))["worker_schema"] and plan["operation"] == policy["operation"]
              and report["source_custody_mode"] == "delegated-original-parent-read/v1"
              and report["source_READ_admission_complete"] is False
              and report["parent_nonce_sha256"] == plan["parent_nonce_sha256"],
@@ -2107,7 +2107,7 @@ def verify_validation_evidence(policy, plan, request_pin, terminal, invocation):
         binding_pin = descriptor(attempt / "exports/reviewed-preservation-native-binding.json")
         need(report["native_binding"] == binding_pin, "worker original native binding descriptor differs")
         binding = json_object(checked_descriptor(binding_pin))
-        inventory = _reviewed_parent_packet_binding_v1(policy["operation"], binding, durability["files"],
+        inventory = _reviewed_parent_binding_v3(policy, policy["operation"], binding, durability["files"],
             attempt_directory=attempt)
         summary.update(native_binding=binding_pin, packet_inventory=[list(row) for row in inventory],
             durability=descriptor(attempt / "logs/validation-durability.json"),
@@ -3584,8 +3584,42 @@ _REVIEWED_PARENT_ROOT_INITIALIZER_SHA256 = "5083369f823be18cd467346f6f3b955925ec
 _REVIEWED_PARENT_ROOT_INITIALIZER_BYTES = 40208
 
 
+
+def _reviewed_parent_domain_v3(reviewed_version):
+    # Fixed native domains, never request-selected callables or authority flags.
+    need(type(reviewed_version) is int and reviewed_version in (2, 3), "closed reviewed native version required")
+    if reviewed_version == 2:
+        return {"native_version": 2, "policy_schema": "reviewed-preservation-parent/v1",
+            "worker_schema": "reviewed-preservation-native-worker/v1", "binding_schema": "reviewed-preservation-native-binding/v1",
+            "fixture_schema": "reviewed-preservation-fixture-native-inputs/v1", "files": 77, "project": 34, "executed": 33, "compiled": 6,
+            "success_schema": "reviewed-preservation-admitted-parent-success/v1",
+            "success_profile": "original-admitted-parent-exact-reviewed-native-custody/v1"}
+    return {"native_version": 3, "policy_schema": "reviewed-preservation-parent/v3",
+        "worker_schema": "reviewed-preservation-native-worker/v3", "binding_schema": "reviewed-preservation-native-binding/v3",
+        "fixture_schema": "reviewed-preservation-fixture-native-inputs/v3", "files": 83, "project": 36, "executed": 35, "compiled": 8,
+        "success_schema": "reviewed-preservation-admitted-parent-success/v3",
+        "success_profile": "original-admitted-parent-exact-reviewed-native-custody/v3"}
+
+
+def _reviewed_parent_version_v3(policy):
+    need(type(policy) is dict and type(policy.get("schema")) is str
+         and policy["schema"] in ("reviewed-preservation-parent/v1", "reviewed-preservation-parent/v3"),
+         "explicit reviewed parent native domain required")
+    return 2 if policy["schema"] == "reviewed-preservation-parent/v1" else 3
+
+
+def _reviewed_parent_checked_policy_v3(path, expected_policy_sha256, policy):
+    return _checked_reviewed_preservation_parent_policy_core_v3(path, expected_policy_sha256,
+        reviewed_version=_reviewed_parent_version_v3(policy))
+
+
+def _reviewed_parent_binding_v3(policy, operation, binding, durability_files, *, attempt_directory):
+    return _reviewed_parent_packet_binding_core_v3(operation, binding, durability_files,
+        attempt_directory=attempt_directory, reviewed_version=_reviewed_parent_version_v3(policy))
+
+
 def _reviewed_parent_policy(value):
-    return type(value) is dict and value.get("schema") == REVIEWED_PARENT_POLICY_SCHEMA
+    return type(value) is dict and type(value.get("schema")) is str and value["schema"] in ("reviewed-preservation-parent/v1", "reviewed-preservation-parent/v3")
 
 
 def _reviewed_parent_plan_sources(policy, policy_pin):
@@ -3606,12 +3640,13 @@ def _reviewed_parent_plan_sources(policy, policy_pin):
 
 def _reviewed_parent_check_plan_v1(policy, context):
     need(set(context) == {"plan", "request_pin", "invocation", "frozen"}, "closed original parent context required")
+    domain = _reviewed_parent_domain_v3(_reviewed_parent_version_v3(policy))
     plan = context["plan"]; operation = policy["operation"]; invocation = Path(context["invocation"])
     fields = {"schema", "policy", "operation", "native_inputs", "candidate_root", "collection_root", "attempt_directory",
         "source_pins", "original_public_control_pins", "selected_checks", "expected_cases", "required_candidate_bodies",
         "ordinary_scratch_profile", "normal_namespace_profiles", "parent_source_observation_path",
         "parent_nonce_sha256", "parent_identity", "execution_request_path"}
-    need(set(plan) == fields and plan["schema"] == REVIEWED_PARENT_WORKER_SCHEMA
+    need(set(plan) == fields and plan["schema"] == domain["worker_schema"]
          and plan["operation"] == operation and plan["native_inputs"] == operation["native_inputs"]
          and plan["candidate_root"] == plan["collection_root"] == policy["source_root"]
          and plan["attempt_directory"] == str(Path(policy["validation"]["attempt_root"]) / operation["operation_id"])
@@ -3678,15 +3713,16 @@ def _reviewed_parent_native_descriptor(pin):
         os.close(fd)
 
 
-def checked_reviewed_preservation_parent_policy_v1(path, expected_policy_sha256):
+def _checked_reviewed_preservation_parent_policy_core_v3(path, expected_policy_sha256, *, reviewed_version):
     """Closed scientific validation policy; no repair/adoption permission."""
+    domain = _reviewed_parent_domain_v3(reviewed_version)
     need(type(expected_policy_sha256) is str and _SHA.fullmatch(expected_policy_sha256),
          "independent reviewed parent policy SHA256 required")
     raw = ordinary_bytes(Path(path), 4 * 1024**2)
     need(hashlib.sha256(raw).hexdigest() == expected_policy_sha256, "reviewed parent policy differs")
     value = json_object(raw)
     need(set(value) == {"schema", "datasets_root", "source_root", "python", "source_descriptors",
-                        "validation", "operation"} and _reviewed_parent_policy(value),
+                        "validation", "operation"} and value.get("schema") == domain["policy_schema"],
          "closed reviewed parent policy required")
     a, d = Path(value["source_root"]), Path(value["datasets_root"])
     need(a == Path(__file__).resolve().parents[3] and a != d
@@ -3818,7 +3854,7 @@ def checked_reviewed_preservation_parent_policy_v1(path, expected_policy_sha256)
     data = json_object(checked_descriptor(data_pin))
     need(set(data) == {"schema", "fixture_only", "provenance_kind", "preparation", "graph", "admission", "args", "kwargs",
         "expected_preservation_sha256", "expected_graph_sha256", "expected_admission_sha256", "toolchain"}
-        and data["schema"] == "reviewed-preservation-fixture-native-inputs/v1"
+        and data["schema"] == domain["fixture_schema"]
         and data["fixture_only"] is True and data["provenance_kind"] == "fictional_fixture",
         "closed public signed fictional native fixture DATA required")
     need(all(data[name] == op[name] for name in ("expected_preservation_sha256", "expected_graph_sha256",
@@ -3878,6 +3914,12 @@ def checked_reviewed_preservation_parent_policy_v1(path, expected_policy_sha256)
         prefix + ["--fsize=134217728:134217728", "--cpu=60:60", "--", *wanted[2]]]
     need(op["native_argv"] == expected_argv, "exact three bounded original native command limits required")
     return value
+
+def checked_reviewed_preservation_parent_policy_v1(path, expected_policy_sha256):
+    return _checked_reviewed_preservation_parent_policy_core_v3(path, expected_policy_sha256, reviewed_version=2)
+
+def checked_reviewed_preservation_parent_policy_v3(path, expected_policy_sha256):
+    return _checked_reviewed_preservation_parent_policy_core_v3(path, expected_policy_sha256, reviewed_version=3)
 
 
 def _reviewed_parent_proc_stat(pid):
@@ -4001,7 +4043,7 @@ def _reviewed_parent_record_source_fd(custody, manager, held):
 
 def _reviewed_parent_publish_source_observation(custody):
     plan, frozen = custody.context["plan"], custody.context["frozen"]
-    need(plan["schema"] == REVIEWED_PARENT_WORKER_SCHEMA and plan["operation"] == custody.policy["operation"]
+    need(plan["schema"] == _reviewed_parent_domain_v3(_reviewed_parent_version_v3(custody.policy))["worker_schema"] and plan["operation"] == custody.policy["operation"]
          and plan["parent_identity"] == proc_identity(os.getpid())
          and hashlib.sha256(bytes.fromhex(frozen["parent_nonce"])).hexdigest() == plan["parent_nonce_sha256"],
          "original predeclared parent Source operation differs")
@@ -4034,12 +4076,13 @@ def _reviewed_parent_check_worker_delegation(custody, *, require_worker_report=T
          "worker cannot replace original parent Source closure")
 
 
-def _reviewed_parent_packet_binding_v1(operation, binding, durability_files, *, attempt_directory):
+def _reviewed_parent_packet_binding_core_v3(operation, binding, durability_files, *, attempt_directory, reviewed_version):
     """Pure exact inventory join; this alone authenticates no original success."""
+    domain = _reviewed_parent_domain_v3(reviewed_version)
     fields = {"schema", "operation_id", "packet_root", "receipt_sha256", "packet_sha256",
         "preparation_sha256", "graph_sha256", "admission_sha256", "toolchain", "binary_sha256",
         "producer_pins", "execution_projection_sha256", "packet_inventory", "native_argv"}
-    need(type(binding) is dict and set(binding) == fields and binding["schema"] == REVIEWED_PARENT_BINDING_SCHEMA,
+    need(type(binding) is dict and set(binding) == fields and binding["schema"] == domain["binding_schema"],
          "closed original reviewed native packet binding required")
     wanted = {"operation_id": operation["operation_id"], "packet_root": operation["packet_root"],
         "preparation_sha256": operation["expected_preservation_sha256"], "graph_sha256": operation["expected_graph_sha256"],
@@ -4051,7 +4094,7 @@ def _reviewed_parent_packet_binding_v1(operation, binding, durability_files, *, 
     for key in ("receipt_sha256", "packet_sha256", "execution_projection_sha256"):
         need(type(binding[key]) is str and _SHA.fullmatch(binding[key]), "complete original native commitment required")
     rows = binding["packet_inventory"]
-    need(type(rows) is list and len(rows) == 77, "complete original77-file native packet required")
+    need(type(rows) is list and len(rows) == domain["files"], "complete original77-file native packet required" if reviewed_version == 2 else "complete original83-file native packet required")
     names = []
     for row in rows:
         need(type(row) is dict and set(row) == {"path", "bytes", "sha256"}
@@ -4061,10 +4104,10 @@ def _reviewed_parent_packet_binding_v1(operation, binding, durability_files, *, 
     need(names == sorted(set(names)) and sum(row["bytes"] for row in rows) <= 16 * 1024**2,
          "sorted bounded complete original native packet required")
     need(set(name for name in names if "/" not in name) == {"build-receipt.json", "stdout.txt", "stderr.txt", "runner-error.txt"}
-         and sum(name.startswith("project/") for name in names) == 34
-         and sum(name.startswith("executed-inputs/") for name in names) == 33
-         and sum(name.startswith("compiled/") for name in names) == 6,
-         "exact qualified77-file native packet partitions required")
+         and sum(name.startswith("project/") for name in names) == domain["project"]
+         and sum(name.startswith("executed-inputs/") for name in names) == domain["executed"]
+         and sum(name.startswith("compiled/") for name in names) == domain["compiled"],
+         "exact qualified77-file native packet partitions required" if reviewed_version == 2 else "exact qualified83-file native packet partitions required")
     need(digest(rows) == binding["packet_sha256"]
          and next(row["sha256"] for row in rows if row["path"] == "build-receipt.json") == binding["receipt_sha256"],
          "complete original native packet/receipt commitment differs")
@@ -4089,6 +4132,12 @@ def _reviewed_parent_packet_binding_v1(operation, binding, durability_files, *, 
              "original native packet byte/physical durability join differs")
         result.append((prefix + row["path"], row["bytes"], row["sha256"], durable["device"], durable["inode"]))
     return tuple(result)
+
+def _reviewed_parent_packet_binding_v1(operation, binding, durability_files, *, attempt_directory):
+    return _reviewed_parent_packet_binding_core_v3(operation, binding, durability_files, attempt_directory=attempt_directory, reviewed_version=2)
+
+def _reviewed_parent_packet_binding_v3(operation, binding, durability_files, *, attempt_directory):
+    return _reviewed_parent_packet_binding_core_v3(operation, binding, durability_files, attempt_directory=attempt_directory, reviewed_version=3)
 
 
 class VerifiedReviewedPreservationParentSuccess:
@@ -4343,7 +4392,7 @@ def _reviewed_parent_issue(custody, completed, witness):
     custody.clock()
     _reviewed_parent_guard()
     need(type(custody) is _V5ValidationSourceCustody and custody.closed
-         and custody.context["plan"]["schema"] == REVIEWED_PARENT_WORKER_SCHEMA,
+         and custody.context["plan"]["schema"] == _reviewed_parent_domain_v3(_reviewed_parent_version_v3(custody.policy))["worker_schema"],
          "actual original reviewed parent custody required")
     custody.checked_execution(completed, witness)
     parent = witness["parent_source_custody"]
@@ -4357,7 +4406,7 @@ def _reviewed_parent_issue(custody, completed, witness):
     summary = parent["verified_checks"]
     binding = json_object(checked_descriptor(summary["native_binding"]))
     durability = json_object(checked_descriptor(summary["durability"]))
-    inventory = _reviewed_parent_packet_binding_v1(custody.policy["operation"], binding, durability["files"],
+    inventory = _reviewed_parent_binding_v3(custody.policy, custody.policy["operation"], binding, durability["files"],
         attempt_directory=Path(custody.context["plan"]["attempt_directory"]))
     need([list(row) for row in inventory] == summary["packet_inventory"], "original parent inventory changed after Source close")
     custody.clock()
@@ -4405,9 +4454,9 @@ def _parent_native_owner(evidence):
     return native
 
 
-def load_parent_verified_reviewed_preservation_v1(handle, packet_files, preparation, graph, admission, *args,
+def _load_parent_verified_reviewed_preservation_core_v3(handle, packet_files, preparation, graph, admission, *args,
         expected_receipt_sha256, expected_packet_sha256, expected_binary_sha256,
-        expected_preservation_sha256, expected_graph_sha256, expected_admission_sha256, toolchain, **kwargs):
+        expected_preservation_sha256, expected_graph_sha256, expected_admission_sha256, toolchain, reviewed_version, **kwargs):
     """Join original admitted-parent custody to exact bytes and current review.
 
     Runs no compiler, process, release, retry or resource acquisition. Retained
@@ -4416,9 +4465,11 @@ def load_parent_verified_reviewed_preservation_v1(handle, packet_files, preparat
     if (_reviewed_parent_guard is not _REVIEWED_PARENT_GUARD_OBJECT
             or _reviewed_parent_guard.__code__ is not _REVIEWED_PARENT_GUARD_CODE):
         raise ValueError("reviewed parent callable bindings changed: guard")
+    domain = _reviewed_parent_domain_v3(reviewed_version)
     entry = _reviewed_parent_capability_entry(handle)
     _reviewed_parent_guard()
     evidence = json_object(entry[4]); binding = evidence["binding"]
+    need(binding.get("schema") == domain["binding_schema"], "original parent capability belongs to another reviewed native domain")
     supplied = {"receipt_sha256": expected_receipt_sha256, "packet_sha256": expected_packet_sha256,
         "preparation_sha256": expected_preservation_sha256, "graph_sha256": expected_graph_sha256,
         "admission_sha256": expected_admission_sha256, "toolchain": toolchain,
@@ -4429,7 +4480,7 @@ def load_parent_verified_reviewed_preservation_v1(handle, packet_files, preparat
     contents, inventory = native._reviewed_retained_packet(packet_files)
     need(inventory == binding["packet_inventory"]
          and hashlib.sha256(native._wire(inventory, native.MAX_RECORD_BYTES)).hexdigest() == expected_packet_sha256,
-         "exact original parent77-file packet required")
+         "exact original parent77-file packet required" if reviewed_version == 2 else "exact original parent83-file packet required")
     original = native._live_original_inputs(preparation, graph, admission, args, kwargs)
 
     def fence():
@@ -4447,7 +4498,7 @@ def load_parent_verified_reviewed_preservation_v1(handle, packet_files, preparat
             observed = descriptor(artifact); info = artifact.lstat()
             need((observed["bytes"], observed["sha256"], info.st_dev, info.st_ino) == (size, sha, device, inode),
                  "original parent durable native artifact changed")
-    replay = native.load_reviewed_norm_preservation_native_v2(packet_files, preparation, graph, admission, *args,
+    replay = (native.load_reviewed_norm_preservation_native_v2 if reviewed_version == 2 else native.load_reviewed_norm_preservation_native_v3)(packet_files, preparation, graph, admission, *args,
         expected_receipt_sha256=expected_receipt_sha256, expected_packet_sha256=expected_packet_sha256,
         expected_binary_sha256=expected_binary_sha256, expected_preservation_sha256=expected_preservation_sha256,
         expected_graph_sha256=expected_graph_sha256, expected_admission_sha256=expected_admission_sha256,
@@ -4456,7 +4507,7 @@ def load_parent_verified_reviewed_preservation_v1(handle, packet_files, preparat
     receipt = native._parse(contents["build-receipt.json"], native.MAX_RECEIPT_BYTES)
     need(native._sha(native._wire(receipt["reviewed_execution_evidence"], native.MAX_RECEIPT_BYTES))
          == binding["execution_projection_sha256"], "original parent execution projection differs")
-    checked = native.validate_reviewed_norm_preservation_native_v2(preparation, graph, admission, *args,
+    checked = (native.validate_reviewed_norm_preservation_native_v2 if reviewed_version == 2 else native.validate_reviewed_norm_preservation_native_v3)(preparation, graph, admission, *args,
         expected_preservation_sha256=expected_preservation_sha256, expected_graph_sha256=expected_graph_sha256,
         expected_admission_sha256=expected_admission_sha256, toolchain=toolchain, **kwargs)
     fence()
@@ -4466,8 +4517,8 @@ def load_parent_verified_reviewed_preservation_v1(handle, packet_files, preparat
     fence()
     result = native._owners()[1].contracts.seal_record({**{key: value for key, value in replay.items()
         if key not in {"schema", "profile", "record_cid", "cid_scope", "missing_prerequisites"}},
-        "schema": "reviewed-preservation-admitted-parent-success/v1",
-        "profile": "original-admitted-parent-exact-reviewed-native-custody/v1",
+        "schema": domain["success_schema"],
+        "profile": domain["success_profile"],
         "original_success_authenticated": True, "native_execution_authenticated": True,
         "original_admitted_parent_custody_authenticated": True, "native_execution_performed": False,
         "olean_kernel_rechecked": False, "release_ready": False, "Lean_admitted": False,
@@ -4481,8 +4532,26 @@ def load_parent_verified_reviewed_preservation_v1(handle, packet_files, preparat
     fence()
     return result
 
+def load_parent_verified_reviewed_preservation_v1(handle, packet_files, preparation, graph, admission, *args,
+        expected_receipt_sha256, expected_packet_sha256, expected_binary_sha256,
+        expected_preservation_sha256, expected_graph_sha256, expected_admission_sha256, toolchain, **kwargs):
+    return _load_parent_verified_reviewed_preservation_core_v3(handle, packet_files, preparation, graph, admission, *args,
+        expected_receipt_sha256=expected_receipt_sha256, expected_packet_sha256=expected_packet_sha256,
+        expected_binary_sha256=expected_binary_sha256, expected_preservation_sha256=expected_preservation_sha256,
+        expected_graph_sha256=expected_graph_sha256, expected_admission_sha256=expected_admission_sha256,
+        toolchain=toolchain, reviewed_version=2, **kwargs)
 
-def run_reviewed_preservation_parent_v1(policy_path, expected_policy_sha256, *, invocation_directory):
+def load_parent_verified_reviewed_preservation_v3(handle, packet_files, preparation, graph, admission, *args,
+        expected_receipt_sha256, expected_packet_sha256, expected_binary_sha256,
+        expected_preservation_sha256, expected_graph_sha256, expected_admission_sha256, toolchain, **kwargs):
+    return _load_parent_verified_reviewed_preservation_core_v3(handle, packet_files, preparation, graph, admission, *args,
+        expected_receipt_sha256=expected_receipt_sha256, expected_packet_sha256=expected_packet_sha256,
+        expected_binary_sha256=expected_binary_sha256, expected_preservation_sha256=expected_preservation_sha256,
+        expected_graph_sha256=expected_graph_sha256, expected_admission_sha256=expected_admission_sha256,
+        toolchain=toolchain, reviewed_version=3, **kwargs)
+
+
+def _run_reviewed_preservation_parent_core_v3(policy_path, expected_policy_sha256, *, invocation_directory, reviewed_version):
     """Run the fixed scientific worker with existing original V5 resource owners.
 
     No changed repair candidate, adoption, task permission or new runner is
@@ -4492,7 +4561,8 @@ def run_reviewed_preservation_parent_v1(policy_path, expected_policy_sha256, *, 
             or _reviewed_parent_guard.__code__ is not _REVIEWED_PARENT_GUARD_CODE):
         raise ValueError("reviewed parent callable bindings changed: guard")
     _reviewed_parent_guard()
-    policy = checked_reviewed_preservation_parent_policy_v1(policy_path, expected_policy_sha256)
+    domain = _reviewed_parent_domain_v3(reviewed_version)
+    policy = _checked_reviewed_preservation_parent_policy_core_v3(policy_path, expected_policy_sha256, reviewed_version=reviewed_version)
     v, operation = policy["validation"], policy["operation"]
     invocation = Path(invocation_directory)
     need(invocation.is_absolute() and ".." not in invocation.parts
@@ -4506,7 +4576,7 @@ def run_reviewed_preservation_parent_v1(policy_path, expected_policy_sha256, *, 
     policy_pin = descriptor(Path(policy_path))
     d, a = Path(policy["datasets_root"]), Path(policy["source_root"])
     source_pins, controls = _reviewed_parent_plan_sources(policy, policy_pin)
-    plan = {"schema": REVIEWED_PARENT_WORKER_SCHEMA, "policy": policy_pin, "operation": operation,
+    plan = {"schema": domain["worker_schema"], "policy": policy_pin, "operation": operation,
         "native_inputs": operation["native_inputs"],
         "candidate_root": str(a), "collection_root": str(a), "attempt_directory": str(attempt),
         "source_pins": source_pins, "original_public_control_pins": controls,
@@ -4540,6 +4610,12 @@ def run_reviewed_preservation_parent_v1(policy_path, expected_policy_sha256, *, 
         capture_parent_success=True)
     need(completed.returncode == 0, "original reviewed validation did not succeed")
     return handle
+
+def run_reviewed_preservation_parent_v1(policy_path, expected_policy_sha256, *, invocation_directory):
+    return _run_reviewed_preservation_parent_core_v3(policy_path, expected_policy_sha256, invocation_directory=invocation_directory, reviewed_version=2)
+
+def run_reviewed_preservation_parent_v3(policy_path, expected_policy_sha256, *, invocation_directory):
+    return _run_reviewed_preservation_parent_core_v3(policy_path, expected_policy_sha256, invocation_directory=invocation_directory, reviewed_version=3)
 
 
 SOURCE_QUALIFICATION_SCHEMA = "agent-supervisor/immutable-source-qualification-receipt@1"

@@ -1,29 +1,21 @@
 # LegalIR parallel supervisor operations
 
-The 2026-11-14 liveness follow-up separates dependency rechecks from repair
-deduplication. An unchanged blocked-task signature is cached for 120 monotonic
-seconds; expiry rechecks current dependency evidence through the existing
-repository operation without starting another repair for the same stall.
-Actual dependency progress clears the cache. Both direct ticks and the
-read-only observation loop retain the operator hold.
+The watchdog now rechecks an unchanged dependency stall after 120 monotonic
+seconds while retaining repair deduplication and the operator hold. The
+ledger-busy validation route retains its original process wait on successful
+and failed terminals, including later verifier refusal. Unknown original
+exits produce no terminal success and do not replay the operation.
 
-The explicit ledger-busy validation route now waits on its original process
-and preserves that wait record on both failed and successful terminals,
-including later verifier refusal. An unknown original exit produces no
-terminal success and does not replay the operation. Default and adoption
-runner behavior is preserved.
+Fresh qualification on 2026-11-15 passed all 34 selected cases against the
+current 122-source dependency closure: 14 watchdog cases and 20 retained
+runtime/source-wait controls. Original Source, Native resource, process and
+storage custody closed; the original owner released this run's own 64 MiB
+promise. Earlier failures and the separate 2026-11-14 qualification remain
+historical evidence. See the [exact source and test record](evidence/legal-ir-stall-recheck-outer-wait-20261115.json).
 
-Fresh qualification passed all 34 selected cases: the 14-case watchdog
-owning module and 20 retained runtime/source-wait controls. Source, native
-resource, process and storage custody closed; only this successful run
-released its 64 MiB promise. The original four liveness failures and the
-first combined run (33 passes, one inconsistent hold fixture) remain
-recorded. The fixture now supplies a real unchanged hold file. Evidence: [`Root-current-cache34-qualified-and-closed-v01.json`](/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs/federal-corpus-audits/owned-daemon-resource-control/retained-capacity-watchdog-v01/census-lock-followthrough-v01/completed-body-finalization-recovery-v01/canonical-cwd-completed-ledger-finalization-private-v01/automatic-completed-ledger-route-private-v01/private-snapshot-completed-ledger-watcher-private-v01/closed-original-candidate-preparation-private-v01/A-ledger-busy-original-outer-wait-private-v01/final-source-cache-green-original64MiB-v02/Root-current-cache34-qualified-and-closed-v01.json) (SHA256 `7c401ddd4e071747d6b72195a2aba8da19c8ec4880c69e58f33bf3188323cc84`).
-
-These source changes are in the current integration worktree. This
-qualification does not activate an immutable service release, renew a
-repair authorization, reset an attempt budget, supply statutory review,
-or qualify the complete failed-parent recovery/enrollment path.
+These changes grant no service activation, completion or adoption authority,
+new repair authorization, renewed attempt budget, legal review, model quality
+or native proof qualification.
 
 The `legal-ir-autoencoder-v1-workers.target` user target owns four independent
 implementation supervisor services. Lane 0 uses `legal-ir-autoencoder-v1.service`;
@@ -428,29 +420,29 @@ acceptance remain unresolved. This documentation recovery grants no current
 permission, resource capacity, source adoption, or operational qualification;
 current supervisor/runtime/resource owners retain authority.
 
+
 ## SAWM source availability before unit binding — 2026-11-15
 
-The existing runtime-assets preflight accepts an optional source_root; the
-existing schema binding owner supplies the configured working directory. For
-SAWM it checks the selected operator, scheduler configuration, direct package
-initializers and two native observation entrypoints before creating a drop-in
-or calling daemon reload. A residual data-only directory now returns
-supervisor_source_assets_unavailable with missing_source_assets; an overlay or
-nested checkout cannot replace the selected direct entrypoints. Legacy
-omitted-source and other-board preflight behavior remains compatible.
+The existing runtime-assets preflight and schema binding owner now check
+the selected SAWM source before writing a unit drop-in or reloading. The
+operator, scheduler configuration, direct package initializers and both
+native observation entrypoints must be present in the configured checkout;
+a residual data-only directory, overlay or nested checkout cannot supply
+the missing direct entrypoints. Missing source reports
+`supervisor_source_assets_unavailable` with `missing_source_assets`.
 
-Fresh source-bound qualification passed26owning checks:22new and4retained,
-including complete-source publication into TEST-owned units, no-write refusal,
-missing/unusable native files, nested-only package and source disappearance.
-Reload and metadata mirror callbacks were explicitly in memory. One unchanged
-legacy symlink test was not selected. The old binder actually published the
-TEST binding for a data-only tree and failed its refusal assertion; that failed
-original remains preserved. Source, Native, process and genuine-wait custody
-closed; the successful request durably released only its own32MiB.
+Fresh qualification on 2026-11-15 passed all 26 selected software cases
+against the current 177-source closure under the unchanged 120-second
+productive budget. Original Source, Native validation-resource, process
+and storage custody closed; only this successful run released its own
+32 MiB promise. The whole owning module and the unchanged legacy symlink
+case were not run. Reload and metadata-mirror callbacks were in memory;
+these fixtures do not establish a live daemon reload. Earlier failures
+and qualifications retain their original source epochs and evidence.
+See the [exact source and test record](evidence/legal-ir-sawm-source-availability-20261115.json).
 
-This is availability checking in the integration source. It neither restores
-the currently missing SAWM checkout/generation48 state nor rolls out a sealed
-live release. The existing four LegalIR lanes and watchdog/repair services
-remain separate; no current policy epoch, retry flag, hold or budget changed.
-Exact evidence is recorded in the datasets work catalog as
-supervisor-sawm-source-preflight26-closed-20261115.
+This source availability check does not restore missing SAWM generation
+state, deploy or activate a service, authorize adoption/completion, renew
+a retry or repair budget, or establish model quality, statutory review or
+native Lean proof. The four LegalIR lanes, existing operator holds and
+resource limits remain unchanged.

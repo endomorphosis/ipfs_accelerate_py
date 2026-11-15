@@ -4215,3 +4215,209 @@ def test_source_qualification_validate_persists_failed_cleanup_without_report_ac
     assert saved['parent_source_custody'] == result_custody and saved['passed'] is False
     assert saved['storage_closed'] is saved['semantic_negative'] is saved['retry_authorized'] is False
     assert calls == ['original_runner_DATA'] and not args.receipt_path.exists()
+
+
+# Explicit mixed-V3 original-parent controls. Local byte rows below are modeled
+# inventory, never a compiler result, issued handle, Source proof or Native grant.
+@pytest.fixture
+def reviewed_parent_packet_join_scope_v3(reviewed_parent_packet_join_scope):
+    old = reviewed_parent_packet_join_scope
+    binding, durable = copy.deepcopy(old.binding), copy.deepcopy(old.durable)
+    packet = list(old.packet)
+    # Extend the existing owned fixture by exactly the six mixed-sort files.
+    for folder, suffix in (("project", "lean"), ("executed-inputs", "lean"), ("compiled", "olean")):
+        for index in (33, 34) if folder != "compiled" else (6, 7):
+            relative = folder + "/Mixed%02d." % index + suffix
+            raw = owners.canonical({"fixture_only": True, "mixed_v3": relative}) + b"\n"
+            reference = put(old.attempt / old.operation["packet_root"] / relative, raw)
+            info = Path(reference["path"]).stat()
+            packet.append((relative, raw))
+            binding["packet_inventory"].append({"path": relative, "bytes": len(raw), "sha256": reference["sha256"]})
+            durable.append({"path": old.operation["packet_root"] + "/" + relative, "bytes": len(raw),
+                "sha256": reference["sha256"], "device": info.st_dev, "inode": info.st_ino})
+    binding["schema"] = "reviewed-preservation-native-binding/v3"
+    binding["packet_inventory"].sort(key=lambda row: row["path"])
+    binding["packet_sha256"] = owners.digest(binding["packet_inventory"])
+    assert len(packet) == len(durable) == len(binding["packet_inventory"]) == 83
+    return SimpleNamespace(attempt=old.attempt, operation=copy.deepcopy(old.operation), binding=binding,
+        durable=durable, packet=tuple(sorted(packet)), source=old.source)
+
+
+def test_reviewed_parent_v3_joins_all83_modeled_rows_without_issuing_a_handle(reviewed_parent_packet_join_scope_v3):
+    s = reviewed_parent_packet_join_scope_v3
+    result = owners._reviewed_parent_packet_binding_v3(s.operation, s.binding, s.durable, attempt_directory=s.attempt)
+    expected = tuple((row["path"], row["bytes"], row["sha256"], row["device"], row["inode"])
+                     for row in sorted(s.durable, key=lambda row: row["path"]))
+    assert result == expected and len(result) == 83
+    assert all(type(row) is tuple and len(row) == 5 for row in result)
+
+
+@pytest.mark.parametrize("fault", ["missing", "extra", "reorder", "duplicate", "partition", "receipt",
+    "packet", "graph", "admission", "preparation", "durability", "inode_bool", "device_bool", "domain"])
+def test_reviewed_parent_v3_refuses_incomplete_or_crossed83_metadata(reviewed_parent_packet_join_scope_v3, fault):
+    s = reviewed_parent_packet_join_scope_v3
+    binding, durable = copy.deepcopy(s.binding), copy.deepcopy(s.durable)
+    if fault == "missing": binding["packet_inventory"].pop()
+    elif fault == "extra": binding["packet_inventory"].append(dict(binding["packet_inventory"][-1], path="unexpected.bin"))
+    elif fault == "reorder": binding["packet_inventory"].reverse()
+    elif fault == "duplicate": binding["packet_inventory"][-1] = dict(binding["packet_inventory"][0])
+    elif fault == "partition": binding["packet_inventory"][-1]["path"] = "wrong/Last.lean"
+    elif fault == "receipt": binding["receipt_sha256"] = "f" * 64
+    elif fault == "packet": binding["packet_sha256"] = "f" * 64
+    elif fault in ("graph", "admission", "preparation"): binding[fault + "_sha256"] = "f" * 64
+    elif fault == "durability": durable.pop()
+    elif fault == "inode_bool": durable[0]["inode"] = True
+    elif fault == "device_bool": durable[0]["device"] = True
+    else: binding["schema"] = "reviewed-preservation-native-binding/v1"
+    with pytest.raises(ValueError):
+        owners._reviewed_parent_packet_binding_v3(s.operation, binding, durable, attempt_directory=s.attempt)
+
+
+@pytest.mark.parametrize("direction", ["old_reader_new_packet", "new_reader_old_packet"])
+def test_reviewed_parent_v3_and_v2_inventory_domains_cannot_be_retagged(
+        reviewed_parent_packet_join_scope, reviewed_parent_packet_join_scope_v3, direction):
+    # The old-owner RED for 83 files is meaningful even after falsely retagging
+    # its schema: the old exact77 predicate cannot consume this complete83 set.
+    if direction == "old_reader_new_packet":
+        s = reviewed_parent_packet_join_scope_v3
+        binding = copy.deepcopy(s.binding); binding["schema"] = "reviewed-preservation-native-binding/v1"
+        function = owners._reviewed_parent_packet_binding_v1
+    else:
+        s = reviewed_parent_packet_join_scope
+        binding = copy.deepcopy(s.binding); binding["schema"] = "reviewed-preservation-native-binding/v3"
+        function = owners._reviewed_parent_packet_binding_v3
+    with pytest.raises(ValueError, match=("complete original77-file native packet" if direction == "old_reader_new_packet" else "complete original83-file native packet")):
+        function(s.operation, binding, s.durable, attempt_directory=s.attempt)
+
+
+def test_reviewed_parent_v3_worker_walks_the_same83_owned_files(reviewed_parent_packet_join_scope_v3):
+    from ipfs_accelerate_py.agent_supervisor.rescue import repair_validation_worker as worker
+    s = reviewed_parent_packet_join_scope_v3
+    collector = object.__new__(worker.ReviewedPreservationNativeCollectorV3)
+    collector.packet_root = s.attempt / s.operation["packet_root"]
+    assert collector._packet() == s.packet
+    # These objects exercise only ordinary inventory; no fake valid capability.
+    old = object.__new__(worker.ReviewedPreservationNativeCollectorV1)
+    old.packet_root = collector.packet_root
+    with pytest.raises(ValueError, match="fixed profile"):
+        old._packet()
+
+
+@pytest.mark.parametrize("offered", ["none", "object", "dict", "json", "unissued"])
+def test_reviewed_parent_v3_refuses_unissued_capabilities_before_native_resolution(monkeypatch, offered):
+    value = {"none": None, "object": object(), "dict": {"original_success_authenticated": True},
+        "json": json.loads('{"schema":"reviewed-preservation-admitted-parent-success/v3"}'),
+        "unissued": object.__new__(owners.VerifiedReviewedPreservationParentSuccess)}[offered]
+    def forbidden(*args, **kwargs):
+        pytest.fail("unissued V3 parent handle reached native owner")
+    monkeypatch.setattr(owners, "_parent_native_owner", forbidden)
+    with pytest.raises(ValueError, match="(?i)(issued|handle)"):
+        owners.load_parent_verified_reviewed_preservation_v3(value, (), None, {}, {},
+            expected_receipt_sha256="a" * 64, expected_packet_sha256="b" * 64,
+            expected_binary_sha256={}, expected_preservation_sha256="c" * 64,
+            expected_graph_sha256="d" * 64, expected_admission_sha256="e" * 64,
+            toolchain="leanprover/lean4:v4.34.1")
+
+
+@pytest.mark.parametrize("version", ["legacy", "mixed"])
+def test_reviewed_parent_public_policy_versions_refuse_each_others_schema_before_root_io(tmp_path, version):
+    schema = "reviewed-preservation-parent/v3" if version == "legacy" else "reviewed-preservation-parent/v1"
+    value = dict(schema=schema, datasets_root=None, source_root=None, python=None,
+        source_descriptors=None, validation=None, operation=None)
+    reference = put(tmp_path / "wrong-domain-policy.json", value)
+    function = (owners.checked_reviewed_preservation_parent_policy_v1 if version == "legacy"
+                else owners.checked_reviewed_preservation_parent_policy_v3)
+    with pytest.raises(ValueError, match="closed reviewed parent policy required"):
+        function(Path(reference["path"]), reference["sha256"])
+
+
+@pytest.mark.parametrize("worker_schema,parent_schema", [
+    ("reviewed-preservation-native-worker/v1", "reviewed-preservation-parent/v1"),
+    ("reviewed-preservation-native-worker/v3", "reviewed-preservation-parent/v1"),
+    ("reviewed-preservation-native-worker/v1", "reviewed-preservation-parent/v3"),
+    ("reviewed-preservation-native-worker/v99", "reviewed-preservation-parent/v3"),
+])
+def test_reviewed_parent_v3_worker_rejects_crossed_domains_before_any_operation(worker_schema, parent_schema):
+    from ipfs_accelerate_py.agent_supervisor.rescue import repair_validation_worker as worker
+    with pytest.raises(ValueError, match="explicit reviewed native worker profile required"):
+        worker.reviewed_preservation_native_operation_v3({"schema": worker_schema}, {"schema": parent_schema})
+
+
+def prepare_reviewed_parent_native_fixture_inputs_v3(path, control, *, datasets_root):
+    """Encode the SAME release component, never independently regenerate it.
+
+    The caller's existing admitted fictional fixture owns all signing. This
+    function copies only public raw inputs and never runs a tool or issues a
+    Native/parent capability. The original preparation/graph/admission pins
+    must also appear in the exact D closure request selected by Root.
+    """
+    helper = reviewed_parent_original_R_fixture_module_v1(Path(datasets_root))
+    assert control["admission"]["fixture_only"] is True
+    assert control["admission"]["provenance_kind"] == "fictional_fixture"
+    arguments = helper.reviewed_native_arguments_v3(control)
+    prepared = control["preparation"]
+    value = {"schema": "reviewed-preservation-fixture-native-inputs/v3", "fixture_only": True,
+        "provenance_kind": "fictional_fixture", "preparation": {"manifest_json": prepared.manifest_json,
+            "files": [[name, body] for name, body in prepared.files]},
+        **{name: reviewed_parent_fixture_tree_encode_v1(control[name]) for name in ("graph", "admission", "args", "kwargs")},
+        **{name: arguments[name] for name in ("expected_preservation_sha256", "expected_graph_sha256",
+                                            "expected_admission_sha256", "toolchain")}}
+    raw = owners.canonical(value) + b"\n"
+    assert len(raw) <= 4 * 1024**2
+    reference = put(Path(path), raw)
+    return {"native_inputs": reference, **{name: value[name] for name in
+        ("expected_preservation_sha256", "expected_graph_sha256", "expected_admission_sha256", "toolchain")}}
+
+
+def test_reviewed_preservation_parent_actual_native_child_v3():
+    """One future original-parent child body, separately gated from UNIT cases."""
+    import os
+    import importlib
+    names = ("IPFS_REVIEWED_PRESERVATION_PLAN", "IPFS_REVIEWED_PRESERVATION_ATTEMPT", "IPFS_REVIEWED_PRESERVATION_PACKET_ROOT")
+    if os.environ.get("IPFS_DATASETS_RUN_NATIVE_LEAN") != "1" or not all(os.environ.get(name) for name in names):
+        pytest.skip("explicit original-parent reviewed native child enrollment required")
+    plan_path, attempt, packet_root = (Path(os.environ[name]) for name in names)
+    plan = owners.json_object(owners.ordinary_bytes(plan_path, 4 * 1024**2))
+    assert plan["schema"] == "reviewed-preservation-native-worker/v3"
+    policy = owners.json_object(owners.checked_descriptor(plan["policy"]))
+    operation = plan["operation"]
+    assert operation == policy["operation"] and plan["native_inputs"] == operation["native_inputs"]
+    assert operation["nodeid"] == str(Path(__file__).absolute()) + "::test_reviewed_preservation_parent_actual_native_child_v3"
+    assert attempt == Path(plan["attempt_directory"]) and packet_root == attempt / operation["packet_root"]
+    assert not packet_root.exists()
+    helper = reviewed_parent_original_R_fixture_module_v1(Path(policy["datasets_root"]))
+    reference = operation["native_inputs"]
+    raw = owners.ordinary_bytes(Path(reference["path"]), 4 * 1024**2)
+    assert pin(Path(reference["path"])) == reference
+    value = owners.json_object(raw)
+    assert set(value) == {"schema", "fixture_only", "provenance_kind", "preparation", "graph", "admission", "args", "kwargs",
+                          "expected_preservation_sha256", "expected_graph_sha256", "expected_admission_sha256", "toolchain"}
+    assert value["schema"] == "reviewed-preservation-fixture-native-inputs/v3" and value["fixture_only"] is True
+    assert value["provenance_kind"] == "fictional_fixture" and set(value["preparation"]) == {"manifest_json", "files"}
+    shared = importlib.import_module("ipfs_datasets_py.logic.autoformal.legal_corpus_shared_lake")
+    prepared = shared.ReviewedPreservationCorpusPreparation(value["preparation"]["manifest_json"],
+        tuple((name, body) for name, body in value["preparation"]["files"]))
+    control = {"shared": shared, "preparation": prepared,
+        "graph": reviewed_parent_fixture_tree_decode_v1(value["graph"]),
+        "admission": reviewed_parent_fixture_tree_decode_v1(value["admission"]),
+        "args": reviewed_parent_fixture_tree_decode_v1(value["args"]),
+        "kwargs": reviewed_parent_fixture_tree_decode_v1(value["kwargs"]),
+        "graph_sha": value["expected_graph_sha256"], "admission_sha": value["expected_admission_sha256"]}
+    assert control["admission"]["fixture_only"] is True and control["admission"]["provenance_kind"] == "fictional_fixture"
+    arguments = helper.reviewed_native_arguments_v3(control)
+    for name in ("expected_preservation_sha256", "expected_graph_sha256", "expected_admission_sha256", "toolchain"):
+        assert arguments[name] == value[name] == operation[name]
+    binaries = operation["expected_binary_sha256"]
+    executable = next(path for path in binaries if Path(path).name == "lake")
+    # Existing original R functions own every validation, compiler and reader.
+    handle = helper.reviewed_live_build_v3_fixture(control, executable, packet_root)
+    packet = helper.reviewed_live_success_packet_v2(packet_root)
+    assert len(packet) == 83
+    result = helper.reviewed_live_load_v3_fixture(control, handle, packet)
+    assert result["native_execution_authenticated"] is result["live_native_success_authenticated"] is True
+    assert result["original_success_authenticated"] is result["original_admitted_parent_custody_authenticated"] is False
+    assert result["retained_packet_sha256"] == helper.native.reviewed_norm_preservation_packet_sha256_v3(packet)
+    assert result["training_mask"] == result["evaluation_gold_mask"] == 0
+    assert all(flag is False for flag in result["authority"].values())
+    assert result["release_ready"] is result["Lean_admitted"] is False
+    assert json.loads(dict(packet)["build-receipt.json"])["binary_sha256"] == binaries

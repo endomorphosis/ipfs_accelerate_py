@@ -61,6 +61,8 @@ ACTOR_PATH = Path(__file__).absolute().with_name('native_embedded_observation_dr
 QUALIFIED_F07_ACTOR = Path('/home/barberb/lift_coding/.worktrees/legal-ir-scientific-capsule-reuse-20261031/ipfs_accelerate_py/agent_supervisor/rescue/native_embedded_observation_driver.py')
 QUALIFIED_F07_ACTOR_SHA = '2e9ba7653bbc0939bb41f1fbbdd14f5f0e9a51fd78577dbbb5aa044fc14e3ea6'
 SCHEMA = 'legal-ir-original-native-control-request/v1'
+ARCHIVED_IMPORT_SCOPE = 'immutable HEAD bytes archived/hashed by original import capsule; no import or execution of omitted live source bodies'
+READ_ONLY_IMPORT_SCOPE = 'read-only normal import checks clean HEAD/tree without archiving a control-plane capsule; implementation is forbidden'
 FIELDS = {'schema','purpose','request_id','argv','cwd','attempt_directory','source_sha256',
           'cpu_slots','memory_mb','child_process_slots','storage_bytes','timeout_seconds',
           'scheduler_state_path','expected_scheduler_policy_sha256','resource_ledger',
@@ -163,6 +165,9 @@ REUSE_ROOTS = ROOTS
 
 def capsule_reuse_binding(c):
     """Authenticate closed read-only cache metadata; canonical SDK validates bytes."""
+    if c.get('schema') == PHYSICAL_CLI_SCHEMA:
+        need('source_capsule_ref' not in c, 'physical observation cannot reuse a capsule')
+        return None
     if c.get('schema') == 'native-embedded-scoped-observation-cli/v2':
         return None
     need(c.get('schema') == 'native-embedded-scoped-observation-cli/v3', 'closed reuse CLI version required')
@@ -244,10 +249,365 @@ def _new_original_parented_reservation(value,constructor,*,attempt,parent_lease,
         timeout_seconds=timeout_seconds,ledger_lock_timeout_seconds=None)
 
 
+PHYSICAL_CLI_SCHEMA = 'native-embedded-scoped-observation-cli/v4'
+PHYSICAL_PROFILE_SCHEMA = 'native-embedded-physical-R-source@1'
+PHYSICAL_NAMESPACE = 'ipfs_datasets_py.logic.backends'
+PHYSICAL_CLI_FIELDS = frozenset({'schema', 'runtime_root', 'cwd', 'attempt_directory',
+    'temporary_directory', 'project_import_plan', 'pre_body_guard', 'result_path',
+    'source_sha256', 'observation_binding', 'import_head_capsule_Git', 'physical_source_profile'})
+PHYSICAL_RELATIVES = (
+    'ipfs_datasets_py/__init__.py',
+    'ipfs_datasets_py/ipfs_backend_router.py',
+    'ipfs_datasets_py/logic/__init__.py',
+    'ipfs_datasets_py/logic/backends/process.py',
+    'ipfs_datasets_py/optimizers/__init__.py',
+    'ipfs_datasets_py/optimizers/logic_theorem_optimizer/__init__.py',
+    'ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_daemon_resources.py',
+    'ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_resource_recovery.py',
+    'ipfs_datasets_py/optimizers/logic_theorem_optimizer/existing_resource_scheduler.py',
+    'ipfs_datasets_py/optimizers/logic_theorem_optimizer/parented_phase_resources.py',
+    'ipfs_datasets_py/optimizers/logic_theorem_optimizer/proof_resource_safety.py',
+    'ipfs_datasets_py/optimizers/logic_theorem_optimizer/resource_scheduler.py',
+    'ipfs_datasets_py/optimizers/logic_theorem_optimizer/runtime_telemetry.py',
+    'ipfs_datasets_py/router_deps.py',
+    'scripts/ops/legal_ir/run_owned_validation.py',
+)
+
+
+def _physical_source_profile(c, *, canonical_root, request_pins=None):
+    """Closed constructor DATA only; live Source ownership is checked separately."""
+    need(type(c) is dict and set(c) == PHYSICAL_CLI_FIELDS and c.get('schema') == PHYSICAL_CLI_SCHEMA
+         and type(c['runtime_root']) is str and Path(c['runtime_root']).is_absolute()
+         and (request_pins is None or type(request_pins) is dict),
+         'explicit physical observation CLI required')
+    profile = c.get('physical_source_profile')
+    need(type(profile) is dict and set(profile) == {'schema', 'source_root_binding',
+         'source_descriptors', 'normal_namespace_profiles'}
+         and profile['schema'] == PHYSICAL_PROFILE_SCHEMA, 'closed physical source profile required')
+    binding = profile['source_root_binding']
+    need(type(binding) is dict and set(binding) == {'physical_root', 'canonical_root'}
+         and binding['canonical_root'] == str(canonical_root)
+         and type(binding['physical_root']) is str, 'closed original physical/canonical binding required')
+    root = Path(binding['physical_root'])
+    canonical = Path(canonical_root)
+    need(root != canonical and not root.is_relative_to(canonical)
+         and not canonical.is_relative_to(root), 'disjoint physical/canonical source roots required')
+    need(root.is_absolute() and str(root) == binding['physical_root']
+         and root.resolve(strict=True) == root and root.is_dir()
+         and not any(p.is_symlink() for p in (root, *root.parents)),
+         'unaliased physical source root required')
+    refs = profile['source_descriptors']
+    expected = sorted(str(root / relative) for relative in PHYSICAL_RELATIVES)
+    need(type(refs) is list and len(refs) == 15
+         and [row.get('path') if type(row) is dict else None for row in refs] == expected,
+         'exact ordered fifteen physical source descriptors required')
+    source_map = c.get('source_sha256')
+    imports = c.get('project_import_plan')
+    need(type(source_map) is dict and type(imports) is dict
+         and set(imports) == {'accelerate_root', 'datasets_root', 'publication_root', 'source_pins'}
+         and imports['accelerate_root'] == c['runtime_root']
+         and imports['datasets_root'] == imports['publication_root'] == str(root)
+         and type(imports['source_pins']) is list and 0 < len(imports['source_pins']) <= 1024,
+         'exact physical import roots required')
+    for row in refs:
+        need(set(row) == {'path', 'bytes', 'sha256'} and type(row['bytes']) is int
+             and 0 < row['bytes'] <= 4 * 1024**2 and type(row['sha256']) is str
+             and re.fullmatch(r'[0-9a-f]{64}', row['sha256'])
+             and source_map.get(row['path']) == row['sha256']
+             and (request_pins is None or request_pins.get(row['path']) == row['sha256'])
+             and sum(type(item) is dict and item.get('path') == row['path']
+                     for item in imports['source_pins']) == 1
+             and row in imports['source_pins'], 'physical source maps or exact import descriptors differ')
+    for row in imports['source_pins']:
+        need(type(row) is dict and type(row.get('path')) is str, 'closed import descriptor required')
+        path = Path(row['path'])
+        if path.is_relative_to(root):
+            need(row in refs, 'physical project import outside exact fifteen-source profile')
+    namespaces = profile['normal_namespace_profiles']
+    need(type(namespaces) is list and len(namespaces) == 1 and type(namespaces[0]) is dict,
+         'one physical backends namespace required')
+    namespace = namespaces[0]
+    need(set(namespace) == {'fullname', 'path', 'device', 'inode', 'initializer_absent'}
+         and namespace['fullname'] == PHYSICAL_NAMESPACE
+         and namespace['path'] == str(root / 'ipfs_datasets_py/logic/backends')
+         and type(namespace['device']) is int and namespace['device'] > 0
+         and type(namespace['inode']) is int and namespace['inode'] > 0
+         and namespace['initializer_absent'] is True, 'closed physical namespace descriptor required')
+    # Snapshot caller-owned nested mappings; this is not an ownership capability.
+    return json.loads(json.dumps(profile, sort_keys=True, allow_nan=False))
+
+
+def _physical_profile_sha(profile):
+    return hashlib.sha256(json.dumps(profile, sort_keys=True, separators=(',', ':'),
+        ensure_ascii=True, allow_nan=False).encode()).hexdigest()
+
+
+def _physical_cli_from_value(value):
+    """Recognize only a pinned adjacent-actor CLI4; old retained-H paths stay exact."""
+    argv = value.get('argv')
+    if not (type(argv) is list and len(argv) == 7 and argv[2] == str(ACTOR_PATH)
+            and argv[3] == '--plan' and argv[5] == '--plan-sha256'):
+        return None
+    pins = value.get('source_sha256')
+    need(type(pins) is dict and pins.get(argv[4]) == argv[6], 'physical plan commitment required')
+    raw = regular(argv[4])
+    need(hashlib.sha256(raw).hexdigest() == argv[6], 'physical plan bytes changed')
+    plan = decode(raw)
+    c = plan.get('native_metadata_cli') if type(plan) is dict else None
+    if type(c) is not dict or c.get('schema') != PHYSICAL_CLI_SCHEMA:
+        return None
+    need(set(plan) == {'schema', 'operation', 'accelerate_root', 'task_scope', 'native_metadata_cli'}
+         and plan['schema'] == 'native-embedded-scoped-observation-plan/v1'
+         and plan['operation'] == 'native_embedded_scoped_observation_v1'
+         and plan['accelerate_root'] == c['runtime_root'] == str(ACTOR_PATH.parents[3]),
+         'closed physical actor plan required')
+    _physical_source_profile(c, canonical_root=R, request_pins=pins)
+    need(str(Path(__file__).absolute()) in pins
+         and str(Path(__file__).absolute()) in c['source_sha256']
+         and pins.get(str(ACTOR_PATH)) == pin(ACTOR_PATH)['sha256']
+         and c['source_sha256'].get(str(ACTOR_PATH)) == pins[str(ACTOR_PATH)]
+         and c['source_sha256'].get(str(Path(__file__).absolute())) == pins.get(str(Path(__file__).absolute())),
+         'adjacent physical actor/owner source differs')
+    return c
+
+
+def _physical_live_mapping(c, lease, receipts):
+    profile = _physical_source_profile(c, canonical_root=R)
+    need(type(receipts) is list and len(receipts) == 2
+         and [row.get('canonical_root') for row in receipts] == [str(R), str(A)]
+         and all(row.get('mode') == 'read' and row.get('cooperative') is True for row in receipts),
+         'both original Source READ receipts required before physical imports')
+    need(lease.canonical_source_root(profile['source_root_binding']['physical_root']) == R
+         and lease.canonical_source_root(c['runtime_root']) == A,
+         'live original Source physical/canonical mapping differs')
+    return profile
+
+
+def _physical_context(value, args, c, phase):
+    need(phase in ('parent-resource', 'child-observation'), 'closed physical evidence phase required')
+    profile = _physical_source_profile(c, canonical_root=R, request_pins=value['source_sha256'])
+    request_ref = pin(args.request)
+    plan_ref = pin(Path(value['argv'][4]))
+    need(request_ref['sha256'] == args.expected_request_sha256
+         and plan_ref['sha256'] == value['argv'][6], 'physical request/plan bytes changed')
+    return dict(phase=phase, request=request_ref, plan=plan_ref,
+        profile_sha256=_physical_profile_sha(profile), source_root_binding=profile['source_root_binding'],
+        guard=dict(c['pre_body_guard']), identity=_parent_capacity_process_identity(os.getpid()))
+
+
+def _physical_read_source(descriptor):
+    need(type(descriptor) is dict and set(descriptor) == {'path', 'bytes', 'sha256'},
+         'closed direct source descriptor required')
+    path = Path(descriptor['path'])
+    need(path.is_absolute() and path.resolve(strict=True) == path, 'unaliased direct source required')
+    fields = ('st_dev', 'st_ino', 'st_mode', 'st_uid', 'st_gid', 'st_nlink',
+              'st_size', 'st_mtime_ns', 'st_ctime_ns')
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    try:
+        before = os.fstat(fd)
+        need(stat.S_ISREG(before.st_mode) and before.st_uid == os.geteuid() and before.st_nlink == 1
+             and type(descriptor['bytes']) is int and 0 < before.st_size == descriptor['bytes'] <= 4 * 1024**2,
+             'bounded owned direct source required')
+        chunks = []; total = 0
+        while total <= 4 * 1024**2:
+            chunk = os.read(fd, min(65536, 4 * 1024**2 + 1 - total))
+            if not chunk: break
+            chunks.append(chunk); total += len(chunk)
+        after = os.fstat(fd)
+    finally:
+        os.close(fd)
+    raw = b''.join(chunks)
+    stamp = lambda info: {key: getattr(info, key) for key in fields}
+    identity = stamp(before)
+    need(identity == stamp(after) == stamp(path.lstat()) and len(raw) == descriptor['bytes']
+         and hashlib.sha256(raw).hexdigest() == descriptor['sha256'], 'direct source commitment changed')
+    return raw, identity
+
+
+def _physical_direct_record(context, role, descriptor, identity):
+    need(role in ('parent-guard-bootstrap', 'child-guard-bootstrap', 'parent-cleanup', 'child-driver'),
+         'closed physical direct source role required')
+    return dict(schema='native-embedded-physical-R-direct-source@1', **context,
+        role=role, source=dict(descriptor), source_identity=dict(identity),
+        execution_kind='compiled_exact_authenticated_source_bytes_outside_import_guard')
+
+
+def _physical_compile_source(descriptor, name, context, role):
+    raw, identity = _physical_read_source(descriptor)
+    module = types.ModuleType(name)
+    module.__file__ = descriptor['path']
+    sys.modules[name] = module
+    exec(compile(raw, descriptor['path'], 'exec', dont_inherit=True), module.__dict__)
+    need(_physical_read_source(descriptor) == (raw, identity), 'direct source changed during compilation')
+    return module, _physical_direct_record(context, role, descriptor, identity)
+
+
+def _physical_namespace(state, path=None, target=None):
+    from importlib.machinery import NamespaceLoader
+    row = state['profile']['normal_namespace_profiles'][0]
+    directory = Path(row['path'])
+    need(directory.resolve(strict=True) == directory
+         and not any(p.is_symlink() for p in (directory, *directory.parents)),
+         'physical namespace directory became aliased')
+    info = directory.lstat()
+    need(stat.S_ISDIR(info.st_mode) and info.st_uid == os.geteuid()
+         and (info.st_dev, info.st_ino) == (row['device'], row['inode'])
+         and not os.path.lexists(directory / '__init__.py'), 'physical namespace identity/absence differs')
+    search = [str(directory.parent)] if path is None else path
+    spec = state['importer'].path_finder.find_spec(PHYSICAL_NAMESPACE, search, target)
+    need(spec is not None and spec.origin is None and spec.loader is None
+         and list(spec.submodule_search_locations or ()) == [str(directory)],
+         'normal PathFinder physical namespace spec differs')
+    module = sys.modules.get(PHYSICAL_NAMESPACE)
+    if module is not None:
+        need(type(module) is types.ModuleType and getattr(module, '__file__', None) is None
+             and module.__spec__ is not None and module.__spec__.origin is None
+             and type(module.__spec__.loader) is NamespaceLoader
+             and list(module.__path__) == list(module.__spec__.submodule_search_locations) == [str(directory)],
+             'loaded physical namespace module differs')
+    observed = dict(fullname=PHYSICAL_NAMESPACE, path=str(directory), device=info.st_dev, inode=info.st_ino,
+        initializer_absent=True, search_locations=[str(directory)], origin=None,
+        pathfinder_loader_is_none=True, module_loaded=module is not None)
+    return spec, observed
+
+
+def _physical_guard_install(c, context):
+    profile = _physical_source_profile(c, canonical_root=R)
+    need(type(context) is dict and set(context) == {'phase', 'request', 'plan', 'profile_sha256',
+         'source_root_binding', 'guard', 'identity'}
+         and context['phase'] in ('parent-resource', 'child-observation')
+         and context['identity'] == _parent_capacity_process_identity(os.getpid())
+         and context['guard'] == c['pre_body_guard'] and context['profile_sha256'] == _physical_profile_sha(profile)
+         and context['source_root_binding'] == profile['source_root_binding'], 'physical guard context differs')
+    guard_ref = c['pre_body_guard']
+    need(guard_ref['sha256'] == '141b7da6a57bd65d03c673c5e1041d8e26bce0ed7c02803a3d11f829925da95e',
+         'unchanged original import guard required')
+    role = 'parent-guard-bootstrap' if context['phase'] == 'parent-resource' else 'child-guard-bootstrap'
+    module, bootstrap = _physical_compile_source(guard_ref, '_physical_before_body_' + context['phase'].replace('-', '_'), context, role)
+    importer = module.GuardedProjectImports(c['project_import_plan'], Path(c['attempt_directory']) / 'exports')
+    need(type(importer).__name__ == 'GuardedProjectImports', 'same original importer class required')
+    state = dict(profile=profile, context=dict(context), module=module, importer=importer,
+                 bootstrap=bootstrap, bootstrap_ref=None, cli=c, publication_ready=False)
+    original_find = importer.find_spec
+    def find_spec(fullname, path=None, target=None):
+        if fullname == PHYSICAL_NAMESPACE:
+            try:
+                return _physical_namespace(state, path, target)[0]
+            except BaseException:
+                importer._refuse(fullname, profile['normal_namespace_profiles'][0]['path'],
+                                 'physical_namespace_binding_changed')
+        return original_find(fullname, path, target)
+    importer.find_spec = find_spec
+    _physical_namespace(state)
+    importer.install()
+    need(sys.meta_path[0] is importer and type(importer).__name__ == 'GuardedProjectImports',
+         'same original importer instance must remain first')
+    return state
+
+
+def _physical_publish_direct(state, record, basename):
+    need(state.get('publication_ready') is True,
+         'physical evidence publication requires the existing original storage grant')
+    names = {
+        'parent-resource': {'native-physical-R-parent-guard-bootstrap.json',
+            'native-physical-R-parent-direct-cleanup.json', 'native-physical-R-parent-namespace.json'},
+        'child-observation': {'native-physical-R-child-guard-bootstrap.json',
+            'native-physical-R-child-driver-bootstrap.json', 'native-physical-R-child-namespace.json'},
+    }
+    need(basename in names[state['context']['phase']], 'fixed physical phase output required')
+    path = Path(state['cli']['attempt_directory']) / 'exports' / basename
+    write_json(path, record)
+    return pin(path)
+
+
+def _physical_guard_checkpoint(state, label, *, publish=False):
+    importer = state['importer']
+    need(importer.registered and importer in sys.meta_path and not importer.denials
+         and type(importer).__name__ == 'GuardedProjectImports', 'original physical source guard lost')
+    need(PHYSICAL_NAMESPACE not in importer.project_origins,
+         'namespace metadata must not be recorded as compiled Python source')
+    for name, row in importer.project_origins.items():
+        state['module'].read_pin({key: row[key] for key in ('path', 'bytes', 'sha256')})
+        module = sys.modules.get(name)
+        if module is not None:
+            need(row.get('execution_status') != 'resolution_only'
+                 and Path(module.__file__).resolve(strict=True) == Path(row['path']),
+                 'physical compiled project origin differs')
+    _, namespace = _physical_namespace(state)
+    if not publish:
+        return None
+    need(state.get('publication_ready') is True and state['bootstrap_ref'] is not None,
+         'physical bootstrap must be published after original storage grant')
+    origins = importer.checkpoint(label)
+    phase = state['context']['phase']
+    record = dict(schema='native-embedded-physical-R-namespace-checkpoint@1', **state['context'],
+        origins_ref=origins, bootstrap_ref=state['bootstrap_ref'],
+        guard_instance_type='GuardedProjectImports', namespace=namespace)
+    basename = 'native-physical-R-parent-namespace.json' if phase == 'parent-resource' else 'native-physical-R-child-namespace.json'
+    output = _physical_publish_direct(state, record, basename)
+    return origins, output
+
+
+def _physical_terminal_evidence(state, value, args, child, birth):
+    """Join actual phase files while the original disk/native owner is active."""
+    directory = Path(value['attempt_directory']) / 'exports'
+    context = state['context']
+    child_identity = dict(pid=child.pid, birth=birth)
+    need(type(child.pid) is int and child.pid > 0 and type(birth) is str and birth.isdecimal(),
+         'actual physical child identity required')
+    names = dict(parent_resource_origins='project-import-origins-native-physical-R-parent-resource.json',
+        parent_namespace='native-physical-R-parent-namespace.json',
+        child_namespace='native-physical-R-child-namespace.json',
+        parent_bootstrap='native-physical-R-parent-guard-bootstrap.json',
+        child_bootstrap='native-physical-R-child-guard-bootstrap.json',
+        direct_cleanup='native-physical-R-parent-direct-cleanup.json',
+        child_driver='native-physical-R-child-driver-bootstrap.json')
+    refs = {key: pin(directory / name) for key, name in names.items()}
+    need(len({row['path'] for row in refs.values()}) == len(refs), 'distinct physical phase files required')
+    for key in ('parent_namespace', 'child_namespace', 'parent_bootstrap', 'child_bootstrap', 'direct_cleanup', 'child_driver'):
+        doc = decode(regular(refs[key]['path']))
+        parent = key.startswith('parent_') or key == 'direct_cleanup'
+        need(doc['phase'] == ('parent-resource' if parent else 'child-observation')
+             and doc['identity'] == (context['identity'] if parent else child_identity)
+             and all(doc[field] == context[field] for field in
+                     ('request', 'plan', 'profile_sha256', 'source_root_binding', 'guard')),
+             'physical phase/request/profile/identity join differs')
+    parent_ns = decode(regular(refs['parent_namespace']['path']))
+    child_ns = decode(regular(refs['child_namespace']['path']))
+    need(parent_ns['origins_ref'] == refs['parent_resource_origins']
+         and parent_ns['bootstrap_ref'] == refs['parent_bootstrap']
+         and child_ns['bootstrap_ref'] == refs['child_bootstrap']
+         and child_ns['origins_ref'] == pin(directory / 'project-import-origins-closing-native-embedded-observation.json'),
+         'physical namespace exact origins/bootstrap descriptors differ')
+    origins = decode(regular(refs['parent_resource_origins']['path']))
+    rows = {row['module']: row for row in origins['project_imports']}
+    essentials = (
+        'ipfs_datasets_py.optimizers.logic_theorem_optimizer.existing_resource_scheduler',
+        'ipfs_datasets_py.optimizers.logic_theorem_optimizer.resource_scheduler',
+        'ipfs_datasets_py.optimizers.logic_theorem_optimizer.parented_phase_resources',
+        'ipfs_datasets_py.optimizers.logic_theorem_optimizer.autoencoder_daemon_resources',
+        'ipfs_datasets_py.logic.backends.process',
+    )
+    root = Path(context['source_root_binding']['physical_root'])
+    for name in essentials:
+        row = rows.get(name)
+        need(type(row) is dict and row['path'] == str(root / (name.replace('.', '/') + '.py'))
+             and row.get('execution_status') == 'execution_completed'
+             and row.get('execution_profile') == 'compiled_exact_authenticated_source_bytes',
+             'essential parent resource module lacks exact physical compiled provenance')
+    return dict(schema='native-embedded-physical-R-source-evidence@1', request=context['request'],
+        plan=context['plan'], profile_sha256=context['profile_sha256'],
+        source_root_binding=context['source_root_binding'], guard=context['guard'],
+        owner_identity=context['identity'], child_identity=child_identity, **refs)
+
+
 def _observation_actor(value):
     # The f07 request explicitly retains the qualified H backend while its
     # outer owner may move. Original R+A source leases still own that alias.
     if _validated_scheduler_policy(value)==POLICY:
+        return ACTOR_PATH
+    physical = _physical_cli_from_value(value)
+    if physical is not None:
         return ACTOR_PATH
     actor=QUALIFIED_F07_ACTOR
     need(type(value['argv'])is list and len(value['argv'])>=3
@@ -341,7 +701,7 @@ def request(path,digest):
          and re.fullmatch(r'[a-zA-Z0-9][a-zA-Z0-9._:-]{0,255}',x) for x in scope)
          and len(set(scope))==len(scope),'finite unique task CID scope required')
     c=plan['native_metadata_cli']
-    need(type(c) is dict and ((c.get('schema')=='native-embedded-scoped-observation-cli/v2' and set(c)=={'schema','runtime_root','cwd','attempt_directory','temporary_directory','project_import_plan','pre_body_guard','result_path','source_sha256','observation_binding','import_head_capsule_Git'}) or (c.get('schema')=='native-embedded-scoped-observation-cli/v3' and set(c)=={'schema','runtime_root','cwd','attempt_directory','temporary_directory','project_import_plan','pre_body_guard','result_path','source_sha256','observation_binding','import_head_capsule_Git','source_capsule_ref'}))
+    need(type(c) is dict and (((c.get('schema')=='native-embedded-scoped-observation-cli/v2' and set(c)=={'schema','runtime_root','cwd','attempt_directory','temporary_directory','project_import_plan','pre_body_guard','result_path','source_sha256','observation_binding','import_head_capsule_Git'}) or (c.get('schema')=='native-embedded-scoped-observation-cli/v3' and set(c)=={'schema','runtime_root','cwd','attempt_directory','temporary_directory','project_import_plan','pre_body_guard','result_path','source_sha256','observation_binding','import_head_capsule_Git','source_capsule_ref'})) or (type(c) is dict and c.get('schema') == PHYSICAL_CLI_SCHEMA and set(c) == {'schema','runtime_root','cwd','attempt_directory','temporary_directory','project_import_plan','pre_body_guard','result_path','source_sha256','observation_binding','import_head_capsule_Git','physical_source_profile'}))
          and c['runtime_root']==plan['accelerate_root'] and c['cwd']==str(WORKSPACE)
          and c['attempt_directory']==str(attempt) and c['temporary_directory']==str(attempt/'temporary')
          and c['result_path']==str(attempt/'exports/native-cli-driver-result.json'),
@@ -366,10 +726,13 @@ def request(path,digest):
     need(all(type(binding[k]) is str and 0<len(binding[k])<=4096
          for k in ('plan_root_cid','repository_tree_id','source_schema')),'sealed catalogue fields required')
     import_plan=c['project_import_plan']
-    need(type(import_plan) is dict and set(import_plan)=={'accelerate_root','datasets_root','publication_root','source_pins'}
-         and import_plan['accelerate_root']==plan['accelerate_root']
-         and import_plan['datasets_root']==str(R) and import_plan['publication_root']==str(R),
-         'original before-body import source roots differ')
+    if c['schema'] == PHYSICAL_CLI_SCHEMA:
+        _physical_source_profile(c, canonical_root=R, request_pins=pins)
+    else:
+        need(type(import_plan) is dict and set(import_plan)=={'accelerate_root','datasets_root','publication_root','source_pins'}
+             and import_plan['accelerate_root']==plan['accelerate_root']
+             and import_plan['datasets_root']==str(R) and import_plan['publication_root']==str(R),
+             'original before-body import source roots differ')
     need(type(import_plan['source_pins']) is list and 1<=len(import_plan['source_pins'])<=1024
          and all(type(ref) is dict and set(ref)=={'path','bytes','sha256'}
              and type(ref['path']) is str and ref['path'] in c['source_sha256']
@@ -554,9 +917,22 @@ def child_main(args):
     spawn_lock=threading.RLock();pending_spawn={};spawn_index=0
     driver_raw=regular(actor_path)
     need(hashlib.sha256(driver_raw).hexdigest()==value['source_sha256'][str(actor_path)],'guarded driver source changed')
-    driver=types.ModuleType('_exact_native_metadata_execution_driver')
-    driver.__file__=str(actor_path);sys.modules[driver.__name__]=driver
-    exec(compile(driver_raw,str(actor_path),'exec',dont_inherit=True),driver.__dict__)
+    early_plan_raw = regular(value['argv'][4])
+    need(hashlib.sha256(early_plan_raw).hexdigest() == value['argv'][6], 'physical driver plan changed')
+    early_plan = decode(early_plan_raw)
+    physical_driver = early_plan['native_metadata_cli']['schema'] == PHYSICAL_CLI_SCHEMA
+    if physical_driver:
+        driver_context = _physical_context(value, args, early_plan['native_metadata_cli'], 'child-observation')
+        driver_ref = dict(path=str(actor_path), bytes=len(driver_raw), sha256=value['source_sha256'][str(actor_path)])
+        driver, driver_record = _physical_compile_source(driver_ref, '_exact_native_metadata_execution_driver', driver_context, 'child-driver')
+        physical_publication_ready = True  # Original startup barrier and sealed parent FD checked above.
+        driver_publication = dict(cli=early_plan['native_metadata_cli'], context=driver_context,
+                                  publication_ready=physical_publication_ready)
+        _physical_publish_direct(driver_publication, driver_record, 'native-physical-R-child-driver-bootstrap.json')
+    else:
+        driver=types.ModuleType('_exact_native_metadata_execution_driver')
+        driver.__file__=str(actor_path);sys.modules[driver.__name__]=driver
+        exec(compile(driver_raw,str(actor_path),'exec',dont_inherit=True),driver.__dict__)
     authorize=driver.authorize_native_control_popen
     authorize_fd=driver.authorize_native_control_fd_event
     need(authorize.__globals__ is driver.__dict__ and authorize.__code__.co_filename==str(actor_path)
@@ -565,12 +941,20 @@ def child_main(args):
     plan_path=Path(value['argv'][4]);plan=decode(regular(plan_path))
     need(hashlib.sha256(regular(plan_path)).hexdigest()==value['argv'][6],'driver plan changed')
     reuse_mode=plan['native_metadata_cli']['schema']=='native-embedded-scoped-observation-cli/v3'
+    physical_mode = plan['native_metadata_cli']['schema'] == PHYSICAL_CLI_SCHEMA
+    physical_root = Path(_physical_source_profile(plan['native_metadata_cli'], canonical_root=R, request_pins=value['source_sha256'])['source_root_binding']['physical_root']) if physical_mode else R
     created_private_files=set()
-    sys.path[:0]=[str(R),plan['accelerate_root']]
+    if physical_mode:
+        sys.path[:0]=[str(physical_root),plan['accelerate_root']]
+    else:
+        sys.path[:0]=[str(R),plan['accelerate_root']]
     # The source guard inside driver.main refuses ipfs_datasets_py if it is already
     # loaded. Telemetry is only needed when a checked child exists, which is after
     # that guard is installed, so the import stays on the guarded path.
-    process_host_path=R/'ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_daemon_resources.py'
+    if physical_mode:
+        process_host_path=physical_root/'ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_daemon_resources.py'
+    else:
+        process_host_path=R/'ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_daemon_resources.py'
     need(hashlib.sha256(regular(process_host_path)).hexdigest()==value['source_sha256'][str(process_host_path)],
          'original process telemetry source identity differs')
     process_host_cache={}
@@ -757,10 +1141,14 @@ def child_main(args):
             if len(denied)==before:denied.append(event)
             raise
     sys.addaudithook(audit)
-    sys.path[:0]=[str(R),plan['accelerate_root']]
+    if physical_mode:
+        sys.path[:0]=[str(physical_root),plan['accelerate_root']]
+    else:
+        sys.path[:0]=[str(R),plan['accelerate_root']]
     sys.argv=value['argv'][2:]
     try:
-        code=driver.main();need(type(code)is int and code==0,'original guarded native CLI returned nonzero')
+        code = driver.main(physical_owner=sys.modules[__name__]) if physical_mode else driver.main()
+        need(type(code)is int and code==0,'original guarded native CLI returned nonzero')
     finally:
         try:
             source_guard(value,args.request,raw)
@@ -881,7 +1269,10 @@ def main():
         child_main(args);return 0
     value,raw=request(args.request,args.expected_request_sha256)
     actor_path=_observation_actor(value)
-    reuse_mode=decode(regular(value['argv'][4]))['native_metadata_cli']['schema']=='native-embedded-scoped-observation-cli/v3'
+    observation_cli = decode(regular(value['argv'][4]))['native_metadata_cli']
+    physical_mode = observation_cli['schema'] == PHYSICAL_CLI_SCHEMA
+    physical_state = None; physical_receipts = []; physical_cleanup_record = None
+    reuse_mode=observation_cli['schema']=='native-embedded-scoped-observation-cli/v3'
     os.environ.pop(PARENT_CAPACITY_FD_ENV, None)
     source_guard(value,args.request,raw)
     lease_module=load_source_lease()
@@ -905,6 +1296,8 @@ def main():
     def receive(number,_frame):signals.append(number);cancelled.set()
     def guard():
         remaining();source_guard(value,args.request,raw)
+        if physical_mode and physical_state is not None:
+            _physical_guard_checkpoint(physical_state, 'native-physical-R-parent-resource', publish=False)
         if root is not None:need(root.renew() and not root.cancelled,'original root revoked')
         if phase is not None:need(phase.renew() and not phase.cancelled,'original phase revoked')
         if owner_entered:
@@ -913,7 +1306,11 @@ def main():
     try:
         for source_root in value['source_roots']:
             ctx=lease_module.source_lease(source_root,mode='read',timeout_seconds=min(60,remaining()))
-            ctx.__enter__();contexts.append(ctx)
+            if physical_mode:
+                entered = ctx.__enter__(); contexts.append(ctx)
+                physical_receipts.append(entered.to_dict())
+            else:
+                ctx.__enter__();contexts.append(ctx)
         os.environ.update(IPFS_DATASETS_PY_MINIMAL_IMPORTS='1',IPFS_ACCEL_SKIP_CORE='1',
             IPFS_AUTO_INSTALL='false',IPFS_DATASETS_AUTO_INSTALL='0',PYTHONDONTWRITEBYTECODE='1',
             OMP_NUM_THREADS='1',OPENBLAS_NUM_THREADS='1',MKL_NUM_THREADS='1',TRANSFORMERS_OFFLINE='1',
@@ -921,15 +1318,28 @@ def main():
         # Optional mirrors must not write unrelated metadata stores.
         os.environ.pop('IPFS_ACCELERATE_META_INDEX_DUCKDB',None)
         os.environ.pop('IPFS_ACCELERATE_META_INDEX_DUCKLAKE',None)
-        sys.path.insert(0,str(R));sys.dont_write_bytecode=True
+        if physical_mode:
+            physical_profile = _physical_live_mapping(observation_cli, lease_module, physical_receipts)
+            physical_root = Path(physical_profile['source_root_binding']['physical_root'])
+            physical_state = _physical_guard_install(observation_cli, _physical_context(value, args, observation_cli, 'parent-resource'))
+            sys.path.insert(0,str(physical_root));sys.dont_write_bytecode=True
+        else:
+            physical_root = R
+            sys.path.insert(0,str(R));sys.dont_write_bytecode=True
         from ipfs_datasets_py.optimizers.logic_theorem_optimizer.existing_resource_scheduler import open_existing_scheduler
         from ipfs_datasets_py.optimizers.logic_theorem_optimizer.resource_scheduler import ResourceLane, resource_admission_deadline, resource_cleanup_deadline
         from ipfs_datasets_py.optimizers.logic_theorem_optimizer.parented_phase_resources import ParentedPhaseResourceReservation
         from ipfs_datasets_py.optimizers.logic_theorem_optimizer import autoencoder_daemon_resources as host
         from ipfs_datasets_py.logic.backends.process import _LinuxDescendantTracker
-        need(Path(host.__file__).resolve()==R/'ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_daemon_resources.py','original resource module escaped')
-        spec=importlib.util.spec_from_file_location('_original_group_cleanup_control',R/'scripts/ops/legal_ir/run_owned_validation.py')
-        cleanup_module=importlib.util.module_from_spec(spec);spec.loader.exec_module(cleanup_module)
+        if physical_mode:
+            need(Path(host.__file__).resolve()==physical_root/'ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_daemon_resources.py','original resource module escaped')
+            cleanup_ref = next(row for row in physical_profile['source_descriptors'] if row['path'] == str(physical_root / 'scripts/ops/legal_ir/run_owned_validation.py'))
+            cleanup_module, physical_cleanup_record = _physical_compile_source(cleanup_ref, '_original_group_cleanup_control', physical_state['context'], 'parent-cleanup')
+            _physical_guard_checkpoint(physical_state, 'native-physical-R-parent-resource', publish=False)
+        else:
+            need(Path(host.__file__).resolve()==R/'ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_daemon_resources.py','original resource module escaped')
+            spec=importlib.util.spec_from_file_location('_original_group_cleanup_control',R/'scripts/ops/legal_ir/run_owned_validation.py')
+            cleanup_module=importlib.util.module_from_spec(spec);spec.loader.exec_module(cleanup_module)
         result['owner_birth']=host._process(os.getpid())['birth']
         previous={n:signal.signal(n,receive) for n in (signal.SIGINT,signal.SIGTERM,signal.SIGHUP)}
         # Refuse a stale DB before any original native/storage grant; repeat below.
@@ -938,6 +1348,9 @@ def main():
         resource_scope=resource_admission_deadline(work_deadline_monotonic=work_deadline,native_deadline_monotonic=deadline)
         resource_scope.__enter__();resource_scope_entered=True
         result['resource_deadline_profile']=dict(work_seconds=240,stopped_cleanup_reserve_seconds=60,native_lifetime_seconds=300,absolute_clock_shared_by_all_resource_operations=True)
+        if physical_mode:
+            _physical_live_mapping(observation_cli, lease_module, physical_receipts)
+            _physical_guard_checkpoint(physical_state, 'native-physical-R-parent-resource', publish=False)
         scheduler=_open_original_scheduler(value,open_existing_scheduler)
         root=scheduler.acquire(ResourceLane.ORCHESTRATION,cpu_slots=1,memory_mb=1536,child_process_slots=8,
             requires_gpu=False,timeout=remaining(),cancel_event=cancelled,request_id=value['request_id']+':root')
@@ -974,6 +1387,11 @@ def main():
         need(result['database_preimage_observed']==value['database_preimage'],'closed catalog preimage differs')
         (attempt/'exports').mkdir(mode=0o700)
         (attempt/'temporary').mkdir(mode=0o700)
+        if physical_mode:
+            need(owner_entered is True, 'original storage grant must precede physical proof publication')
+            physical_state['publication_ready'] = True
+            physical_state['bootstrap_ref'] = _physical_publish_direct(physical_state, physical_state['bootstrap'], 'native-physical-R-parent-guard-bootstrap.json')
+            _physical_publish_direct(physical_state, physical_cleanup_record, 'native-physical-R-parent-direct-cleanup.json')
         # These exact declared metadata-output/journal parents are established
         # only after original admission and external byte precharge. No source,
         # profile, task input or existing file is created or replaced here.
@@ -1031,6 +1449,10 @@ def main():
              'declared original CLI invocation receipt differs')
         result['allowed_subprocess_events']=pin(event_path)
         result['control_effects']='actor_exit_zero_independent_task_receipt_still_required'
+        if physical_mode:
+            _physical_guard_checkpoint(physical_state, 'native-physical-R-parent-resource', publish=True)
+            result['physical_source_evidence'] = _physical_terminal_evidence(physical_state, value, args, child, birth)
+            need(owner.to_dict()['record']['child'] == result['physical_source_evidence']['child_identity'], 'physical child evidence differs from original reservation')
         write_json(attempt/'control-execution.json',{**result,'completed':True})
         if reuse_mode:reuse_attempt_file_bound(attempt)
         owner.finalize(attempt,artifacts_durable=True);storage_status='released'
@@ -1121,7 +1543,11 @@ def main():
                 if owner is not None and owner.to_dict()['resource_lease'] is not None:
                     ids.add(owner.to_dict()['resource_lease']['lease_id'])
                 if ids:need(not any(x['lease_id'] in ids for x in scheduler.active_leases()),'own native ancestry remains live')
-                source_guard(value,args.request,raw);compute_closed=True
+                source_guard(value,args.request,raw)
+                if physical_mode and physical_state is not None:
+                    _physical_live_mapping(observation_cli, lease_module, physical_receipts)
+                    _physical_guard_checkpoint(physical_state, 'native-physical-R-parent-resource', publish=False)
+                compute_closed=True
             except BaseException as error:cleanup_errors.append(type(error).__name__+': '+str(error))
         result.update(storage_status=storage_status,child_reaped=child_reaped,child_launch_attempted=child_launch_attempted,
             original_native_compute_closed=compute_closed,cleanup_errors=cleanup_errors,
