@@ -476,7 +476,258 @@ def _origins(value, profile, *, historical_source_witness=None):
             _bound_historical_project_source(sources[row['path']], profile, historical_source_witness)
     return rows
 
-def _embedded_idle_result(result, request, plan, origins, profile, native, *, historical_source_witness=None):
+# Opt-in native CLI4 source/namespace evidence remains closed DATA. It grants
+# no executor, Source, Native, storage, task, or provider capability.
+_PHYSICAL_R_CLI = 'native-embedded-scoped-observation-cli/v4'
+_PHYSICAL_R_RELATIVES = (
+    'ipfs_datasets_py/__init__.py', 'ipfs_datasets_py/ipfs_backend_router.py',
+    'ipfs_datasets_py/logic/__init__.py', 'ipfs_datasets_py/logic/backends/process.py',
+    'ipfs_datasets_py/optimizers/__init__.py',
+    'ipfs_datasets_py/optimizers/logic_theorem_optimizer/__init__.py',
+    'ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_daemon_resources.py',
+    'ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_resource_recovery.py',
+    'ipfs_datasets_py/optimizers/logic_theorem_optimizer/existing_resource_scheduler.py',
+    'ipfs_datasets_py/optimizers/logic_theorem_optimizer/parented_phase_resources.py',
+    'ipfs_datasets_py/optimizers/logic_theorem_optimizer/proof_resource_safety.py',
+    'ipfs_datasets_py/optimizers/logic_theorem_optimizer/resource_scheduler.py',
+    'ipfs_datasets_py/optimizers/logic_theorem_optimizer/runtime_telemetry.py',
+    'ipfs_datasets_py/router_deps.py', 'scripts/ops/legal_ir/run_owned_validation.py')
+_PHYSICAL_R_ESSENTIAL = (
+    'ipfs_datasets_py.optimizers.logic_theorem_optimizer.existing_resource_scheduler',
+    'ipfs_datasets_py.optimizers.logic_theorem_optimizer.resource_scheduler',
+    'ipfs_datasets_py.optimizers.logic_theorem_optimizer.parented_phase_resources',
+    'ipfs_datasets_py.optimizers.logic_theorem_optimizer.autoencoder_daemon_resources',
+    'ipfs_datasets_py.logic.backends.process')
+_PHYSICAL_R_PATHS = {
+    'parent_resource_origins': 'project-import-origins-native-physical-R-parent-resource.json',
+    'parent_namespace': 'native-physical-R-parent-namespace.json',
+    'child_namespace': 'native-physical-R-child-namespace.json',
+    'parent_bootstrap': 'native-physical-R-parent-guard-bootstrap.json',
+    'child_bootstrap': 'native-physical-R-child-guard-bootstrap.json',
+    'direct_cleanup': 'native-physical-R-parent-direct-cleanup.json',
+    'child_driver': 'native-physical-R-child-driver-bootstrap.json'}
+_PHYSICAL_R_CONTEXT = frozenset({'phase', 'request', 'plan', 'profile_sha256',
+    'source_root_binding', 'guard', 'identity'})
+_PHYSICAL_R_GUARD_SHA = '141b7da6a57bd65d03c673c5e1041d8e26bce0ed7c02803a3d11f829925da95e'
+
+
+def _physical_same(left, right):
+    # JSON equality preserves scalar types; Python True == 1 must not bind IDs.
+    return _encoded(left) == _encoded(right)
+
+
+def _physical_identity(value):
+    _keys(value, {'pid', 'birth'}, 'physical_identity_shape')
+    _need(_integer(value['pid'], 1) and type(value['birth']) is str
+          and 1 <= len(value['birth']) <= 32 and re.fullmatch('[0-9]+', value['birth']),
+          'physical_identity_values')
+    return value
+
+
+def _physical_profile(command, request, profile, *, historical_source_witness=None):
+    _keys(command, {'schema', 'runtime_root', 'cwd', 'attempt_directory',
+        'temporary_directory', 'project_import_plan', 'pre_body_guard', 'result_path',
+        'source_sha256', 'observation_binding', 'import_head_capsule_Git',
+        'physical_source_profile'}, 'physical_cli_shape')
+    _need(command['schema'] == _PHYSICAL_R_CLI
+          and type(request.get('source_sha256')) is dict
+          and type(command['source_sha256']) is dict, 'physical_cli_schema_or_pins')
+    value = command.get('physical_source_profile')
+    _keys(value, {'schema', 'source_root_binding', 'source_descriptors',
+                  'normal_namespace_profiles'}, 'physical_profile_shape')
+    _need(value['schema'] == 'native-embedded-physical-R-source@1', 'physical_profile_schema')
+    binding = value['source_root_binding']
+    _keys(binding, {'physical_root', 'canonical_root'}, 'physical_root_binding_shape')
+    physical = _path(binding['physical_root']); canonical = _path(binding['canonical_root'])
+    _need(str(physical) == binding['physical_root']
+          and str(canonical) == binding['canonical_root']
+          and physical != canonical and physical not in canonical.parents
+          and canonical not in physical.parents and request.get('cwd') == str(canonical)
+          and command.get('cwd') == str(canonical), 'physical_root_binding_join')
+    roots = request.get('source_roots')
+    _need(type(roots) is list and len(roots) == 2 and roots[0] == str(canonical)
+          and _path(roots[1]) != canonical, 'physical_original_source_roots')
+    import_plan = command.get('project_import_plan')
+    _keys(import_plan, {'accelerate_root', 'datasets_root', 'publication_root', 'source_pins'},
+          'physical_import_plan_shape')
+    _need(import_plan['accelerate_root'] == command['runtime_root']
+          and import_plan['datasets_root'] == import_plan['publication_root'] == str(physical),
+          'physical_import_roots')
+    sources = value['source_descriptors']; declared = import_plan['source_pins']
+    _need(type(sources) is list and len(sources) == len(_PHYSICAL_R_RELATIVES)
+          and type(declared) is list and 1 <= len(declared) <= 1024,
+          'physical_source_population')
+    selected = {pin['path']: pin for pin in profile['source_descriptors']}
+    declared_paths = []
+    for pin in declared:
+        _project_origin_descriptor(pin, 'physical_import_descriptor', maximum=MAX_SOURCE)
+        declared_paths.append(pin['path'])
+        if Path(pin['path']).is_relative_to(physical):
+            _need(pin['path'] in {str(physical / name) for name in _PHYSICAL_R_RELATIVES},
+                  'physical_unlisted_import_body')
+    _need(len(set(declared_paths)) == len(declared_paths), 'physical_duplicate_import_pin')
+    _need(tuple(pin.get('path') for pin in sources if type(pin) is dict) ==
+          tuple(str(physical / name) for name in _PHYSICAL_R_RELATIVES),
+          'physical_exact_source_paths')
+    for pin in sources:
+        _project_origin_descriptor(pin, 'physical_source_descriptor', maximum=MAX_SOURCE)
+        _need(_physical_same(selected.get(pin['path']), pin)
+              and any(_physical_same(pin, row) for row in declared)
+              and request.get('source_sha256', {}).get(pin['path']) == pin['sha256']
+              and command.get('source_sha256', {}).get(pin['path']) == pin['sha256'],
+              'physical_source_pin_join')
+        if historical_source_witness is None:
+            _bound_project_source(pin, profile)
+        else:
+            _bound_historical_project_source(pin, profile, historical_source_witness)
+    namespace = value['normal_namespace_profiles']
+    _need(type(namespace) is list and len(namespace) == 1, 'physical_namespace_population')
+    namespace = namespace[0]
+    _keys(namespace, {'fullname', 'path', 'device', 'inode', 'initializer_absent'},
+          'physical_namespace_profile_shape')
+    _need(namespace['fullname'] == 'ipfs_datasets_py.logic.backends'
+          and namespace['path'] == str(physical / 'ipfs_datasets_py/logic/backends')
+          and _integer(namespace['device'], 1) and _integer(namespace['inode'], 1)
+          and namespace['initializer_absent'] is True, 'physical_namespace_profile_values')
+    # These are captured namespace facts. No live Source/Native/proc/Git query,
+    # directory inode claim, initializer read, or package import is made here.
+    return value
+
+
+def _physical_source_evidence(value, request, plan, profile, *, request_ref,
+        plan_ref, origins_ref, terminal, historical_source_witness=None):
+    _keys(value, {'schema', 'request', 'plan', 'profile_sha256', 'source_root_binding',
+        'guard', 'owner_identity', 'child_identity'} | set(_PHYSICAL_R_PATHS),
+        'physical_evidence_shape')
+    _need(value['schema'] == 'native-embedded-physical-R-source-evidence@1',
+          'physical_evidence_schema')
+    command = plan['native_metadata_cli']
+    physical = _physical_profile(command, request, profile,
+        historical_source_witness=historical_source_witness)
+    digest = hashlib.sha256(_encoded(physical)[:-1]).hexdigest()
+    _need(_physical_same(value['request'], request_ref)
+          and _physical_same(value['plan'], plan_ref)
+          and value['profile_sha256'] == digest
+          and _physical_same(value['source_root_binding'], physical['source_root_binding']),
+          'physical_evidence_request_profile_join')
+    _need(request.get('source_sha256', {}).get(plan_ref['path']) == plan_ref['sha256'],
+          'physical_original_plan_pin')
+    guard = command.get('pre_body_guard')
+    _project_origin_descriptor(guard, 'physical_guard_descriptor', maximum=MAX_SOURCE)
+    _need(profile['owner_source']['path'] == str(Path(command['runtime_root']) /
+              'ipfs_accelerate_py/agent_supervisor/rescue/original_embedded_observation_owner.py')
+          and profile['driver_source']['path'] == str(Path(command['runtime_root']) /
+              'ipfs_accelerate_py/agent_supervisor/rescue/native_embedded_observation_driver.py'),
+          'physical_current_adjacent_owner_driver')
+    _need(_physical_same(value['guard'], guard)
+          and guard['path'] == str(Path(command['runtime_root']) /
+              'ipfs_accelerate_py/agent_supervisor/rescue/project_import_source_guard.py')
+          and guard['sha256'] == _PHYSICAL_R_GUARD_SHA
+          and any(_physical_same(guard, pin) for pin in profile['source_descriptors'])
+          and request.get('source_sha256', {}).get(guard['path']) == guard['sha256']
+          and command.get('source_sha256', {}).get(guard['path']) == guard['sha256'],
+          'physical_original_guard_join')
+    owner = _physical_identity(value['owner_identity'])
+    child = _physical_identity(value['child_identity'])
+    _need(_physical_same(owner, {'pid': terminal.get('owner_pid'),
+                                'birth': terminal.get('owner_birth')})
+          and _physical_same(child, terminal.get('reservation', {}).get('record', {}).get('child'))
+          and owner['pid'] != child['pid'], 'physical_parent_child_identity_join')
+    attempt = _path(command['attempt_directory']); exports = attempt / 'exports'
+    _need(request.get('attempt_directory') == str(attempt), 'physical_attempt_join')
+    _need(origins_ref['path'] == str(exports /
+              'project-import-origins-closing-native-embedded-observation.json'),
+          'physical_child_origins_path')
+    _within(origins_ref, profile['proof_root'])
+    docs = {}
+    for role, name in _PHYSICAL_R_PATHS.items():
+        pin = value[role]
+        _keys(pin, {'path', 'bytes', 'sha256'}, 'physical_artifact_descriptor_shape')
+        _need(pin['path'] == str(exports / name), 'physical_exact_artifact_path')
+        _within(pin, profile['proof_root'])
+        docs[role] = _document(pin)
+    def context(document, phase, identity):
+        expected = dict(phase=phase, request=request_ref, plan=plan_ref,
+            profile_sha256=digest, source_root_binding=physical['source_root_binding'],
+            guard=guard, identity=identity)
+        _need(all(_physical_same(document[key], selected)
+                  for key, selected in expected.items()), 'physical_artifact_context_join')
+    direct = {'parent_bootstrap': ('parent-resource', owner, 'parent-guard-bootstrap', guard),
+        'child_bootstrap': ('child-observation', child, 'child-guard-bootstrap', guard),
+        'direct_cleanup': ('parent-resource', owner, 'parent-cleanup',
+            physical['source_descriptors'][-1]),
+        'child_driver': ('child-observation', child, 'child-driver', profile['driver_source'])}
+    for role, (phase, identity, label, source) in direct.items():
+        doc = docs[role]
+        _keys(doc, {'schema', 'role', 'source', 'source_identity', 'execution_kind'} |
+              _PHYSICAL_R_CONTEXT, 'physical_direct_shape')
+        context(doc, phase, identity)
+        _need(doc['schema'] == 'native-embedded-physical-R-direct-source@1'
+              and doc['role'] == label and _physical_same(doc['source'], source)
+              and doc['execution_kind'] ==
+                  'compiled_exact_authenticated_source_bytes_outside_import_guard',
+              'physical_direct_source_join')
+        _need(any(_physical_same(source, pin) for pin in profile['source_descriptors'])
+              and request.get('source_sha256', {}).get(source['path']) == source['sha256']
+              and command.get('source_sha256', {}).get(source['path']) == source['sha256'],
+              'physical_direct_source_not_selected')
+        stamp = doc['source_identity']
+        _keys(stamp, _HISTORICAL_FROZEN_FIELDS, 'physical_direct_identity_shape')
+        _need(all(_integer(number) for number in stamp.values())
+              and _integer(stamp['st_dev'], 1) and _integer(stamp['st_ino'], 1)
+              and stat.S_ISREG(stamp['st_mode']) and stamp['st_nlink'] == 1
+              and stamp['st_size'] == source['bytes'], 'physical_direct_identity_values')
+        if historical_source_witness is None:
+            _bound_project_source(source, profile)
+        else:
+            _bound_historical_project_source(source, profile, historical_source_witness)
+    parent_origins = docs['parent_resource_origins']
+    parent_rows = _origins(parent_origins, profile,
+        historical_source_witness=historical_source_witness)
+    child_origins = _document(origins_ref)
+    child_rows = _origins(child_origins, profile,
+        historical_source_witness=historical_source_witness)
+    pins = {pin['path']: pin for pin in physical['source_descriptors']}
+    for row in parent_rows + child_rows:
+        _need(row['module'] != 'ipfs_datasets_py.logic.backends',
+              'physical_namespace_is_not_compiled_source')
+        if row['module'].startswith('ipfs_datasets_py.') or row['module'] == 'ipfs_datasets_py':
+            _need(_physical_same(pins.get(row['path']),
+                      {key: row[key] for key in ('path', 'bytes', 'sha256')}),
+                  'physical_unlisted_datasets_body')
+    by_name = {row['module']: row for row in parent_rows}
+    for name in _PHYSICAL_R_ESSENTIAL:
+        source = pins[str(Path(physical['source_root_binding']['physical_root']) /
+            (name.replace('.', '/') + '.py'))]
+        row = by_name.get(name)
+        _need(type(row) is dict and row.get('execution_status') == 'execution_completed'
+              and _physical_same({key: row.get(key) for key in ('path', 'bytes', 'sha256')}, source),
+              'physical_essential_parent_import_missing')
+    for role, phase, identity, origins, bootstrap in (
+            ('parent_namespace', 'parent-resource', owner, value['parent_resource_origins'],
+             value['parent_bootstrap']),
+            ('child_namespace', 'child-observation', child, origins_ref,
+             value['child_bootstrap'])):
+        doc = docs[role]
+        _keys(doc, {'schema', 'origins_ref', 'bootstrap_ref', 'guard_instance_type',
+                    'namespace'} | _PHYSICAL_R_CONTEXT, 'physical_namespace_document_shape')
+        context(doc, phase, identity)
+        _need(doc['schema'] == 'native-embedded-physical-R-namespace-checkpoint@1'
+              and doc['guard_instance_type'] == 'GuardedProjectImports'
+              and _physical_same(doc['origins_ref'], origins)
+              and _physical_same(doc['bootstrap_ref'], bootstrap),
+              'physical_namespace_origins_bootstrap_join')
+        row = doc['namespace']; declared = physical['normal_namespace_profiles'][0]
+        _keys(row, set(declared) | {'search_locations', 'origin',
+              'pathfinder_loader_is_none', 'module_loaded'}, 'physical_namespace_row_shape')
+        _need(all(_physical_same(row[key], item) for key, item in declared.items())
+              and row['search_locations'] == [declared['path']]
+              and row['origin'] is None and row['pathfinder_loader_is_none'] is True
+              and type(row['module_loaded']) is bool, 'physical_namespace_row_values')
+    return value
+
+
+def _embedded_idle_result(result, request, plan, origins, profile, native, *, historical_source_witness=None, physical_source_evidence=None):
     """Join genuine embedded read-only observation to original source/custody.
 
     This is a separate backend contract. It never relabels an embedded source as
@@ -500,8 +751,20 @@ def _embedded_idle_result(result, request, plan, origins, profile, native, *, hi
                     'project_import_plan', 'pre_body_guard', 'result_path', 'source_sha256',
                     'observation_binding', 'import_head_capsule_Git'}
     reuse = command.get('schema') == 'native-embedded-scoped-observation-cli/v3'
-    _keys(command, cli_fields | ({'source_capsule_ref'} if reuse else set()), 'embedded_idle_cli_shape')
-    _need(command['schema'] in ('native-embedded-scoped-observation-cli/v2','native-embedded-scoped-observation-cli/v3') and
+    physical = command.get('schema') == _PHYSICAL_R_CLI
+    _keys(command, cli_fields | ({'source_capsule_ref'} if reuse else set()) |
+          ({'physical_source_profile'} if physical else set()), 'embedded_idle_cli_shape')
+    if physical:
+        _need(type(physical_source_evidence) is dict
+              and physical_source_evidence.get('schema') ==
+                  'native-embedded-physical-R-source-evidence@1'
+              and physical_source_evidence.get('profile_sha256') == hashlib.sha256(
+                  _encoded(command['physical_source_profile'])[:-1]).hexdigest(),
+              'physical_validated_terminal_evidence_required')
+    else:
+        _need(physical_source_evidence is None, 'physical_legacy_evidence_forbidden')
+    _need(command['schema'] in ('native-embedded-scoped-observation-cli/v2',
+          'native-embedded-scoped-observation-cli/v3', _PHYSICAL_R_CLI) and
           _text(command['runtime_root']) and command['runtime_root'] == plan['accelerate_root'],
           'embedded_idle_cli_contract')
     if reuse:
@@ -635,6 +898,19 @@ def _cycle(cycle_ref, profile, identity, native, *, now, monotonic_ns, historica
     _need(request.get('argv') == expected and request.get('source_sha256', {}).get(profile['driver_source']['path']) == profile['driver_source']['sha256'], 'original_driver_source_or_argv_changed')
     _need(plan.get('native_metadata_cli', {}).get('result_path') == proof['result_ref']['path'], 'original_result_path_not_bound')
     _origins(origins, profile, historical_source_witness=historical_source_witness)
+    physical_evidence = None
+    if plan.get('native_metadata_cli', {}).get('schema') == _PHYSICAL_R_CLI:
+        _need(proof['kind'] == 'genuine_scoped_idle'
+              and result.get('schema') == 'native-embedded-daemon-observation@1',
+              'physical_readonly_observer_scope_required')
+        physical_evidence = _physical_source_evidence(
+            terminal.get('physical_source_evidence'), request, plan, profile,
+            request_ref=proof['request_ref'], plan_ref=proof['plan_ref'],
+            origins_ref=proof['origins_ref'], terminal=terminal,
+            historical_source_witness=historical_source_witness)
+    else:
+        _need(terminal.get('physical_source_evidence') is None,
+              'physical_legacy_terminal_evidence_forbidden')
     cycle_native_value, cycle_native = _linked_native(proof['native_diagnostic_ref'], profile, now=now)
     _need(cycle_native['event_cursor'] <= native['event_cursor'], 'native_event_cursor_regressed')
     _need(_number(cycle_native_value.get('checked_at_epoch')) and proof['started_at'] <= cycle_native_value['checked_at_epoch'] <= proof['finished_at'], 'native_cycle_report_not_current')
@@ -650,7 +926,12 @@ def _cycle(cycle_ref, profile, identity, native, *, now, monotonic_ns, historica
     else:
         _need(plan.get('task_scope') == profile['task_scope'], 'original_idle_task_scope_changed')
         if result.get('schema') == 'native-embedded-daemon-observation@1':
-            _embedded_idle_result(result, request, plan, origins, profile, cycle_native_value, historical_source_witness=historical_source_witness)
+            if physical_evidence is None:
+                _embedded_idle_result(result, request, plan, origins, profile, cycle_native_value, historical_source_witness=historical_source_witness)
+            else:
+                _embedded_idle_result(result, request, plan, origins, profile, cycle_native_value,
+                    historical_source_witness=historical_source_witness,
+                    physical_source_evidence=physical_evidence)
         else:
             _keys(result, {'schema', 'ready_task_count', 'selection_idle_reason', 'unchanged', 'write_count', 'provider_dispatched', 'attempt_consumed', 'completion_authority'}, 'original_idle_result_shape')
             _need(result['schema'] == 'native-typed-daemon-observation@1', 'original_idle_result_schema')

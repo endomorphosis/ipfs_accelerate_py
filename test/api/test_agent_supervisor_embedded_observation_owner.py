@@ -553,6 +553,13 @@ def _policy_request(owner,driver,tmp_path,monkeypatch,policy_name):
         if item==old_root:return new_root
         return item
     value=relocated(value);plan=relocated(plan)
+    # The genuine retained H backend keeps its own immutable body, even after
+    # the adjacent current driver changes. Relocation never transfers its hash.
+    retained=_pin(owner.QUALIFIED_F07_ACTOR)
+    assert retained['sha256']==owner.QUALIFIED_F07_ACTOR_SHA
+    assert value['argv'][2]==str(owner.QUALIFIED_F07_ACTOR)
+    value['source_sha256'][retained['path']]=retained['sha256']
+    plan['native_metadata_cli']['source_sha256'][retained['path']]=retained['sha256']
     ref=_write(p,plan)
     value['argv'][6]=ref['sha256'];value['source_sha256'][str(p)]=ref['sha256']
     return value,plan,p
@@ -868,3 +875,587 @@ def test_import_scope_literals_do_not_bypass_exact_HEAD_metadata(owner,driver,tm
         owner.validate_import_git_binding(c)
     with pytest.raises(RuntimeError,match='original HEAD count/byte metadata differs'):
         driver.validate_import_git_binding(c)
+
+
+# Rebased explicit native physical-R constructor controls from immutable RED8d3.
+# This candidate is a distinct product/test epoch. No lease, Git,
+# database, scheduler, Native owner or task operation is invoked by this case.
+# The old owning source above stays byte exact. Actual runtime mapping/namespace
+# execution requires the later product implementation and separate qualification.
+_PHYSICAL_R_RED_A = Path('/tmp/lift-sync-accelerate-all-main-20261114')
+_PHYSICAL_R_RED_R = Path('/tmp/datasets-publish-main-20261114')
+_PHYSICAL_R_NATIVE_RELATIVES = (
+    'ipfs_datasets_py/__init__.py',
+    'ipfs_datasets_py/ipfs_backend_router.py',
+    'ipfs_datasets_py/logic/__init__.py',
+    'ipfs_datasets_py/logic/backends/process.py',
+    'ipfs_datasets_py/optimizers/__init__.py',
+    'ipfs_datasets_py/optimizers/logic_theorem_optimizer/__init__.py',
+    'ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_daemon_resources.py',
+    'ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_resource_recovery.py',
+    'ipfs_datasets_py/optimizers/logic_theorem_optimizer/existing_resource_scheduler.py',
+    'ipfs_datasets_py/optimizers/logic_theorem_optimizer/parented_phase_resources.py',
+    'ipfs_datasets_py/optimizers/logic_theorem_optimizer/proof_resource_safety.py',
+    'ipfs_datasets_py/optimizers/logic_theorem_optimizer/resource_scheduler.py',
+    'ipfs_datasets_py/optimizers/logic_theorem_optimizer/runtime_telemetry.py',
+    'ipfs_datasets_py/router_deps.py',
+    'scripts/ops/legal_ir/run_owned_validation.py',
+)
+
+
+@pytest.fixture
+def physical_R_native_constructor_RED_DATA(tmp_path,monkeypatch):
+    # Reuse the existing owning loader over the exact current owners. This
+    # explicit test-source BASE is needed because the whole probe is private;
+    # no product module, callback, parser or source guard is substituted.
+    monkeypatch.setitem(globals(),'BASE',_PHYSICAL_R_RED_A)
+    owner=_load('_physical_R_RED_current_owner','original_embedded_observation_owner.py')
+    driver=_load('_physical_R_RED_current_driver','native_embedded_observation_driver.py')
+    guard=_load('_physical_R_RED_current_guard','project_import_source_guard.py')
+    assert _pin(Path(owner.__file__))['sha256']==_CLI4_EXPECTED_OWNER_SHA256
+    assert _pin(Path(driver.__file__))['sha256']==_CLI4_EXPECTED_DRIVER_SHA256
+    assert _pin(Path(guard.__file__))['sha256']=='141b7da6a57bd65d03c673c5e1041d8e26bce0ed7c02803a3d11f829925da95e'
+    # These seams assert constructor purity, without replacing its validation.
+    def forbidden(*_,**__):raise AssertionError('constructor DATA cannot enter an owner, Source, Git or process')
+    monkeypatch.setattr(owner,'load_source_lease',forbidden)
+    monkeypatch.setattr(owner,'_open_original_scheduler',forbidden)
+    monkeypatch.setattr(owner.subprocess,'Popen',forbidden)
+    value,plan,plan_path=_request(owner,driver,tmp_path,monkeypatch)
+    request_path=tmp_path/'legacy-constructor-request.json'
+    reference=_write(request_path,value)
+    assert owner.request(request_path,reference['sha256'])[0]==value
+    # Both existing scheduler paths retain their existing backend identity.
+    assert owner._observation_actor(value)==owner.ACTOR_PATH
+    retained={'expected_scheduler_policy_sha256':owner.QUALIFIED_F07_POLICY,
+        'argv':[sys.executable,'-B',str(owner.QUALIFIED_F07_ACTOR)],
+        'source_sha256':{str(owner.QUALIFIED_F07_ACTOR):owner.QUALIFIED_F07_ACTOR_SHA}}
+    assert owner._observation_actor(retained)==owner.QUALIFIED_F07_ACTOR
+    sources=[_pin(_PHYSICAL_R_RED_R/relative)for relative in _PHYSICAL_R_NATIVE_RELATIVES]
+    assert len(sources)==15 and len({pin['path']for pin in sources})==15
+    namespace=_PHYSICAL_R_RED_R/'ipfs_datasets_py/logic/backends';info=namespace.lstat()
+    assert namespace.is_dir()and not namespace.is_symlink()
+    assert not os.path.lexists(namespace/'__init__.py')
+    namespace_profile=dict(fullname='ipfs_datasets_py.logic.backends',path=str(namespace),
+        device=info.st_dev,inode=info.st_ino,initializer_absent=True)
+    # Real normal PathFinder resolution only: the loader body is never run.
+    imports=dict(accelerate_root=str(_PHYSICAL_R_RED_A),datasets_root=str(_PHYSICAL_R_RED_R),
+        publication_root=str(_PHYSICAL_R_RED_R),source_pins=sources)
+    finder=guard.GuardedProjectImports(imports,tmp_path)
+    fullname='ipfs_datasets_py.logic.backends.process'
+    spec=finder.find_spec(fullname,[str(namespace)])
+    assert spec.origin==str(namespace/'process.py')
+    assert finder.project_origins[fullname]['execution_status']=='resolution_only'
+    foreign=guard.GuardedProjectImports(imports,tmp_path)
+    with pytest.raises(ImportError,match='foreign_datasets_package'):
+        foreign.find_spec(fullname,[str(owner.R/'ipfs_datasets_py/logic/backends')])
+    assert foreign.denials[-1]['reason']=='foreign_datasets_package'
+    assert finder.registered is foreign.registered is False
+    profile=dict(schema='native-embedded-physical-R-source@1',
+        source_root_binding=dict(physical_root=str(_PHYSICAL_R_RED_R),canonical_root=str(owner.R)),
+        source_descriptors=sources,normal_namespace_profiles=[namespace_profile])
+    return owner,driver,value,plan,plan_path,profile,imports
+
+
+@pytest.mark.parametrize('scheduler',['legacy-policy','f07-explicit-current'])
+def test_explicit_physical_R_native_constructor_preserves_legacy_and_origin_guards_RED(
+        physical_R_native_constructor_RED_DATA,tmp_path,scheduler):
+    owner,driver,value,plan,plan_path,profile,imports=physical_R_native_constructor_RED_DATA
+    c=plan['native_metadata_cli']
+    # A closed opt-in namespace/source policy, never a legacy coercion or broad
+    # string/root replacement. All task/DB/cwd/cap/grant fields stay unchanged.
+    original=copy.deepcopy(value)
+    c.update(schema='native-embedded-scoped-observation-cli/v4',physical_source_profile=profile,
+        project_import_plan=dict(imports,source_pins=c['project_import_plan']['source_pins']+profile['source_descriptors']))
+    for pin in profile['source_descriptors']:
+        c['source_sha256'][pin['path']]=pin['sha256'];value['source_sha256'][pin['path']]=pin['sha256']
+    if scheduler=='f07-explicit-current':value['expected_scheduler_policy_sha256']=owner.QUALIFIED_F07_POLICY
+    ref=_write(plan_path,plan);value['argv'][6]=ref['sha256'];value['source_sha256'][str(plan_path)]=ref['sha256']
+    request_path=tmp_path/'explicit-physical-R-v4-request.json';request_ref=_write(request_path,value)
+    # The historical RED8d3 reached CALL refusals here. These same positive
+    # assertions now target the separately pinned CLI4 candidates; no historical
+    # failure evidence or qualification is rewritten by this new test epoch.
+    parsed,raw=owner.request(request_path,request_ref['sha256'])
+    assert parsed==value and raw==request_path.read_bytes()
+    assert owner._observation_actor(parsed)==owner.ACTOR_PATH
+    assert c['physical_source_profile']==profile and len(profile['source_descriptors'])==15
+    assert c['project_import_plan']['datasets_root']==c['project_import_plan']['publication_root']==str(_PHYSICAL_R_RED_R)
+    assert set(c)=={'schema','runtime_root','cwd','attempt_directory','temporary_directory',
+        'project_import_plan','pre_body_guard','result_path','source_sha256','observation_binding',
+        'import_head_capsule_Git','physical_source_profile'}
+    assert 'source_capsule_ref'not in c
+    for key in ('cwd','attempt_directory','resource_ledger','source_roots','external_files','database_preimage',
+                'allowed_subprocess_argv','cpu_slots','memory_mb','child_process_slots','storage_bytes','timeout_seconds'):
+        assert value[key]==original[key]
+    assert list(Path(value['attempt_directory']).iterdir())==[]
+
+
+# PRIVATE draft bindings: replaced only after the product author freezes exact
+# candidate bytes. The original 52302-byte scope-qualified prefix is unchanged;
+# the historical 8d3 RED input remains separately immutable.
+_CLI4_EXPECTED_OWNER_SHA256 = 'c75a0824e9e5ba09afdd8fcf64973b1b942d0b36cbb7d21661f1b231395ba1be'
+_CLI4_EXPECTED_DRIVER_SHA256 = 'da122056f2b10160ede93536848566210d5c195344e3ab87d81f64fdbda64110'
+
+
+def _physical_cli_DATA(case):
+    owner,driver,value,plan,path,profile,imports=case
+    c=plan['native_metadata_cli']
+    c.update(schema='native-embedded-scoped-observation-cli/v4',
+        physical_source_profile=copy.deepcopy(profile),
+        project_import_plan=dict(imports,source_pins=copy.deepcopy(
+            c['project_import_plan']['source_pins']+profile['source_descriptors'])))
+    for row in profile['source_descriptors']:
+        c['source_sha256'][row['path']]=row['sha256']
+        value['source_sha256'][row['path']]=row['sha256']
+    return owner,driver,value,plan,path,c
+
+
+def _physical_reseal_request(case,tmp_path,basename='physical-request.json'):
+    owner,driver,value,plan,path,c=case
+    ref=_write(path,plan)
+    value['argv'][6]=ref['sha256'];value['source_sha256'][str(path)]=ref['sha256']
+    request=tmp_path/basename
+    return request,_write(request,value)
+
+
+def _physical_temporary_cli(owner,c,tmp_path):
+    """Explicit fictional source tree, never a Native/runtime admission fixture."""
+    root=tmp_path/'physical-project';root.mkdir()
+    refs=[]
+    for relative in _PHYSICAL_R_NATIVE_RELATIVES:
+        source=root/relative;source.parent.mkdir(parents=True,exist_ok=True)
+        source.write_bytes(b'physical_fixture_marker = 73\n')
+        refs.append(_pin(source))
+    namespace=root/'ipfs_datasets_py/logic/backends';info=namespace.lstat()
+    result=copy.deepcopy(c)
+    result['physical_source_profile']={
+        'schema':'native-embedded-physical-R-source@1',
+        'source_root_binding':{'physical_root':str(root),'canonical_root':str(owner.R)},
+        'source_descriptors':refs,
+        'normal_namespace_profiles':[dict(fullname='ipfs_datasets_py.logic.backends',
+            path=str(namespace),device=info.st_dev,inode=info.st_ino,initializer_absent=True)]}
+    result['project_import_plan']=dict(accelerate_root=result['runtime_root'],
+        datasets_root=str(root),publication_root=str(root),source_pins=copy.deepcopy(refs))
+    result['source_sha256'].update({row['path']:row['sha256']for row in refs})
+    return result
+
+
+@pytest.mark.parametrize('consumer',['owner','driver'])
+def test_physical_profile_is_closed_fifteen_path_DATA_snapshot(
+        physical_R_native_constructor_RED_DATA,consumer):
+    owner,driver,value,plan,path,c=_physical_cli_DATA(physical_R_native_constructor_RED_DATA)
+    module=owner if consumer=='owner'else driver
+    expected=copy.deepcopy(c['physical_source_profile'])
+    result=module._physical_source_profile(c,canonical_root=owner.R,
+        request_pins=value['source_sha256'])
+    assert result==expected and result is not c['physical_source_profile']
+    assert module.PHYSICAL_RELATIVES==_PHYSICAL_R_NATIVE_RELATIVES
+    c['physical_source_profile']['source_descriptors'][0]['sha256']='f'*64
+    assert result==expected
+    assert plan['native_metadata_cli']['cwd']==str(owner.WORKSPACE)
+    assert value['source_roots']==[str(owner.R),str(owner.A)]
+
+
+@pytest.mark.parametrize('consumer',['owner','driver'])
+@pytest.mark.parametrize('mutation',[
+    'cli_extra','cli_schema','profile_extra','profile_schema','binding_extra',
+    'canonical_root','relative_root','root_alias','fifteen_missing','fifteen_extra',
+    'fifteen_reverse','fifteen_duplicate','descriptor_extra','descriptor_bool_bytes',
+    'descriptor_digest','outer_pin','request_pin','import_duplicate','import_unlisted',
+    'import_root','import_extra','import_top_level','namespace_extra','namespace_name','namespace_path',
+    'namespace_boolean_device','namespace_inode','namespace_initializer','namespace_second',
+])
+def test_physical_profile_refuses_aliases_unlisted_paths_and_non_source_rebinding(
+        physical_R_native_constructor_RED_DATA,tmp_path,consumer,mutation):
+    owner,driver,value,plan,path,c=_physical_cli_DATA(physical_R_native_constructor_RED_DATA)
+    module=owner if consumer=='owner'else driver
+    profile=c['physical_source_profile'];binding=profile['source_root_binding']
+    refs=profile['source_descriptors'];ns=profile['normal_namespace_profiles'][0]
+    if mutation=='cli_extra':c['runtime_authority']=True
+    elif mutation=='cli_schema':c['schema']='native-embedded-scoped-observation-cli/v3'
+    elif mutation=='profile_extra':profile['grant']=True
+    elif mutation=='profile_schema':profile['schema']='native-embedded-physical-R-source@2'
+    elif mutation=='binding_extra':binding['lock_path']='/caller-selected/source.lock'
+    elif mutation=='canonical_root':binding['canonical_root']=str(tmp_path)
+    elif mutation=='relative_root':binding['physical_root']='relative-root'
+    elif mutation=='root_alias':
+        alias=tmp_path/'root-alias';alias.symlink_to(binding['physical_root'],target_is_directory=True)
+        binding['physical_root']=str(alias)
+    elif mutation=='fifteen_missing':refs.pop()
+    elif mutation=='fifteen_extra':refs.append(dict(refs[-1],path=str(tmp_path/'extra.py')))
+    elif mutation=='fifteen_reverse':refs.reverse()
+    elif mutation=='fifteen_duplicate':refs[-1]=copy.deepcopy(refs[0])
+    elif mutation=='descriptor_extra':refs[0]['execution_authority']=False
+    elif mutation=='descriptor_bool_bytes':refs[0]['bytes']=True
+    elif mutation=='descriptor_digest':refs[0]['sha256']='g'*64
+    elif mutation=='outer_pin':c['source_sha256'][refs[0]['path']]='f'*64
+    elif mutation=='request_pin':value['source_sha256'][refs[0]['path']]='f'*64
+    elif mutation=='import_duplicate':c['project_import_plan']['source_pins'].append(copy.deepcopy(refs[0]))
+    elif mutation=='import_unlisted':
+        extra=dict(refs[0],path=str(Path(binding['physical_root'])/'ipfs_datasets_py/unlisted.py'))
+        c['project_import_plan']['source_pins'].append(extra)
+    elif mutation=='import_root':c['project_import_plan']['publication_root']=str(owner.R)
+    elif mutation=='import_extra':c['project_import_plan']['source_paths']=[]
+    elif mutation=='import_top_level':
+        c['project_import_plan']['source_pins'].append(dict(refs[0],path=str(Path(binding['physical_root'])/'arbitrary.py')))
+    elif mutation=='namespace_extra':ns['compiled_exact']=True
+    elif mutation=='namespace_name':ns['fullname']='ipfs_datasets_py.logic.other'
+    elif mutation=='namespace_path':ns['path']=str(tmp_path/'backends')
+    elif mutation=='namespace_boolean_device':ns['device']=True
+    elif mutation=='namespace_inode':ns['inode']=0
+    elif mutation=='namespace_initializer':ns['initializer_absent']=False
+    elif mutation=='namespace_second':profile['normal_namespace_profiles'].append(copy.deepcopy(ns))
+    try:
+        with pytest.raises(RuntimeError):
+            module._physical_source_profile(c,canonical_root=owner.R,request_pins=value['source_sha256'])
+    finally:
+        if mutation=='root_alias':(tmp_path/'root-alias').unlink(missing_ok=True)
+    assert list(Path(value['attempt_directory']).iterdir())==[]
+
+
+@pytest.mark.parametrize('mutation',['none','missing_receipt','reverse_receipts','write_receipt',
+    'noncooperative','wrong_R_mapping','wrong_A_mapping'])
+def test_physical_mapping_requires_both_original_read_receipts_before_import(
+        physical_R_native_constructor_RED_DATA,mutation):
+    owner,driver,value,plan,path,c=_physical_cli_DATA(physical_R_native_constructor_RED_DATA)
+    receipts=[dict(canonical_root=str(root),mode='read',cooperative=True)for root in(owner.R,owner.A)]
+    calls=[]
+    def mapping(path):
+        calls.append(str(path))
+        if str(path)==c['physical_source_profile']['source_root_binding']['physical_root']:
+            return owner.A if mutation=='wrong_R_mapping'else owner.R
+        return owner.R if mutation=='wrong_A_mapping'else owner.A
+    if mutation=='missing_receipt':receipts.pop()
+    elif mutation=='reverse_receipts':receipts.reverse()
+    elif mutation=='write_receipt':receipts[0]['mode']='write'
+    elif mutation=='noncooperative':receipts[1]['cooperative']=False
+    lease=types.SimpleNamespace(canonical_source_root=mapping)
+    if mutation=='none':
+        assert owner._physical_live_mapping(c,lease,receipts)==c['physical_source_profile']
+        assert calls==[str(_PHYSICAL_R_RED_R),str(_PHYSICAL_R_RED_A)]
+    else:
+        with pytest.raises(RuntimeError):owner._physical_live_mapping(c,lease,receipts)
+        if mutation in ('missing_receipt','reverse_receipts','write_receipt','noncooperative'):
+            assert calls==[]
+
+
+@pytest.mark.parametrize('mutation',['none','sha','length','symlink','hardlink'])
+def test_physical_direct_reader_authenticates_owned_unaliased_exact_bytes(
+        physical_R_native_constructor_RED_DATA,tmp_path,mutation):
+    owner,driver,*_=physical_R_native_constructor_RED_DATA
+    source=tmp_path/'direct-source.py';source.write_bytes(b'fixture_answer = 91\n')
+    ref=_pin(source)
+    if mutation=='sha':ref['sha256']='f'*64
+    elif mutation=='length':ref['bytes']+=1
+    elif mutation=='symlink':
+        link=tmp_path/'alias.py';link.symlink_to(source);ref['path']=str(link)
+    elif mutation=='hardlink':os.link(source,tmp_path/'second-name.py')
+    try:
+        if mutation=='none':
+            raw,identity=owner._physical_read_source(ref)
+            assert raw==b'fixture_answer = 91\n'
+            assert identity['st_ino']==source.lstat().st_ino and identity['st_nlink']==1
+        else:
+            with pytest.raises(RuntimeError):owner._physical_read_source(ref)
+    finally:
+        if mutation=='symlink':(tmp_path/'alias.py').unlink(missing_ok=True)
+        elif mutation=='hardlink':(tmp_path/'second-name.py').unlink(missing_ok=True)
+        assert source.lstat().st_nlink==1
+
+
+@pytest.mark.parametrize('change_during_body',[False,True])
+def test_physical_direct_compiler_uses_bound_bytes_and_rechecks_after_body(
+        physical_R_native_constructor_RED_DATA,tmp_path,change_during_body):
+    owner,driver,*_=physical_R_native_constructor_RED_DATA
+    source=tmp_path/'direct-compile.py'
+    body=("fixture_answer = 91\n"if not change_during_body else
+        "from pathlib import Path\np=Path(__file__)\nraw=p.read_bytes()\np.write_bytes(raw.replace(b'answer = 91',b'answer = 92'))\nanswer = 91\n")
+    source.write_text(body);ref=_pin(source)
+    context={'phase':'parent-resource','request':dict(path='/fictional/request',bytes=1,sha256='0'*64),
+        'plan':dict(path='/fictional/plan',bytes=1,sha256='1'*64),'profile_sha256':'2'*64,
+        'source_root_binding':dict(physical_root='/fictional/physical',canonical_root='/fictional/canonical'),
+        'guard':dict(path='/fictional/guard.py',bytes=1,sha256='3'*64),'identity':dict(pid=1,birth=1)}
+    name='_physical_direct_owning_'+tmp_path.name
+    try:
+        if change_during_body:
+            assert len(body.encode())==ref['bytes']
+            with pytest.raises(RuntimeError,match='direct source commitment changed'):
+                owner._physical_compile_source(ref,name,context,'parent-cleanup')
+            assert source.stat().st_size==ref['bytes']
+            assert _pin(source)['sha256']!=ref['sha256']
+        else:
+            module,record=owner._physical_compile_source(ref,name,context,'parent-cleanup')
+            assert module.fixture_answer==91 and module.__file__==ref['path']
+            assert record['source']==ref and record['role']=='parent-cleanup'
+            assert record['execution_kind']=='compiled_exact_authenticated_source_bytes_outside_import_guard'
+            assert 'project_imports'not in record and record['source_identity']['st_nlink']==1
+    finally:sys.modules.pop(name,None)
+
+
+@pytest.mark.parametrize('mutation',['none','initializer','dangling_initializer','wrong_inode',
+    'wrong_device','extra_search_location','loaded_source_namespace'])
+def test_physical_namespace_is_exact_PathFinder_metadata_without_compiled_credit(
+        physical_R_real_source_DATA,tmp_path,mutation):
+    result=_physical_isolated(_PHYSICAL_ISOLATED_NAMESPACE_PROBE,[
+        _PHYSICAL_R_RED_A,tmp_path,mutation,_CLI4_EXPECTED_OWNER_SHA256,
+        physical_R_real_source_DATA['manifest']['path']])
+    assert result==dict(status='PASS',mutation=mutation,real_guarded_parents=True,
+        namespace_compilation_credit=False,pregrant_outputs_created=False,
+        Source_or_Native_entered=False)
+
+
+
+_PHYSICAL_ISOLATED_GUARD_PROBE = "\nimport hashlib,importlib.util,json,os,sys,types\nfrom pathlib import Path\nA=Path(sys.argv[1]);root=Path(sys.argv[2]);phase=sys.argv[3]\nrel=Path('ipfs_accelerate_py/agent_supervisor/rescue')\ndef load(name,path):\n spec=importlib.util.spec_from_file_location(name,path);module=importlib.util.module_from_spec(spec)\n sys.modules[name]=module;spec.loader.exec_module(module);return module\nowner=load('_physical_owning_owner',A/rel/'original_embedded_observation_owner.py')\nexpected=json.loads(sys.argv[4]);assert hashlib.sha256(Path(owner.__file__).read_bytes()).hexdigest()==expected['owner']\nguard=A/rel/'project_import_source_guard.py'\ndef pin(p):\n raw=p.read_bytes();return dict(path=str(p),bytes=len(raw),sha256=hashlib.sha256(raw).hexdigest())\nassert pin(guard)['sha256']=='141b7da6a57bd65d03c673c5e1041d8e26bce0ed7c02803a3d11f829925da95e'\nseed=json.loads(Path(sys.argv[5]).read_bytes());project=Path(seed['project']);refs=seed['source_descriptors']\nassert len(refs)==15 and all(pin(Path(row['path']))==row for row in refs)\nos.environ.update(IPFS_DATASETS_PY_MINIMAL_IMPORTS='1',IPFS_AUTO_INSTALL='false',IPFS_DATASETS_AUTO_INSTALL='0')\nnamespace=project/'ipfs_datasets_py/logic/backends';info=namespace.lstat()\nattempt=root/'not-created-attempt'\nprofile=dict(schema=owner.PHYSICAL_PROFILE_SCHEMA,\n source_root_binding=dict(physical_root=str(project),canonical_root=str(owner.R)),source_descriptors=refs,\n normal_namespace_profiles=[dict(fullname=owner.PHYSICAL_NAMESPACE,path=str(namespace),device=info.st_dev,inode=info.st_ino,initializer_absent=True)])\nc=dict(schema=owner.PHYSICAL_CLI_SCHEMA,runtime_root=str(A),cwd=str(owner.WORKSPACE),\n attempt_directory=str(attempt),temporary_directory=str(attempt/'temporary'),\n project_import_plan=dict(accelerate_root=str(A),datasets_root=str(project),publication_root=str(project),source_pins=refs),\n pre_body_guard=pin(guard),result_path=str(attempt/'exports/native-cli-driver-result.json'),\n source_sha256={**{row['path']:row['sha256']for row in refs},str(guard):pin(guard)['sha256']},observation_binding={},import_head_capsule_Git={},physical_source_profile=profile)\ncontext=dict(phase=phase,request=dict(path='/fictional/request',bytes=1,sha256='0'*64),\n plan=dict(path='/fictional/plan',bytes=1,sha256='1'*64),profile_sha256=owner._physical_profile_sha(profile),\n source_root_binding=profile['source_root_binding'],guard=pin(guard),identity=owner._parent_capacity_process_identity(os.getpid()))\ndef forbidden(*args,**kwargs):raise AssertionError('no Source/Native/process/disk ownership in guard owning control')\nowner.load_source_lease=forbidden;owner._open_original_scheduler=forbidden;owner.write_json=forbidden\nstate=owner._physical_guard_install(c,context);finder=state['importer']\nassert type(finder)is state['module'].GuardedProjectImports and type(finder).__name__=='GuardedProjectImports'\nassert sys.meta_path[0]is finder and state['bootstrap']['source']==pin(guard)\nassert state['bootstrap']['role']==('parent-guard-bootstrap'if phase=='parent-resource'else'child-guard-bootstrap')\nassert state['bootstrap']['execution_kind']=='compiled_exact_authenticated_source_bytes_outside_import_guard'\nassert state.get('publication_ready')is False\nsys.meta_path.insert(0,object());sys.audit('import','_physical_owning_restore')\nassert sys.meta_path[0]is finder\nns=finder.find_spec(owner.PHYSICAL_NAMESPACE,[str(namespace.parent)])\nassert ns.origin is None and ns.loader is None\nassert owner.PHYSICAL_NAMESPACE not in finder.project_origins\nimport importlib\nmodule=importlib.import_module(owner.PHYSICAL_NAMESPACE+'.process')\nassert module.BOUNDED_TOOL_RUNNER_VERSION=='bounded-tool-runner/v1'\nassert finder.project_origins[module.__name__]['execution_profile']=='compiled_exact_authenticated_source_bytes'\nfor name,relative in (('ipfs_datasets_py','ipfs_datasets_py/__init__.py'),('ipfs_datasets_py.logic','ipfs_datasets_py/logic/__init__.py')):\n parent=sys.modules[name];assert parent.__file__==str(project/relative) and parent.__spec__.origin==str(project/relative)\n assert finder.project_origins[name]['execution_profile']=='compiled_exact_authenticated_source_bytes'\nassert owner._physical_guard_checkpoint(state,'pregrant-owning',publish=False)is None\nfor function,args in ((owner._physical_guard_checkpoint,(state,'must-refuse')),\n                       (owner._physical_publish_direct,(state,state['bootstrap'],'must-not-write.json'))):\n try:\n  if function is owner._physical_guard_checkpoint:function(*args,publish=True)\n  else:function(*args)\n except RuntimeError:pass\n else:raise AssertionError('pregrant publication accepted')\nassert not attempt.exists()\nother=root/'unlisted-project/ipfs_datasets_py/logic/unlisted_namespace';other.mkdir(parents=True)\ntry:finder.find_spec('ipfs_datasets_py.logic.unlisted_namespace',[str(other.parent)])\nexcept ImportError:pass\nelse:raise AssertionError('unlisted project namespace accepted')\nassert finder.denials[-1]['reason']=='project_namespace_without_exact_python_source'\nprint(json.dumps(dict(status='PASS',same_original_instance=True,phase=phase,\n bootstrap_sha256=state['bootstrap']['source']['sha256'],namespace_compilation_credit=False,\n pregrant_outputs_created=False,Source_or_Native_entered=False)))\n"
+
+
+def _physical_isolated(script,args,timeout=20):
+    # A fresh interpreter is required for the real 141b import audit hook; no
+    # guard or irreversible sys.addaudithook is installed into pytest itself.
+    import subprocess
+    environment=dict(os.environ,PYTHONDONTWRITEBYTECODE='1',PYTHONNOUSERSITE='1')
+    result=subprocess.run([sys.executable,'-I','-B','-c',script,*map(str,args)],
+        capture_output=True,text=True,timeout=timeout,check=False,env=environment)
+    assert result.returncode==0,(result.returncode,result.stdout,result.stderr)
+    return json.loads(result.stdout)
+
+
+@pytest.mark.parametrize('phase',['parent-resource','child-observation'])
+def test_same_original_guard_instance_exact_bootstrap_and_pregrant_no_disk(
+        physical_R_real_source_DATA,tmp_path,phase):
+    result=_physical_isolated(_PHYSICAL_ISOLATED_GUARD_PROBE,
+        [_PHYSICAL_R_RED_A,tmp_path,phase,json.dumps({'owner':_CLI4_EXPECTED_OWNER_SHA256}),
+         physical_R_real_source_DATA['manifest']['path']])
+    assert result==dict(status='PASS',same_original_instance=True,phase=phase,
+        bootstrap_sha256='141b7da6a57bd65d03c673c5e1041d8e26bce0ed7c02803a3d11f829925da95e',
+        namespace_compilation_credit=False,pregrant_outputs_created=False,Source_or_Native_entered=False)
+
+
+
+_PHYSICAL_ISOLATED_FRAME_PROBE = r'''
+import copy,hashlib,importlib.util,json,os,sys,types
+from pathlib import Path
+A=Path(sys.argv[1]);root=Path(sys.argv[2]);case=sys.argv[3];expected=json.loads(sys.argv[4]);capsule=json.loads(sys.argv[5])
+rel=Path('ipfs_accelerate_py/agent_supervisor/rescue')
+def load(name,path):
+ spec=importlib.util.spec_from_file_location(name,path);module=importlib.util.module_from_spec(spec)
+ sys.modules[name]=module;spec.loader.exec_module(module);return module
+owner=load('_physical_external_owner',A/rel/'original_embedded_observation_owner.py')
+driver=load('_physical_external_driver',A/rel/'native_embedded_observation_driver.py')
+def pin(p):
+ raw=p.read_bytes();return dict(path=str(p),bytes=len(raw),sha256=hashlib.sha256(raw).hexdigest())
+assert pin(Path(owner.__file__))['sha256']==expected['owner']
+assert pin(Path(driver.__file__))['sha256']==expected['driver']
+canonical=root/'canonical-fixture';canonical.mkdir();driver.DATASETS=canonical
+physical=root/'physical-fixture';physical.mkdir();refs=[]
+for relative in owner.PHYSICAL_RELATIVES:
+ source=physical/relative;source.parent.mkdir(parents=True,exist_ok=True);source.write_bytes(b'fixture_only = True\n');refs.append(pin(source))
+namespace=physical/'ipfs_datasets_py/logic/backends';info=namespace.lstat()
+helper=A/'ipfs_accelerate_py/agent_supervisor/todo_daemon/native_owner_bootstrap.py'
+guard=A/rel/'project_import_source_guard.py';route=A/'ipfs_accelerate_py/agent_implementation_route.py'
+actual_route=pin(route);assert capsule['route_source']==actual_route
+attempt=canonical/'workspace/test-logs/attempt';attempt.mkdir(parents=True,mode=0o700)
+scope=['fictional-frame-control'];prior=dict(path=str(driver.DATABASE),bytes=1,sha256='0'*64)
+binding=dict(schema='native-embedded-daemon-observation-binding@1',database_preimage=prior,
+ task_scope=scope,plan_root_cid='fictional-plan',repository_tree_id='fictional-tree',observer_source=pin(helper),source_schema='fixture-source')
+profile=dict(schema=owner.PHYSICAL_PROFILE_SCHEMA,source_root_binding=dict(physical_root=str(physical),canonical_root=str(canonical)),
+ source_descriptors=refs,normal_namespace_profiles=[dict(fullname=owner.PHYSICAL_NAMESPACE,path=str(namespace),device=info.st_dev,inode=info.st_ino,initializer_absent=True)])
+allrefs=refs+[pin(helper),pin(guard),pin(Path(owner.__file__)),pin(Path(driver.__file__)),actual_route]
+c=dict(schema=driver.PHYSICAL_CLI_SCHEMA,runtime_root=str(A),cwd=str(driver.WORKSPACE),
+ attempt_directory=str(attempt),temporary_directory=str(attempt/'temporary'),
+ project_import_plan=dict(accelerate_root=str(A),datasets_root=str(physical),publication_root=str(physical),source_pins=refs+[pin(helper),pin(guard)]),
+ pre_body_guard=pin(guard),result_path=str(attempt/'exports/native-cli-driver-result.json'),
+ source_sha256={row['path']:row['sha256']for row in allrefs},observation_binding=binding,import_head_capsule_Git=capsule,physical_source_profile=profile)
+selected=owner
+if case=='missing_owner':selected=None;message='exact current original owner module'
+elif case=='outside_child_frame':message='original source-bound execution frame missing'
+elif case=='forged_owner_globals':
+ selected=types.ModuleType('_forged_owner');selected.__file__=owner.__file__;selected.child_main=owner.child_main
+ message='original function globals required'
+elif case=='legacy_rejects_context':
+ c['schema']='native-embedded-scoped-observation-cli/v2';c.pop('physical_source_profile')
+ c['project_import_plan']['datasets_root']=c['project_import_plan']['publication_root']=str(canonical)
+ message='legacy driver does not accept a physical owner context'
+else:raise AssertionError('unknown frame control')
+plan=dict(schema='native-embedded-scoped-observation-plan/v1',operation='native_embedded_scoped_observation_v1',
+ accelerate_root=str(A),task_scope=scope,native_metadata_cli=c)
+plan_path=root/'standalone-plan.json';raw=(json.dumps(plan,sort_keys=True)+'\n').encode();plan_path.write_bytes(raw)
+assert driver.configuration(plan)is c
+sys.argv=[str(A/rel/'native_embedded_observation_driver.py'),'--plan',str(plan_path),'--plan-sha256',hashlib.sha256(raw).hexdigest()]
+def forbidden(*args,**kwargs):raise AssertionError('standalone parser cannot enter original Source/Native/DB/process bodies')
+owner.load_source_lease=forbidden;owner._open_original_scheduler=forbidden
+before=sorted(str(p.relative_to(attempt))for p in attempt.rglob('*'))
+try:driver.main(physical_owner=selected)
+except RuntimeError as error:assert message in str(error),str(error)
+else:raise AssertionError('standalone CLI4/task-data caller accepted')
+assert before==sorted(str(p.relative_to(attempt))for p in attempt.rglob('*'))==[]
+print(json.dumps(dict(status='PASS',case=case,original_internal_frame_refused=True,
+ Source_or_Native_entered=False,owner_outputs_created=False)))
+'''
+
+
+@pytest.mark.parametrize('case',['missing_owner','outside_child_frame','forged_owner_globals','legacy_rejects_context'])
+def test_driver_rejects_external_or_forged_physical_context_before_owner_bodies(tmp_path,case):
+    route=_pin(_PHYSICAL_R_RED_A/'ipfs_accelerate_py/agent_implementation_route.py')
+    capsule=_import_git_fixture(_PHYSICAL_R_RED_A,route)
+    result=_physical_isolated(_PHYSICAL_ISOLATED_FRAME_PROBE,[
+        _PHYSICAL_R_RED_A,tmp_path,case,
+        json.dumps({'owner':_CLI4_EXPECTED_OWNER_SHA256,'driver':_CLI4_EXPECTED_DRIVER_SHA256}),
+        json.dumps(capsule)])
+    assert result==dict(status='PASS',case=case,original_internal_frame_refused=True,
+        Source_or_Native_entered=False,owner_outputs_created=False)
+
+
+@pytest.mark.parametrize('mutation',['guard_sha256','guard_length','phase','process_identity',
+    'profile_digest','context_guard','context_root_binding'])
+def test_physical_guard_context_or_bootstrap_mismatch_refuses_before_install_or_disk(
+        physical_R_native_constructor_RED_DATA,mutation):
+    owner,driver,value,plan,path,c=_physical_cli_DATA(physical_R_native_constructor_RED_DATA)
+    profile=c['physical_source_profile']
+    if mutation=='guard_sha256':c['pre_body_guard']['sha256']='0'*64
+    elif mutation=='guard_length':c['pre_body_guard']['bytes']+=1
+    context=dict(phase='parent-resource',request=dict(path='/fictional/request',bytes=1,sha256='0'*64),
+        plan=dict(path='/fictional/plan',bytes=1,sha256='1'*64),
+        profile_sha256=owner._physical_profile_sha(profile),
+        source_root_binding=copy.deepcopy(profile['source_root_binding']),guard=copy.deepcopy(c['pre_body_guard']),
+        identity=owner._parent_capacity_process_identity(os.getpid()))
+    if mutation=='phase':context['phase']='unlisted-phase'
+    elif mutation=='process_identity':context['identity']['pid']+=1
+    elif mutation=='profile_digest':context['profile_sha256']='f'*64
+    elif mutation=='context_guard':context['guard']['sha256']='f'*64
+    elif mutation=='context_root_binding':context['source_root_binding']['canonical_root']=str(owner.A)
+    before=tuple(sys.meta_path)
+    with pytest.raises(RuntimeError):owner._physical_guard_install(c,context)
+    assert tuple(sys.meta_path)==before
+    assert list(Path(value['attempt_directory']).iterdir())==[]
+
+
+@pytest.mark.parametrize('consumer',['owner','driver'])
+@pytest.mark.parametrize('relationship',['same-root','canonical-child','canonical-parent'])
+def test_physical_profile_rejects_same_or_nested_roots_with_all_source_maps_consistent(
+        physical_R_native_constructor_RED_DATA,tmp_path,consumer,relationship):
+    owner,driver,value,plan,path,c=_physical_cli_DATA(physical_R_native_constructor_RED_DATA)
+    c=_physical_temporary_cli(owner,c,tmp_path)
+    physical=Path(c['physical_source_profile']['source_root_binding']['physical_root'])
+    if relationship=='same-root':canonical=physical
+    elif relationship=='canonical-child':
+        canonical=physical/'nested-canonical';canonical.mkdir()
+    else:canonical=physical.parent
+    c['physical_source_profile']['source_root_binding']['canonical_root']=str(canonical)
+    # Keep all fifteen paths, bytes, import pins and namespace rows internally
+    # consistent; only the explicit new root-separation contract must refuse.
+    assert len(c['physical_source_profile']['source_descriptors'])==15
+    assert c['project_import_plan']['datasets_root']==str(physical)
+    module=owner if consumer=='owner'else driver
+    with pytest.raises(RuntimeError):
+        module._physical_source_profile(c,canonical_root=canonical,request_pins=c['source_sha256'])
+
+
+@pytest.fixture(scope='module')
+def physical_R_real_source_DATA(tmp_path_factory):
+    """One ordinary immutable copy of real bodies; never a Source capability.
+
+    Namespace fault cases copy this population privately before injecting their
+    initializer. The other isolated children only read these shared bytes.
+    """
+    base=tmp_path_factory.mktemp('CLI4-real-parent-source',numbered=False)
+    project=base/'project';project.mkdir(mode=0o700)
+    rows=[];refs=[];total=0
+    for relative in _PHYSICAL_R_NATIVE_RELATIVES:
+        original=_PHYSICAL_R_RED_R/relative;before=_pin(original);raw=original.read_bytes()
+        assert len(raw)==before['bytes']and hashlib.sha256(raw).hexdigest()==before['sha256']
+        assert _pin(original)==before
+        target=project/relative;target.parent.mkdir(parents=True,exist_ok=True)
+        target.write_bytes(raw);target.chmod(0o400);ref=_pin(target)
+        assert ref['bytes']==before['bytes']and ref['sha256']==before['sha256']
+        rows.append(dict(relative_path=relative,original_source_ref=before,source_ref=ref));refs.append(ref)
+        total+=len(raw)
+    # Fixed fixture packaging bound, within the unchanged outer16MiB owner.
+    assert len(refs)==15 and total<=1100*1024
+    manifest=_write(base/'real-source-copy-DATA.json',dict(
+        schema='private-real-physical-R-normal-parent-copy-DATA@1',project=str(project),
+        source_descriptors=refs,original_source_correspondence=rows,total_source_bytes=total,
+        Source_or_runtime_qualification=False))
+    Path(manifest['path']).chmod(0o400)
+    yield dict(project=project,manifest=manifest,total_source_bytes=total)
+    for ref in refs:assert _pin(Path(ref['path']))==ref
+    assert not os.path.lexists(project/'ipfs_datasets_py/logic/backends/__init__.py')
+
+
+_PHYSICAL_ISOLATED_NAMESPACE_PROBE = r'''
+import hashlib,importlib,importlib.util,json,os,shutil,sys
+from pathlib import Path
+A=Path(sys.argv[1]);root=Path(sys.argv[2]);mutation=sys.argv[3];expected=sys.argv[4]
+seed=json.loads(Path(sys.argv[5]).read_bytes());project=Path(seed['project']);refs=seed['source_descriptors']
+rel=Path('ipfs_accelerate_py/agent_supervisor/rescue')
+def pin(path):
+ raw=path.read_bytes();return dict(path=str(path),bytes=len(raw),sha256=hashlib.sha256(raw).hexdigest())
+assert len(refs)==15 and all(pin(Path(row['path']))==row for row in refs)
+# Mutating namespace cases have independent ordinary copies; no aliases or
+# modification of shared source bodies/namespaces are used by any child.
+if mutation in ('initializer','dangling_initializer'):
+ private=root/'case-private-real-project';private.mkdir();copied=[]
+ for row in seed['original_source_correspondence']:
+  before=row['source_ref'];source=Path(before['path']);assert pin(source)==before
+  target=private/row['relative_path'];target.parent.mkdir(parents=True,exist_ok=True)
+  shutil.copyfile(source,target);target.chmod(0o400);after=pin(target)
+  assert after['bytes']==before['bytes']and after['sha256']==before['sha256'];copied.append(after)
+ project=private;refs=copied
+os.environ.update(IPFS_DATASETS_PY_MINIMAL_IMPORTS='1',IPFS_AUTO_INSTALL='false',IPFS_DATASETS_AUTO_INSTALL='0')
+path=A/rel/'original_embedded_observation_owner.py';assert pin(path)['sha256']==expected
+spec=importlib.util.spec_from_file_location('_physical_namespace_owning_owner',path)
+owner=importlib.util.module_from_spec(spec);sys.modules[spec.name]=owner;spec.loader.exec_module(owner)
+namespace=project/'ipfs_datasets_py/logic/backends';info=namespace.lstat();guard=A/rel/'project_import_source_guard.py'
+attempt=root/'no-pregrant-attempt'
+profile=dict(schema=owner.PHYSICAL_PROFILE_SCHEMA,
+ source_root_binding=dict(physical_root=str(project),canonical_root=str(owner.R)),source_descriptors=refs,
+ normal_namespace_profiles=[dict(fullname=owner.PHYSICAL_NAMESPACE,path=str(namespace),device=info.st_dev,inode=info.st_ino,initializer_absent=True)])
+c=dict(schema=owner.PHYSICAL_CLI_SCHEMA,runtime_root=str(A),cwd=str(owner.WORKSPACE),
+ attempt_directory=str(attempt),temporary_directory=str(attempt/'temporary'),
+ project_import_plan=dict(accelerate_root=str(A),datasets_root=str(project),publication_root=str(project),source_pins=refs),
+ pre_body_guard=pin(guard),result_path=str(attempt/'exports/native-cli-driver-result.json'),
+ source_sha256={**{row['path']:row['sha256']for row in refs},str(guard):pin(guard)['sha256']},
+ observation_binding={},import_head_capsule_Git={},physical_source_profile=profile)
+context=dict(phase='parent-resource',request=dict(path='/fictional/request',bytes=1,sha256='0'*64),
+ plan=dict(path='/fictional/plan',bytes=1,sha256='1'*64),profile_sha256=owner._physical_profile_sha(profile),
+ source_root_binding=profile['source_root_binding'],guard=pin(guard),identity=owner._parent_capacity_process_identity(os.getpid()))
+def forbidden(*args,**kwargs):raise AssertionError('namespace controls cannot enter Source/Native/disk owners')
+owner.load_source_lease=forbidden;owner._open_original_scheduler=forbidden;owner.write_json=forbidden
+state=owner._physical_guard_install(c,context);finder=state['importer']
+assert type(finder)is state['module'].GuardedProjectImports and sys.meta_path[0]is finder
+for name,relative in (('ipfs_datasets_py','ipfs_datasets_py/__init__.py'),('ipfs_datasets_py.logic','ipfs_datasets_py/logic/__init__.py')):
+ module=sys.modules[name];source=project/relative
+ assert module.__file__==str(source)and module.__spec__.origin==str(source)
+ assert list(module.__path__)==[str(source.parent)]
+ row=finder.project_origins[name]
+ assert row['execution_profile']=='compiled_exact_authenticated_source_bytes'
+ assert row['sha256']==pin(source)['sha256']
+assert owner.PHYSICAL_NAMESPACE not in finder.project_origins
+row=state['profile']['normal_namespace_profiles'][0];path_arg=None
+try:
+ if mutation=='initializer':(namespace/'__init__.py').write_bytes(b'raise AssertionError("injected initializer must not execute")\n')
+ elif mutation=='dangling_initializer':(namespace/'__init__.py').symlink_to(namespace/'missing-namespace.py')
+ elif mutation=='wrong_inode':row['inode']+=1
+ elif mutation=='wrong_device':row['device']+=1
+ elif mutation=='extra_search_location':
+  extra=root/'second-namespace/ipfs_datasets_py/logic/backends';extra.mkdir(parents=True)
+  path_arg=[str(namespace.parent),str(extra.parent)]
+ elif mutation=='loaded_source_namespace':
+  actual_namespace=importlib.import_module(owner.PHYSICAL_NAMESPACE)
+  assert actual_namespace.__file__ is None
+  actual_namespace.__file__=str(namespace/'process.py')
+ if mutation=='none':
+  spec,observed=owner._physical_namespace(state)
+  assert spec.origin is None and spec.loader is None
+  assert observed['initializer_absent']is True and observed['module_loaded']is False
+ else:
+  try:owner._physical_namespace(state,path=path_arg)
+  except RuntimeError:pass
+  else:raise AssertionError('namespace fault accepted: '+mutation)
+ assert owner.PHYSICAL_NAMESPACE not in finder.project_origins
+ assert not attempt.exists()
+finally:
+ if mutation in ('initializer','dangling_initializer'):(namespace/'__init__.py').unlink(missing_ok=True)
+ assert not os.path.lexists(namespace/'__init__.py')
+for ref in seed['source_descriptors']:assert pin(Path(ref['path']))==ref
+print(json.dumps(dict(status='PASS',mutation=mutation,real_guarded_parents=True,
+ namespace_compilation_credit=False,pregrant_outputs_created=False,Source_or_Native_entered=False)))
+'''
