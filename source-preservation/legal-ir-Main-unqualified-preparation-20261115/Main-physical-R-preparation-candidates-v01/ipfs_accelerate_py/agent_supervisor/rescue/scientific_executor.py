@@ -1,0 +1,5589 @@
+"""Finite, source-bound service around the existing original native owner.
+
+Only closed, genuine idle observations may poll. Unknown or failed cycles leave
+a persistent hold and exit 78; restarting this service never retries them.
+The original owner retains all compute, storage and task execution authority.
+"""
+from __future__ import annotations
+
+import argparse
+import fcntl
+import hashlib
+import json
+import os
+from pathlib import Path
+import signal
+import stat
+import subprocess
+import sys
+import threading
+import time
+import uuid
+
+CONFIG_SCHEMA = 'agent-supervisor/scientific-executor-service@1'
+TEMPLATE_SCHEMA = 'agent-supervisor/scientific-executor-cycle-template@1'
+CONFIG_KEYS = frozenset({'schema', 'profile_path', 'catalogue', 'idle_template_ref',
+    'execution_templates', 'poll_seconds', 'max_cycles', 'max_proof_bytes'})
+CATALOGUE_KEYS = frozenset({'database_path', 'population_path', 'board_id',
+    'board_namespace', 'plan_root_cid', 'repository_tree_id', 'population_sha256',
+    'max_age_seconds', 'timeout_seconds'})
+TEMPLATE_KEYS = frozenset({'schema', 'kind', 'seed_root', 'request_ref', 'plan_ref', 'links'})
+HOLD_EXIT = 78
+QUIET_STATUSES = frozenset({'blocked', 'completed', 'complete', 'done', 'skipped'})
+RECOVERY_SCHEMA = 'agent-supervisor/scientific-known-nonstarted-recovery@1'
+RECOVERY_SHA_ENV = 'IPFS_SCIENTIFIC_KNOWN_NONSTARTED_RECOVERY_SHA256'
+RECOVERY_KEYS = frozenset({'schema', 'profile_ref', 'prior_profile_ref', 'prior_profile_snapshot_ref',
+    'activation_capture_ref', 'activation_plan_ref', 'negative_audit_ref', 'memory_correction_ref',
+    'source_commitment_ref', 'hold_ref', 'intent_ref', 'request_ref', 'owner_stdout_ref',
+    'failed_cycle_root', 'scheduler_snapshot_ref', 'max_cycles', 'authorization', 'recorded_at', 'manager_before'})
+RECOVERY_ARCHIVE_FIELDS = ('prior_profile_snapshot_ref', 'activation_capture_ref', 'activation_plan_ref',
+    'negative_audit_ref', 'memory_correction_ref', 'source_commitment_ref', 'scheduler_snapshot_ref')
+
+
+CLOSED_IDLE_SCHEMA = 'agent-supervisor/scientific-known-closed-idle-recovery@1'
+CLOSED_IDLE_SHA_ENV = 'IPFS_SCIENTIFIC_KNOWN_CLOSED_IDLE_RECOVERY_SHA256'
+CLOSED_IDLE_KEYS = frozenset({'schema', 'recovery_kind', 'profile_ref', 'prior_profile_ref',
+    'prior_profile_snapshot_ref', 'prior_authorization_ref', 'prior_ack_ref',
+    'prior_administrative_capture_ref', 'negative_audit_ref', 'source_commitment_ref',
+    'scheduler_snapshot_ref', 'current_native_ref', 'global_hold_ref', 'cycle_hold_ref',
+    'cycle_proof_ref', 'max_cycles', 'authorization', 'recorded_at', 'manager_before'})
+CLOSED_IDLE_ARCHIVE_FIELDS = ('prior_profile_snapshot_ref', 'prior_administrative_capture_ref',
+    'negative_audit_ref', 'source_commitment_ref', 'scheduler_snapshot_ref', 'current_native_ref')
+
+
+GENERATION_SCHEMA = 'agent-supervisor/scientific-bounded-generation-handover@1'
+GENERATION_SHA_ENV = 'IPFS_SCIENTIFIC_BOUNDED_GENERATION_SHA256'
+GENERATION_KEYS = frozenset({'schema','authorization','profile_ref','prior_profile_ref','prior_profile_snapshot_ref',
+    'prior_config_ref','prior_config_snapshot_ref','retained_census_ref','prior_global_hold_ref','prior_cycle_hold_ref',
+    'prior_intent_ref','prior_last_closed_cycle_ref','prior_main_identity','source_capsule_ref',
+    'cache_initialization_request_ref','cache_initialization_terminal_ref','scheduler_snapshot_ref',
+    'retained_generations','generation_number','max_generations','global_max_bytes','spent_cycle_count',
+    'recorded_at','manager_before'})
+ORIGINAL_NAMED_ROOTS = (Path('/home/barberb/lift_coding/external/ipfs_datasets/workspace/test-logs'),
+    Path('/home/barberb/lift_coding/external/ipfs_datasets/workspace/todo-queues'),
+    Path('/home/barberb/lift_coding/external/ipfs_datasets/docs/implementation/reports/evidence'), Path('/tmp/pytest-of-barberb'))
+ORIGINAL_RESOURCE_LEDGER = ORIGINAL_NAMED_ROOTS[0]/'federal-corpus-audits/owned-daemon-resource-control/disk-reservations.json'
+GLOBAL_RETAINED_BYTES = 220000000000
+# Original native storage controls the entire attempt. The producer writes at
+# most twelve bounded JSON/stdout artifacts outside that attempt. The v3 actor
+# enforces <=256 created file paths and <=32 process constructors, while its
+# original parent enforces <=276 total attempt files. Twelve producer files
+# outside that attempt complete the fixed288-path allowance.
+REUSE_CYCLE_RESERVE_BYTES = 384 * 1024**2 + 12 * 4 * 1024**2
+REUSE_CYCLE_RESERVE_FILES = 256 + 32
+
+
+class ExecutorHold(ValueError):
+    """A cycle cannot be replayed or silently discarded."""
+
+
+ADMISSION_SCHEMA = 'agent-supervisor/scientific-source-admission-recovery@1'
+ADMISSION_ACK_SCHEMA = 'agent-supervisor/scientific-source-admission-reconciliation@1'
+ADMISSION_SHA_ENV = 'IPFS_SCIENTIFIC_SOURCE_ADMISSION_RECOVERY_SHA256'
+MAX_CONSECUTIVE_SOURCE_ADMISSION_DEFERRALS = 3
+ADMISSION_KEYS = frozenset({'schema','authorization','profile_ref','prior_profile_ref','prior_profile_snapshot_ref',
+    'prior_config_snapshot_ref','prior_main_identity','prior_generation_authorization_ref','prior_generation_ack_ref',
+    'prior_health_receipt_ref','global_hold_ref','cycle_hold_ref','failed_intent_ref','failed_request_ref','failed_stdout_ref',
+    'negative_audit_ref','scheduler_snapshot_ref','current_native_ref','source_commitment_ref','spent_cycle_count',
+    'generation_number','max_generations','max_cycles','max_proof_bytes','recorded_at','manager_before'})
+
+
+class SourceAdmissionDeferred(ExecutorHold):
+    """An immutable negative; this carries no health or execution credit."""
+
+
+class ResourceCapacityDeferred(ExecutorHold):
+    """A closed native-ancestry admission negative, never a new grant."""
+
+
+def resource_capacity_terminal(terminal, request_ref, request, cycle_root, *, captured_owner):
+    """Accept only current original storage admission before its first record.
+
+    Root and phase native grants existed in this family. Their source-bound
+    original owner must have released and observed them absent; the CLI's
+    zero-native pregrant classifier is deliberately not reused here.
+    """
+    h=health_owner();root=Path(cycle_root)
+    terminal_fields={
+        'absolute_resource_operation_deadline_closed',
+        'child_launch_attempted',
+        'child_reaped',
+        'child_returncode',
+        'cleanup_errors',
+        'completed',
+        'control_effects',
+        'database_preimage_before_grants',
+        'elapsed_seconds',
+        'error',
+        'error_type',
+        'external_file_growth_enforcement',
+        'original_native_compute_closed',
+        'owner_birth',
+        'owner_boot_id',
+        'owner_pid',
+        'partial_or_failed_control_must_be_reconciled',
+        'received_signals',
+        'request_sha256',
+        'reservation',
+        'resource_capacity_observation',
+        'resource_deadline_profile',
+        'resource_profile',
+        'schema',
+        'source_READ_closed',
+        'storage_admission_capacity_refusal',
+        'storage_status',
+        'task_completion_authority_granted_by_resource_owner',
+    }
+    need(type(terminal)is dict and set(terminal)==terminal_fields
+         and terminal.get('schema')=='legal-ir-original-native-control-terminal/v1'
+         and terminal.get('request_sha256')==request_ref['sha256'] and terminal.get('completed')is False
+         and terminal.get('error_type')=='DaemonResourceError'
+         and terminal.get('error')=='storage reservation capacity exceeded'
+         and terminal.get('control_effects')=='not_started' and terminal.get('storage_status')=='not_entered'
+         and terminal.get('child_launch_attempted')is False and terminal.get('child_reaped')is False
+         and 'child_returncode'in terminal and terminal['child_returncode']is None
+         and terminal.get('source_READ_closed')is True
+         and terminal.get('original_native_compute_closed')is True
+         and terminal.get('absolute_resource_operation_deadline_closed')is True
+         and terminal.get('task_completion_authority_granted_by_resource_owner')is False
+         and terminal.get('resource_profile')=='original_orchestration_parented_disk_sampled_birth_bound_descendants'
+         and terminal.get('external_file_growth_enforcement')=='polled_size_caps_and_original_conservative_precharge_not_sandbox'
+         and terminal.get('partial_or_failed_control_must_be_reconciled')is True
+         and terminal.get('cleanup_errors')==[] and terminal.get('received_signals')==[],
+         'resource_capacity_terminal_not_exact_closed_negative')
+    deadline=terminal['resource_deadline_profile']
+    need(type(deadline)is dict and set(deadline)=={'work_seconds','stopped_cleanup_reserve_seconds',
+         'native_lifetime_seconds','absolute_clock_shared_by_all_resource_operations'}
+         and all(type(deadline[key])is int and deadline[key]==value for key,value in
+             dict(work_seconds=240,stopped_cleanup_reserve_seconds=60,native_lifetime_seconds=300).items())
+         and deadline['absolute_clock_shared_by_all_resource_operations']is True,
+         'resource_capacity_original_deadline_profile_changed')
+    need(not any(key in terminal for key in ('execution_request','process_spawn_receipts',
+         'sampled_process_custody_final','sampled_process_custody','external_precharge',
+         'external_before','external_after','external_output_parent_identities','parent_capacity_handoff',
+         'database_preimage_observed','database_postimage','allowed_subprocess_events',
+         'prechild_failure_receipt','prechild_storage_close_method')),
+         'resource_capacity_terminal_has_later_storage_or_process_effects')
+    need(request.get('schema')=='legal-ir-original-native-control-request/v1'
+         and request.get('purpose')=='native_control_metadata'
+         and request.get('request_id')=='scientific-executor:'+root.name
+         and request_ref['path']==str(root/'request.json')
+         and all(type(request.get(k))is int and request[k]==v for k,v in
+             dict(cpu_slots=1,memory_mb=1536,child_process_slots=8,storage_bytes=384*1024**2,timeout_seconds=300).items())
+         and request.get('resource_ledger')==str(ORIGINAL_RESOURCE_LEDGER),
+         'resource_capacity_original_native_envelope_changed')
+    state=terminal.get('reservation')
+    need(type(state)is dict and set(state)=={'schema','reservation_id','scheduler_lane','workload',
+         'status','ledger_path','roots','storage_limit_bytes','record','resource_lease','cleanup_error',
+         'enforcement','profile','last_local_usage','authority','external_file_growth_monitored'}
+         and state['schema']=='daemon-resource-reservations-v1'
+         and state['profile']=='parented-phase-sampled/v1'
+         and state['scheduler_lane']=='orchestration' and state['workload']=='canonical_parented_phase'
+         and state['authority']=='one_actual_child_of_existing_phase_no_additional_host_root'
+         and state['enforcement']=='cooperative_admission_and_polled_usage_not_kernel_quota'
+         and state['external_file_growth_monitored']is False and state['last_local_usage']is None
+         and state.get('status')=='not_entered'
+         and state.get('record')is None and state.get('resource_lease')is None
+         and state.get('cleanup_error')is None and state.get('ledger_path')==request['resource_ledger']
+         and type(state['storage_limit_bytes'])is int and state['storage_limit_bytes']==GLOBAL_RETAINED_BYTES
+         and type(terminal.get('elapsed_seconds'))in(int,float)
+         and 0<=terminal['elapsed_seconds']<request['timeout_seconds'],
+         'resource_capacity_record_absence_or_closed_deadline_unproved')
+    preimage=terminal.get('database_preimage_before_grants');expected=request.get('database_preimage')
+    need(type(preimage)is dict and set(preimage)=={'path','bytes','sha256'}
+         and type(expected)is dict and type(preimage['bytes'])is int and type(expected.get('bytes'))is int
+         and preimage==expected,'resource_capacity_database_preimage_differs')
+    observation=terminal.get('resource_capacity_observation')
+    numbers=('observed_apparent_bytes','outstanding_full_reservations_bytes',
+        'additional_requested_bytes','charged_bytes','limit_bytes','minimum_filesystem_free_bytes',
+        'storage_capacity_deficit_bytes','filesystem_free_deficit_bytes')
+    need(type(observation)is dict and set(observation)==set(numbers)|{
+         'schema','scope','storage_capacity_exceeded','filesystem_free_insufficient'}
+         and observation['schema']=='daemon-resource-capacity-observation/v1'
+         and observation['scope']=='named_roots_only_apparent_bytes'
+         and all(h._integer(observation[key],0)for key in numbers),
+         'resource_capacity_observation_shape_or_numeric_types')
+    observed,outstanding,additional=(observation[key]for key in numbers[:3])
+    charged,limit,free=(observation[key]for key in numbers[3:6])
+    need(additional==request['storage_bytes'] and limit==GLOBAL_RETAINED_BYTES
+         and charged==observed+outstanding+additional
+         and observation['storage_capacity_exceeded']is(charged>limit)
+         and observation['filesystem_free_insufficient']is(free<outstanding+additional)
+         and (observation['storage_capacity_exceeded']or observation['filesystem_free_insufficient'])
+         and observation['storage_capacity_deficit_bytes']==max(0,charged-limit)
+         and observation['filesystem_free_deficit_bytes']==max(0,outstanding+additional-free),
+         'resource_capacity_observation_arithmetic_or_deficit')
+    witness=terminal.get('storage_admission_capacity_refusal')
+    need(type(witness)is dict and set(witness)=={'schema','stage','request_sha256','owner_pid',
+         'owner_birth','owner_boot_id','orchestration_lease_ids','root','phase','native_ancestry_closed',
+         'storage_record_created','storage_native_lease_created','child_launch_attempted',
+         'external_charge_created','task_completion_authority'}
+         and witness['schema']=='original-orchestration-storage-admission-refusal/v1'
+         and witness['stage']=='parented_storage_open_before_record'
+         and witness['request_sha256']==request_ref['sha256']
+         and type(witness['owner_pid'])is int
+         and witness['native_ancestry_closed']is True
+         and all(witness[key]is False for key in ('storage_record_created','storage_native_lease_created',
+             'child_launch_attempted','external_charge_created','task_completion_authority')),
+         'resource_capacity_native_family_witness_missing_or_unknown')
+    row_keys={'lease_id','parent_lease_id','owner_pid','lane','cpu_slots','memory_mb',
+        'child_process_slots','released'}
+    for item in (witness['root'],witness['phase']):
+        need(type(item)is dict and set(item)==row_keys
+             and type(item['lease_id'])is str and len(item['lease_id'])==32
+             and all(character in '0123456789abcdef'for character in item['lease_id'])
+             and type(item['owner_pid'])is int and item['owner_pid']==terminal.get('owner_pid')
+             and item['lane']=='orchestration' and item['released']is True
+             and all(type(item[key])is int and item[key]==value for key,value in
+                 dict(cpu_slots=1,memory_mb=1536,child_process_slots=8).items()),
+             'resource_capacity_original_orchestration_grant_shape')
+    first,second=witness['root'],witness['phase']
+    need(first['parent_lease_id']is None and second['parent_lease_id']==first['lease_id']
+         and first['lease_id']!=second['lease_id']
+         and type(witness['orchestration_lease_ids'])is list
+         and witness['orchestration_lease_ids']==[first['lease_id'],second['lease_id']],
+         'resource_capacity_original_root_phase_join')
+    boot=Path('/proc/sys/kernel/random/boot_id').read_text().strip()
+    need(h._integer(terminal.get('owner_pid'),2)
+         and type(terminal.get('owner_birth'))is str
+         and witness['owner_pid']==terminal['owner_pid']
+         and witness['owner_birth']==terminal['owner_birth']
+         and witness['owner_boot_id']==terminal.get('owner_boot_id')==boot
+         and captured_owner.get('pid')==terminal['owner_pid']
+         and captured_owner.get('boot_id')==boot and h._integer(captured_owner.get('birth_ticks'),1)
+         and terminal['owner_birth']==str(captured_owner['birth_ticks'])
+         and h._definitely_dead_identity(captured_owner,dict(boot_id=boot)),
+         'resource_capacity_original_owner_not_joined_or_still_live')
+    attempt=h._path(request['attempt_directory'])
+    need(root in attempt.parents and attempt.is_dir()and not attempt.is_symlink()
+         and attempt.lstat().st_uid==os.geteuid()and stat.S_IMODE(attempt.lstat().st_mode)==0o700
+         and not any(attempt.iterdir())
+         and not any(os.path.lexists(root/name)for name in
+             ('terminal.json','cycle-proof.json','closed.json','native-diagnostic.json')),
+         'resource_capacity_attempt_has_positive_or_unknown_effects')
+    return terminal
+
+
+def resource_capacity_deferral(profile, request_ref, request, root, kind, process, cycle_fields, returncode):
+    h=health_owner()
+    need(kind=='genuine_scoped_idle'and type(returncode)is int and returncode!=0
+         and type(process)is subprocess.Popen and type(process.returncode)is int
+         and process.returncode==returncode and process.poll()==returncode
+         and process.pid==cycle_fields['owner_observation']['pid'],
+         'resource_capacity_deferral_requires_original_reaped_idle_owner')
+    terminal=original_terminal(h._raw(root/'owner.stdout'),request_ref)
+    resource_capacity_terminal(terminal,request_ref,request,root,captured_owner=cycle_fields['owner_observation'])
+    need(cycle_fields['owner_observation']['argv']==[profile['unit']['argv'][0],'-B',profile['owner_source']['path'],
+         '--request',request_ref['path'],'--expected-request-sha256',request_ref['sha256']]
+         and request['source_sha256'].get(profile['owner_source']['path'])==profile['owner_source']['sha256']
+         and request['source_sha256'].get(profile['driver_source']['path'])==profile['driver_source']['sha256'],
+         'resource_capacity_original_owner_source_argv')
+    negative=put(root/'capacity-terminal-negative.json',terminal)
+    return put(root/'capacity-deferred.json',dict(schema='agent-supervisor/scientific-resource-capacity-deferred@1',
+        request_ref=request_ref,terminal_ref=negative,original_wait_returncode=returncode,
+        sequence=cycle_fields['sequence'],captured_owner=cycle_fields['owner_observation'],
+        process=cycle_fields['process'],recorded_at=time.time(),health_sequence_advanced=False,
+        health_or_task_completion_authority=False,automatic_retry_of_original_request=False))
+
+
+def source_admission_PID_absent(pid):
+    """Only an actual missing proc entry means absent; unreadable is UNKNOWN."""
+    try: (Path('/proc')/str(pid)).lstat()
+    except (FileNotFoundError,ProcessLookupError):return True
+    except OSError as error:raise ExecutorHold('source_admission_PID_observation_unknown')from error
+    return False
+
+
+def source_admission_terminal(terminal, request_ref, request, cycle_root, *, captured_owner=None):
+    """Recognize only the original closed pre-resource source-admission timeout.
+
+    A historical terminal without owner_birth requires literal PID absence on
+    the same boot. A newly running caller can additionally join its captured
+    live original-owner identity; this never fabricates a missing terminal field.
+    """
+    h=health_owner();root=Path(cycle_root)
+    need(type(terminal)is dict and terminal.get('schema')=='legal-ir-original-native-control-terminal/v1'
+         and terminal.get('request_sha256')==request_ref['sha256'] and terminal.get('completed')is False
+         and terminal.get('error_type')=='SourceLeaseTimeout'
+         and terminal.get('error')=='timed out waiting for admission source lease'
+         and terminal.get('control_effects')=='not_started' and terminal.get('storage_status')=='not_requested'
+         and terminal.get('child_launch_attempted')is False and terminal.get('child_reaped')is False
+         and terminal.get('child_returncode')is None and terminal.get('source_READ_closed')is True
+         and terminal.get('original_native_compute_closed')is True
+         and terminal.get('absolute_resource_operation_deadline_closed')is True
+         and terminal.get('task_completion_authority_granted_by_resource_owner')is False
+         and terminal.get('cleanup_errors')==[] and terminal.get('received_signals')==[],
+         'source_admission_terminal_not_exact_closed_negative')
+    need(not any(key in terminal for key in ('reservation','execution_request','process_spawn_receipts','sampled_process_custody_final','sampled_process_custody','external_precharge','external_before','external_after','external_output_parent_identities','parent_capacity_handoff','database_preimage_before_grants','database_preimage_observed','database_postimage','allowed_subprocess_events')),
+         'source_admission_terminal_has_resource_or_process_effects')
+    need(request.get('schema')=='legal-ir-original-native-control-request/v1'and request.get('purpose')=='native_control_metadata'
+         and request.get('request_id')=='scientific-executor:'+root.name
+         and request_ref['path']==str(root/'request.json')
+         and h._integer(terminal.get('owner_pid'),2) and h._text(terminal.get('owner_boot_id')),
+         'source_admission_request_or_owner_identity')
+    need(all(type(request.get(k))is int and request[k]==v for k,v in dict(cpu_slots=1,memory_mb=1536,child_process_slots=8,storage_bytes=384*1024**2,timeout_seconds=300).items())
+         and request.get('resource_ledger')==str(ORIGINAL_RESOURCE_LEDGER),'source_admission_original_native_envelope_changed')
+    boot=Path('/proc/sys/kernel/random/boot_id').read_text().strip()
+    need(terminal['owner_boot_id']==boot,'source_admission_owner_boot_changed')
+    attempt=h._path(request['attempt_directory'])
+    need(root in attempt.parents and (not os.path.lexists(attempt)or
+         stat.S_ISDIR(attempt.lstat().st_mode)and not attempt.is_symlink()and attempt.lstat().st_uid==os.geteuid()
+         and stat.S_IMODE(attempt.lstat().st_mode)==0o700 and not any(attempt.iterdir())),
+         'source_admission_attempt_not_absent_or_empty')
+    need(not any((root/name).exists()for name in ('terminal.json','cycle-proof.json','closed.json','native-diagnostic.json')),
+         'source_admission_has_positive_or_native_evidence')
+    if captured_owner is None:
+        # No birth is invented or inferred for the actual historical terminal.
+        need(source_admission_PID_absent(terminal['owner_pid']),'source_admission_birthless_owner_PID_not_absent')
+    else:
+        need(captured_owner.get('pid')==terminal['owner_pid']and captured_owner.get('boot_id')==boot
+             and h._integer(captured_owner.get('birth_ticks'),1)
+             and h._definitely_dead_identity(captured_owner,dict(boot_id=boot)),
+             'source_admission_captured_owner_not_joined_or_still_live')
+        if 'owner_birth'in terminal:
+            need(terminal['owner_birth']==str(captured_owner['birth_ticks']),'source_admission_original_birth_differs')
+    return terminal
+
+
+def source_admission_deferral(profile, request_ref, request, root, kind, process, cycle_fields, returncode):
+    """Retain one proved nonstarted negative after the genuine original wait."""
+    h=health_owner()
+    need(kind=='genuine_scoped_idle'and type(returncode)is int and returncode!=0
+         and type(process)is subprocess.Popen and process.returncode==returncode and process.poll()is not None,
+         'source_admission_deferral_requires_original_reaped_idle_owner')
+    terminal=original_terminal(h._raw(root/'owner.stdout'),request_ref)
+    source_admission_terminal(terminal,request_ref,request,root,captured_owner=cycle_fields['owner_observation'])
+    need(cycle_fields['owner_observation']['argv']==[profile['unit']['argv'][0],'-B',profile['owner_source']['path'],
+         '--request',request_ref['path'],'--expected-request-sha256',request_ref['sha256']]
+         and request['source_sha256'].get(profile['owner_source']['path'])==profile['owner_source']['sha256']
+         and request['source_sha256'].get(profile['driver_source']['path'])==profile['driver_source']['sha256'],
+         'source_admission_original_owner_source_argv')
+    negative=put(root/'admission-terminal-negative.json',terminal)
+    return put(root/'admission-deferred.json',dict(schema='agent-supervisor/scientific-source-admission-deferred@1',
+        request_ref=request_ref,terminal_ref=negative,original_wait_returncode=returncode,
+        sequence=cycle_fields['sequence'],captured_owner=cycle_fields['owner_observation'],
+        process=cycle_fields['process'],recorded_at=time.time(),health_sequence_advanced=False,
+        health_or_task_completion_authority=False,automatic_retry_of_original_request=False))
+
+
+
+
+def source_admission_unit_projection(argv, entrypoint):
+    """Only producer/config pointers and the one explicit recovery mode may move."""
+    need(type(argv)is list and argv.count(entrypoint)==1 and argv.count('--config')==argv.count('--config-sha256')==1,'source_admission_unit_argv_shape')
+    result=list(argv);result[result.index(entrypoint)]='<producer>'
+    for flag in ('--config','--config-sha256'):result[result.index(flag)+1]='<config>'
+    flags=[flag for flag in ('--bounded-generation-handover','--known-source-admission-recovery')if flag in result]
+    need(len(flags)==1 and result.count(flags[0])==1,'source_admission_unit_recovery_mode')
+    index=result.index(flags[0]);need(index+1<len(result),'source_admission_unit_recovery_path');del result[index:index+2]
+    return result
+
+
+def source_admission_source_inventory(reference, profile):
+    """Reuse bounded committed-inventory joins for producer-only source repair.
+
+    Native owner/driver/cache may retain the already-qualified H root. Every
+    selected Python source under the new producer root, including real package
+    initializers, must be inventory-bound; no SDK cache generation is changed.
+    """
+    h=health_owner();source=h._document(reference);producer=Path(profile['main_entrypoint']['path']).parents[3]
+    need(source.get('schema')=='legal-ir-scientific-source-commitment/v1'and source.get('runtime_activation_or_task_authority')is False
+         and source.get('source_root')==str(producer),'source_admission_source_commitment')
+    invref=source['source_inventory'];need(any(root in Path(invref['path']).parents for root in ORIGINAL_NAMED_ROOTS),'source_admission_inventory_not_durable')
+    inventory=h._document(invref);rows=inventory.get('files')
+    need(inventory.get('schema')=='legal-ir-scientific-source-inventory/v1'
+         and all(inventory.get(k)==source.get(k)for k in ('source_root','source_commit','source_tree'))
+         and all(type(source.get(k))is str and len(source[k])==40 and set(source[k])<=set('0123456789abcdef')for k in ('source_commit','source_tree'))
+         and type(rows)is list and 0<len(rows)<=4096 and inventory.get('file_count')==len(rows)
+         and all(type(row)is dict and type(row.get('path'))is str for row in rows),'source_admission_inventory_shape')
+    indexed={row['path']:row for row in rows};under=[pin for pin in profile['source_descriptors']if Path(pin['path']).is_relative_to(producer)];selected=[pin for pin in under if Path(pin['path']).suffix=='.py']
+    need(selected==under,'source_admission_producer_or_parent_source_inventory_changed')
+    parents=[producer/'ipfs_accelerate_py/__init__.py',producer/'ipfs_accelerate_py/agent_supervisor/__init__.py',producer/'ipfs_accelerate_py/agent_supervisor/rescue/__init__.py']
+    need(len(indexed)==len(rows)and len(selected)==4 and profile['main_entrypoint']in selected
+         and {pin['path']for pin in selected}=={profile['main_entrypoint']['path'],*(str(path)for path in parents)}
+         and all(all(indexed.get(pin['path'],{}).get(k)==pin[k]for k in ('path','bytes','sha256'))for pin in selected),
+         'source_admission_producer_or_parent_source_inventory_changed')
+    return inventory
+
+
+# SOURCE PROPOSAL ONLY. Added to the existing scientific executor owner.
+CATALOGUE_RACE_SCHEMA = 'agent-supervisor/scientific-closed-catalogue-race-recovery@1'
+CATALOGUE_RACE_ACK_SCHEMA = 'agent-supervisor/scientific-closed-catalogue-race-reconciliation@1'
+CATALOGUE_RACE_SHA_ENV = 'IPFS_SCIENTIFIC_CLOSED_CATALOGUE_RACE_RECOVERY_SHA256'
+CATALOGUE_RACE_NEGATIVE_SCHEMA = 'agent-supervisor/scientific-closed-catalogue-race-deferred@1'
+MAX_CONSECUTIVE_CATALOGUE_RACE_DEFERRALS = 3
+CATALOGUE_RACE_REJECTIONS = frozenset({'embedded_idle_catalogue_cursor_changed',
+    'embedded_idle_catalogue_tasks_changed'})
+CATALOGUE_RACE_KEYS = frozenset({'schema','authorization','profile_ref','prior_profile_ref',
+    'prior_profile_snapshot_ref','prior_config_snapshot_ref','prior_main_identity',
+    'prior_generation_authorization_ref','prior_generation_ack_ref',
+    'prior_source_admission_authorization_ref','prior_source_admission_ack_ref',
+    'prior_health_receipt_ref','global_hold_ref','failed_cycle_hold_ref','failed_cycle_proof_ref',
+    'local_cycle_census_refs','negative_audit_ref','external_progress_ref',
+    'population_boundary_ref','population_boundary_independent_review_ref','current_native_ref','source_commitment_ref','scheduler_snapshot_ref',
+    'native_owner_source_commitment_ref','scheduler_policy_transition_ref',
+    'spent_cycle_count','generation_number','max_generations','max_cycles','max_proof_bytes',
+    'recorded_at','manager_before'})
+
+
+class CatalogueRaceDeferred(ExecutorHold):
+    """One genuinely closed negative observation; never a health publication."""
+
+
+def _catalogue_race_task_rows(rows, scope, reason):
+    h=health_owner()
+    need(type(rows)is list and len(rows)==len(scope) and len(scope)==len(set(scope)),reason)
+    result={}
+    for row in rows:
+        h._keys(row,{'task_cid','status','revision'},reason)
+        need(row['task_cid']in scope and row['task_cid']not in result
+             and row['status']in QUIET_STATUSES and h._integer(row['revision'],1),reason)
+        result[row['task_cid']]=dict(row)
+    need(set(result)==set(scope),reason)
+    return result
+
+
+def _catalogue_race_observed_dependencies_quiet(native,profile):
+    """Observe selected-parser dependency statuses without revalidating its DAG.
+
+    Legacy proofs have no boundary observation. The explicit envelope mode must
+    retain the established generic diagnostic scope and deny every nonquiet or
+    unknown observed dependency. No child status satisfies a primary task.
+    """
+    if 'population_schema'not in native and 'dependency_boundary'not in native:
+        return
+    h=health_owner();graph=native.get('dependency_boundary')
+    need(native.get('population_schema')=='legal-ir-native-catalogue-boundary/v1'
+         and type(graph)is dict and graph.get('schema')=='native-observational-dependency-graph/v1'
+         and all(graph.get(key)is False for key in ('prerequisite_body_semantics_qualified',
+             'completion_authority','dispatch_authority','observed_task_completion_established')),
+         'catalogue_race_observed_dependency_scope_or_authority')
+    reference=graph.get('population_envelope_ref')
+    h._keys(reference,{'path','bytes','sha256'},'catalogue_race_observed_population_descriptor')
+    need(h._text(reference['path'])and h._integer(reference['bytes'],1,4*1024*1024)
+         and reference['sha256']==profile['catalogue']['population_sha256'],
+         'catalogue_race_observed_population_binding')
+    rows=graph.get('observed_tasks');scope=profile['task_scope']
+    need(type(rows)is list and h._integer(graph.get('observed_task_count'),0,1000-len(scope))
+         and len(rows)==graph['observed_task_count']
+         and graph.get('node_count')==len(scope)+len(rows)
+         and type(graph.get('node_count'))is int,
+         'catalogue_race_observed_dependency_population')
+    seen=set()
+    for row in rows:
+        need(type(row)is dict and h._text(row.get('task_cid'))and row['task_cid']not in scope
+             and row['task_cid']not in seen and row.get('status')in QUIET_STATUSES
+             and h._integer(row.get('revision'),1),
+             'catalogue_race_observed_dependency_not_quiet')
+        seen.add(row['task_cid'])
+
+
+def closed_catalogue_race_rejection(proof_ref, profile, identity):
+    """Recheck the unmodified original proof, accepting only its exact rejection.
+
+    The original verifier still refuses this proof. Its exception is evidence
+    about a closed negative, not an alternate successful health-verifier mode.
+    Recorded clocks are used only for historical original-cycle verification.
+    A caller that polls again must independently require fresh current native
+    data and the unchanged current Main before writing a negative witness.
+    """
+    h=health_owner();proof=h._document(proof_ref)
+    need(proof.get('kind')=='genuine_scoped_idle','catalogue_race_not_idle')
+    native_value=h._document(proof['native_diagnostic_ref'])
+    native=h._native(native_value,profile,now=proof['finished_at'])
+    try:
+        h._cycle(proof_ref,profile,identity,native,now=proof['finished_at'],
+                 monotonic_ns=proof['finished_monotonic_ns'])
+    except h.ExecutorHealthError as error:
+        reason=str(error)
+        need(reason in CATALOGUE_RACE_REJECTIONS,'catalogue_race_not_exact_verifier_rejection')
+    else:
+        raise ExecutorHold('catalogue_race_original_proof_was_valid')
+    # Everything preceding the original cursor/tasks predicates was checked by
+    # h._cycle: original owner/request, exact source and import origins, parent
+    # birth/ancestry, original waits, released storage/native and stopped tree.
+    # Check every remaining idle predicate explicitly without rewriting data.
+    result=h._document(proof['result_ref']);request=h._document(proof['request_ref'])
+    terminal=h._document(proof['terminal_ref']);scope=profile['task_scope']
+    need(result.get('schema')=='native-embedded-daemon-observation@1'
+         and result.get('task_scope')==scope
+         and type(result.get('ready_task_count'))is int and result['ready_task_count']==0
+         and result.get('selection_idle_reason')=='no_scoped_ready_tasks'
+         and type(result.get('write_count'))is int and result['write_count']==0
+         and result.get('unchanged')is True and all(result.get(k)is False for k in
+            ('provider_dispatched','attempt_consumed','completion_authority')),
+         'catalogue_race_outcome_not_quiet_readonly')
+    need(terminal.get('absolute_resource_operation_deadline_closed')is True
+         and terminal.get('task_completion_authority_granted_by_resource_owner')is False
+         and terminal.get('database_preimage_before_grants')==request.get('database_preimage')
+         ==terminal.get('database_preimage_observed')==terminal.get('database_postimage'),
+         'catalogue_race_original_read_or_deadline_not_closed')
+    _catalogue_race_observed_dependencies_quiet(native_value,profile)
+    before=_catalogue_race_task_rows(result['catalogue_binding']['task_statuses'],scope,
+        'catalogue_race_embedded_task_rows')
+    selected=[{k:row[k]for k in ('task_cid','status','revision')}for row in native_value['tasks']
+        if row.get('task_cid')in scope]
+    after=_catalogue_race_task_rows(selected,scope,'catalogue_race_closing_task_rows')
+    previous=result['catalogue_binding']['event_cursor'];current=native_value['event_cursor']
+    # A same-cursor state mutation has no observed external event boundary.
+    # Recognizing tasks_changed never grants authority to normalize it.
+    need(h._integer(previous)and h._integer(current)and previous<current,
+         'catalogue_race_no_forward_external_cursor')
+    changed=[]
+    for cid in scope:
+        a,b=before[cid],after[cid]
+        need(b['revision']>=a['revision'],'catalogue_race_revision_regressed')
+        if a!=b:
+            need(b['revision']>a['revision'],'catalogue_race_status_changed_without_revision')
+            changed.append({'task_cid':cid,'before':a,'after':b})
+    return {'schema':'agent-supervisor/closed-catalogue-race-recognition@1',
+        'rejection':reason,'cycle_proof_ref':proof_ref,'from_cursor':previous,'to_cursor':current,
+        'task_changes':changed,'native_diagnostic_ref':proof['native_diagnostic_ref'],
+        'health_or_task_credit':False,'original_proof_still_rejected':True}
+
+
+def catalogue_race_deferral(profile_ref, profile, proof_ref, native, kind, process, stop, *, cycle_handle):
+    h=health_owner()
+    need(kind=='genuine_scoped_idle'and not stop.is_set()and type(process)is subprocess.Popen
+         and type(process.returncode)is int and process.returncode==0 and process.poll()==0,
+         'catalogue_race_requires_actual_reaped_idle_owner')
+    identity=require_main_process(profile_ref,profile)
+    h._native(native,profile)  # Current clock, never the historical clock above.
+    proof=h._document(proof_ref);root=Path(proof_ref['path']).parent
+    fields=h.cycle_start_fields(cycle_handle)
+    need(all(proof.get(key)==value for key,value in fields.items()),
+         'catalogue_race_actual_original_cycle_capability_changed')
+    need(proof_ref['path']==str(root/'cycle-proof.json')
+         and root.parent==Path(profile['proof_root'])
+         and process.pid==proof['owner_observation']['pid']
+         and proof['native_diagnostic_ref']==h.descriptor(root/'native-diagnostic.json')
+         and h._document(proof['native_diagnostic_ref'])==native
+         and not os.path.lexists(root/'closed.json'), 'catalogue_race_actual_original_cycle_join')
+    recognition=closed_catalogue_race_rejection(proof_ref,profile,identity)
+    need(not stop.is_set(),'catalogue_race_interrupted')
+    return put(root/'catalogue-race-deferred.json',dict(
+        schema=CATALOGUE_RACE_NEGATIVE_SCHEMA,recognition=recognition,
+        consuming_main_identity=identity,original_wait_returncode=0,sequence=proof['sequence'],
+        recorded_at=time.time(),health_sequence_advanced=False,
+        health_or_task_completion_authority=False,automatic_retry_of_original_request=False))
+
+
+def _catalogue_race_authored_population_document(reference):
+    """Bound ordinary historical authored DATA, preserving its group-write mode.
+
+    Only the new explicit overlay caller uses this reader, after selecting the
+    exact historical population role. Source/control readers stay unchanged.
+    The descriptor and file stamp must match one bounded stable observation;
+    mutability is never a waiver of the authenticated authored bytes.
+    """
+    h=health_owner();h._keys(reference,{'path','bytes','sha256'},'catalogue_race_authored_descriptor_shape')
+    need(h._integer(reference['bytes'],1,4*1024*1024)
+         and type(reference['sha256'])is str and len(reference['sha256'])==64
+         and set(reference['sha256'])<=set('0123456789abcdef'),'catalogue_race_authored_descriptor_bounds')
+    path=h._path(reference['path'])
+    stamp=lambda info:(info.st_dev,info.st_ino,info.st_mode,info.st_uid,info.st_gid,
+        info.st_nlink,info.st_size,info.st_mtime_ns,info.st_ctime_ns)
+    with os.fdopen(os.open(path,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK),'rb')as stream:
+        first=os.fstat(stream.fileno())
+        need(stat.S_ISREG(first.st_mode)and first.st_nlink==1 and first.st_uid==os.geteuid()
+             and not first.st_mode&0o002 and first.st_size==reference['bytes'],
+             'catalogue_race_authored_DATA_file_unsafe')
+        raw=stream.read(reference['bytes']+1);last=os.fstat(stream.fileno())
+    need(len(raw)==reference['bytes']and stamp(first)==stamp(last)==stamp(path.lstat())
+         and hashlib.sha256(raw).hexdigest()==reference['sha256'],
+         'catalogue_race_authored_DATA_changed')
+    value=h._decode(raw)
+    need(type(value)is dict,'catalogue_race_authored_DATA_not_object')
+    return value
+
+
+def _catalogue_race_population_boundary(reference, review_ref, evidence_ref, prior, profile, oldconfig, config):
+    """Bind the reviewed generic DATA overlay without replacing authored tasks.
+
+    The explicitly source-qualified parser validates the graph on every native
+    read. This administrative join authenticates its selected DATA and the
+    accepted original read from which it was compiled. It adds no satisfied
+    dependencies, completion authority, or historical health credit.
+    """
+    h=health_owner();boundary=h._document(reference);review=h._document(review_ref)
+    envelope_ref=h.descriptor(config['catalogue']['population_path']);envelope=h._document(envelope_ref)
+    h._keys(envelope,{'schema','authored_population_ref','dependency_boundary_ref'},
+        'catalogue_race_population_envelope_shape')
+    h._keys(boundary,{'schema','board_namespace','plan_root_cid','repository_tree_id',
+        'authored_population_sha256','authored_task_count','authored_goal_count',
+        'authored_dependency_count','root_dependencies','observed_tasks','completion_authority'},
+        'catalogue_race_graph_boundary_shape')
+    authored_ref=envelope['authored_population_ref']
+    need(envelope['schema']=='legal-ir-native-catalogue-boundary/v1'
+         and envelope['dependency_boundary_ref']==reference
+         and boundary['schema']=='legal-ir-native-dependency-boundary/v2'
+         and boundary['completion_authority']is False
+         and authored_ref['path']==oldconfig['catalogue']['population_path']
+         and authored_ref['sha256']==prior['catalogue']['population_sha256']
+         and envelope_ref['sha256']==config['catalogue']['population_sha256']
+             ==profile['catalogue']['population_sha256']
+         and boundary['authored_population_sha256']==authored_ref['sha256'],
+         'catalogue_race_population_envelope_binding')
+    authored=_catalogue_race_authored_population_document(authored_ref)
+    tasks=authored['tasks'];scope=profile['task_scope'];selected={row['task_cid']:row for row in tasks}
+    need(len(selected)==len(tasks)==64 and set(selected)==set(scope)==set(prior['task_scope'])
+         and boundary['authored_task_count']==64 and type(boundary['authored_task_count'])is int
+         and boundary['authored_goal_count']==len(authored['goals'])==34
+         and type(boundary['authored_goal_count'])is int
+         and boundary['authored_dependency_count']==sum(len(row.get('dependencies',[]))for row in tasks)==115
+         and type(boundary['authored_dependency_count'])is int
+         and all(boundary[key]==profile['catalogue'][key]for key in
+                 ('board_namespace','plan_root_cid','repository_tree_id')),
+         'catalogue_race_authored_scope_changed')
+    need(review.get('schema')=='legal-ir-proposed-boundary-DATA-independent-result-review/v1'
+         and review.get('result')=='accepted_as_exact_PROPOSED_observational_DATA_only'
+         and review.get('population_envelope')==envelope_ref
+         and review.get('dependency_boundary')==reference
+         and review.get('observation_evidence')==evidence_ref
+         and type(review.get('observer_source'))is dict
+         and all(review['observer_source'].get(key)==catalogue_parser_reference(profile)[key]
+                 for key in ('bytes','sha256'))
+         and review.get('checks',{}).get('actual_source_and_artifact_joins_match_original_closed_read')is True
+         and review['checks'].get('current_status_not_pinned_by_certificate')is True
+         and review.get('limits',{}).get('completion_authority')is False
+         and review['limits'].get('dispatch_authority')is False
+         and review['limits'].get('state')=='proposed',
+         'catalogue_race_boundary_independent_DATA_join')
+    evidence=h._document(evidence_ref)
+    need(evidence.get('schema')=='legal-ir-proposed-boundary-observation-evidence/v1'
+         and evidence.get('state')=='proposed'
+         and evidence.get('raw_actual_snapshot_ref')==review.get('original_snapshot')
+         and evidence.get('original_owner_closeout_ref')==review.get('original_owner_closeout')
+         and evidence.get('driver_source_ref')==review.get('driver_source')
+         and evidence.get('observer_source_ref')==review.get('observer_source')
+         and all(evidence.get(key)is False for key in ('completion_authority','dispatch_authority',
+             'publication_or_adoption_performed','status_or_skipped_satisfaction_inferred'))
+         and evidence.get('status_observations_come_only_from_raw_snapshot')is True,
+         'catalogue_race_boundary_observation_evidence_join')
+    original_review_ref=review['prior_independent_closed_read_review']
+    original_review=h._document(original_review_ref)
+    need(original_review.get('schema')=='legal-ir-original-bounded-closure-read-independent-result-review/v1'
+         and original_review.get('result')=='accepted_original_closed_read_and_complete_observed_dependency_graph'
+         and original_review.get('snapshot')==evidence['raw_actual_snapshot_ref']
+         and original_review.get('original_closeout')==evidence['original_owner_closeout_ref']
+         and original_review.get('actual_driver')==evidence['driver_source_ref']
+         and original_review.get('checks',{}).get('source_native_process_custody_closed')is True
+         and original_review['checks'].get('native_released')is True
+         and original_review['checks'].get('storage_status')=='released'
+         and original_review.get('acceptance_limits',{}).get('completion_authority')is False
+         and original_review['acceptance_limits'].get('dispatch_authority')is False,
+         'catalogue_race_original_boundary_read_acceptance_join')
+    original=h._document(evidence['original_owner_closeout_ref'])
+    need(original.get('schema')=='legal-ir-native-executor-health-original-capture/v1'
+         and original.get('returncode')==0 and type(original.get('returncode'))is int
+         and original.get('received_signals')==[]and original.get('cleanup_errors')==[]
+         and all(original.get(key)is True for key in ('completed','child_reaped',
+             'original_CLI_exit_observed','source_READ_closed','source_custody_closed',
+             'source_pins_unchanged','original_native_compute_closed'))
+         and original.get('native_task_or_service_mutations')is False
+         and original.get('plan')==original_review.get('actual_plan')
+         and original.get('request')==original_review.get('actual_request'),
+         'catalogue_race_original_boundary_read_not_closed')
+    snapshot_ref=evidence['raw_actual_snapshot_ref']
+    need(type(snapshot_ref['bytes'])is int and 0<snapshot_ref['bytes']<=4*1024*1024,
+         'catalogue_race_original_boundary_read_bound')
+    snapshot=h._document(snapshot_ref)
+    need(snapshot.get('schema')=='legal-ir-atomic-task-dependency-boundary-observation/v2'
+         and snapshot.get('original_population')==authored_ref
+         and snapshot.get('original_owned_validation_launch')==evidence.get('original_launch')
+         and snapshot.get('readonly_physical_connection')is True
+         and snapshot.get('transaction')=='BEGIN TRANSACTION; ROLLBACK'
+         and type(snapshot.get('native_claim_status_completion_provider_or_evidence_writes'))is int
+         and snapshot['native_claim_status_completion_provider_or_evidence_writes']==0
+         and snapshot.get('database_and_wal_unchanged')is True
+         and snapshot.get('database_before')==snapshot.get('database_after')
+         and snapshot.get('completion_authority')is False and snapshot.get('dispatch_authority')is False
+         and snapshot.get('skipped_is_not_satisfied')is True
+         and snapshot['database_before']['database']['path']==config['catalogue']['database_path'],
+         'catalogue_race_original_boundary_snapshot_join')
+    closure=snapshot['dependency_closure'];watermark=snapshot['event_watermark']
+    need(closure.get('schema')=='legal-ir-atomic-dependency-closure-observation/v1'
+         and closure.get('all_outgoing_targets_observed')is True
+         and closure.get('all_reads_share_transaction_watermark')==watermark
+         and closure.get('seed_task_count')==64
+         and h._integer(closure.get('total_task_count'),64,1000)
+         and closure.get('maximum_dependency_depth')==16
+         and closure.get('maximum_dependency_edges')==10000
+         and closure.get('maximum_observed_depth')<=16
+         and closure.get('completion_authority')is False and closure.get('dispatch_authority')is False,
+         'catalogue_race_original_dependency_closure_incomplete')
+    # Runtime graph/schema checks remain owned by the selected parser. These
+    # counts and refs join its future native result to this original observation.
+    need(len(boundary['observed_tasks'])==closure['noncore_task_count']
+         and closure['total_task_count']==64+len(boundary['observed_tasks'])
+         and boundary['root_dependencies']==snapshot['current_root_dependency_rows'],
+         'catalogue_race_boundary_original_graph_join')
+    for ref in (reference,review_ref,evidence_ref,envelope_ref,original_review_ref):
+        need(not Path(ref['path']).lstat().st_mode&0o222,'catalogue_race_boundary_not_frozen')
+    need(_catalogue_race_authored_population_document(authored_ref)==authored,
+         'catalogue_race_authored_population_changed_during_join')
+    return dict(boundary=boundary,boundary_ref=reference,envelope_ref=envelope_ref,
+        authored_ref=authored_ref,authored=authored,evidence=evidence,snapshot=snapshot,
+        snapshot_ref=snapshot_ref,original_review=original_review)
+
+
+def _catalogue_race_current_progress(bundle, recognition, profile, fresh):
+    """Require an accepted same-watermark snapshot for all quiet current rows.
+
+    Later legitimate progress can use a newly accepted observation. A cursor
+    after the selected observation has no verified history here and stops;
+    historical closing271 is never substituted for a fresh current cursor.
+    Old missing revisions below an unchanged starting revision are retained.
+    """
+    h=health_owner();snapshot=bundle['snapshot'];scope=profile['task_scope']
+    need(fresh['event_cursor']==snapshot['event_watermark']>=recognition['to_cursor'],
+         'catalogue_race_current_cursor_not_observed')
+    closing=h._document(recognition['native_diagnostic_ref'])
+    before=_catalogue_race_task_rows([{k:r[k]for k in ('task_cid','status','revision')}
+        for r in closing['tasks']if r.get('task_cid')in scope],scope,'catalogue_race_closing_core_rows')
+    current=_catalogue_race_task_rows([{k:r[k]for k in ('task_cid','status','revision')}
+        for r in fresh['tasks']if r.get('task_cid')in scope],scope,'catalogue_race_fresh_core_rows')
+    observed=_catalogue_race_task_rows([{k:r[k]for k in ('task_cid','status','revision')}
+        for r in snapshot['original_tasks']],scope,'catalogue_race_observed_core_rows')
+    need(current==observed,'catalogue_race_current_rows_not_observed')
+    authored={r['task_cid']:r for r in bundle['authored']['tasks']}
+    histories=snapshot['task_revision_history_headers']
+    need(type(histories)is list and len(histories)<=1000,'catalogue_race_history_bound')
+    history={r['task_cid']:r for r in histories}
+    need(len(history)==len(histories)and set(scope)<=set(history),'catalogue_race_history_population')
+    for row in snapshot['original_tasks']:
+        cid=row['task_cid'];old=before[cid];new=current[cid];header=history[cid]
+        need(all(type(row[key])is type(authored[cid][key])and row[key]==authored[cid][key]
+             for key in ('task_alias','goal_cid','plan_cid','objective_id'))
+             and row.get('board_namespace_present')is True
+             and row.get('board_namespace')==profile['catalogue']['board_namespace']
+             and new['revision']>=old['revision'], 'catalogue_race_current_core_identity_or_revision')
+        need(header.get('schema')=='ipfs_accelerate_py/agent-supervisor/task-revision-history-projection@1'
+             and header.get('current_task_revision')==new['revision']
+             and header.get('current_task_status')==new['status']
+             and header.get('current_revision_history_matches')is True
+             and header.get('history_has_revisions_above_current')is False,
+             'catalogue_race_current_history_join')
+        revisions=header['revisions'];indexed={r['revision']:r for r in revisions}
+        need(len(indexed)==len(revisions)and len(revisions)<=10000
+             and all(h._integer(r['revision'],1)and h._text(r['status'])for r in revisions),
+             'catalogue_race_revision_history_invalid')
+        # Require only the relevant changed interval. LIR0102's historical r4
+        # gap remains honest when its unchanged starting/current revision is r7.
+        need(all(number in indexed for number in range(old['revision'],new['revision']+1))
+             and indexed[old['revision']]['status']==old['status']
+             and indexed[new['revision']]['status']==new['status'],
+             'catalogue_race_relevant_revision_history_gap')
+    graph=fresh.get('dependency_boundary',{})
+    need(fresh.get('population_schema')=='legal-ir-native-catalogue-boundary/v1'
+         and graph.get('schema')=='native-observational-dependency-graph/v1'
+         and graph.get('authored_population_ref')==bundle['authored_ref']
+         and graph.get('dependency_boundary_ref')==bundle['boundary_ref']
+         and graph.get('population_envelope_ref')==bundle['envelope_ref']
+         and graph.get('authored_dependency_count')==115
+         and graph.get('native_outgoing_dependency_count')==115+len(bundle['boundary']['root_dependencies'])
+         and graph.get('observed_task_count')==len(bundle['boundary']['observed_tasks'])
+         and all(graph.get(key)is False for key in ('prerequisite_body_semantics_qualified',
+             'completion_authority','dispatch_authority','observed_task_completion_established')),
+         'catalogue_race_current_dependency_graph_join')
+    nodes={r['task_cid']:r for r in bundle['boundary']['observed_tasks']}
+    rows=graph.get('observed_tasks')
+    need(type(rows)is list and len(rows)==len(nodes)and len({r['task_cid']for r in rows})==len(nodes)
+         and {r['task_cid']for r in rows}==set(nodes),'catalogue_race_current_dependency_scope')
+    observed_noncore=_catalogue_race_task_rows([{k:row[k]for k in ('task_cid','status','revision')}
+        for row in snapshot['noncore_dependency_tasks']],list(nodes),'catalogue_race_observed_dependency_rows')
+    fresh_noncore=_catalogue_race_task_rows([{k:row[k]for k in ('task_cid','status','revision')}
+        for row in rows],list(nodes),'catalogue_race_fresh_dependency_rows')
+    need(fresh_noncore==observed_noncore,'catalogue_race_current_dependency_status_not_observed')
+    for row in rows:
+        node=nodes[row['task_cid']]
+        need(row.get('status')in QUIET_STATUSES and h._integer(row.get('revision'),node['minimum_revision'])
+             and all(type(row.get(key))is type(node[key])and row[key]==node[key]
+                     for key in ('task_alias','goal_cid','plan_cid','objective_id','namespace_binding','observation_role'))
+             and row.get('body_binding_profile')==node['body_binding']['profile'],
+             'catalogue_race_current_dependency_not_quiet_or_bound')
+    return fresh
+
+
+def _catalogue_race_event_evidence_data(reference):
+    """Read only event-authenticated observational DATA, never code or control.
+
+    The external-progress caller has already joined these exact descriptors to
+    the original evidence and completion events. Group-write DATA is retained;
+    every byte, file identity and unaliased parent chain must authenticate.
+    """
+    h=health_owner();h._keys(reference,{'path','bytes','sha256'},'catalogue_race_event_DATA_descriptor_shape')
+    need(h._integer(reference['bytes'],0,h.MAX_JSON) and
+         type(reference['sha256'])is str and len(reference['sha256'])==64 and
+         set(reference['sha256'])<=set('0123456789abcdef'),'catalogue_race_event_DATA_descriptor_bounds')
+    path=h._path(reference['path'])
+    need(path.is_absolute() and len(path.parts)<=128 and len(str(path).encode())<=4096,
+         'catalogue_race_event_DATA_path_bound')
+    stamp=lambda s:(s.st_dev,s.st_ino,s.st_mode,s.st_uid,s.st_gid,s.st_nlink,
+                    s.st_size,s.st_mtime_ns,s.st_ctime_ns)
+    directory_identity=lambda s:(s.st_dev,s.st_ino,s.st_mode,s.st_uid,s.st_gid)
+    opened=[];links=[];fd=None
+    try:
+        rootfd=os.open(path.anchor,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW|os.O_CLOEXEC)
+        opened.append(rootfd);root_info=os.fstat(rootfd)
+        need(stat.S_ISDIR(root_info.st_mode),'catalogue_race_event_DATA_root_not_directory')
+        parentfd=rootfd
+        for component in path.parts[1:-1]:
+            named=os.stat(component,dir_fd=parentfd,follow_symlinks=False)
+            need(stat.S_ISDIR(named.st_mode),'catalogue_race_event_DATA_parent_alias')
+            childfd=os.open(component,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW|os.O_CLOEXEC,dir_fd=parentfd)
+            opened.append(childfd);actual=os.fstat(childfd)
+            need(directory_identity(named)==directory_identity(actual),'catalogue_race_event_DATA_parent_changed')
+            links.append((parentfd,component,childfd,directory_identity(actual)));parentfd=childfd
+        fd=os.open(path.name,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK|os.O_CLOEXEC,dir_fd=parentfd)
+        first=os.fstat(fd)
+        need(stat.S_ISREG(first.st_mode) and first.st_uid==os.geteuid() and first.st_nlink==1 and
+             not stat.S_IMODE(first.st_mode)&0o002 and first.st_size==reference['bytes'],
+             'catalogue_race_event_DATA_file_unsafe')
+        chunks=[];left=reference['bytes']
+        while left:
+            chunk=os.read(fd,min(left,1024**2));need(chunk,'catalogue_race_event_DATA_truncated')
+            chunks.append(chunk);left-=len(chunk)
+        raw=b''.join(chunks)
+        need(os.read(fd,1)==b'' and stamp(first)==stamp(os.fstat(fd))==
+             stamp(os.stat(path.name,dir_fd=parentfd,follow_symlinks=False)) and
+             len(raw)==reference['bytes'] and hashlib.sha256(raw).hexdigest()==reference['sha256'],
+             'catalogue_race_event_DATA_changed')
+        for parent,component,child,identity in links:
+            need(directory_identity(os.fstat(child))==identity and
+                 directory_identity(os.stat(component,dir_fd=parent,follow_symlinks=False))==identity,
+                 'catalogue_race_event_DATA_parent_changed')
+        need(directory_identity(os.fstat(rootfd))==directory_identity(root_info) and
+             directory_identity(os.stat(path.anchor,follow_symlinks=False))==directory_identity(root_info) and
+             h._path(reference['path'])==path,'catalogue_race_event_DATA_path_changed')
+        return raw
+    finally:
+        if fd is not None:os.close(fd)
+        for directory in reversed(opened):os.close(directory)
+
+
+def _catalogue_race_external_progress(reference, recognition, proof, result, *, boundary_observation):
+    """Reconcile only events observed in the accepted original same-txn read.
+
+    No new native snapshot or event schema is invented. The exact historical
+    failed-cycle window is selected from the retained full raw event page;
+    any status change without its actual independent evidence is refused.
+    """
+    h=health_owner();evidence=h._document(reference);bundle=boundary_observation
+    need(evidence==bundle['evidence'],'catalogue_race_external_observation_crossed')
+    snapshot=bundle['snapshot'];page=snapshot['full_event_page'];coverage=snapshot['event_page_coverage']
+    low,high=recognition['from_cursor'],snapshot['event_watermark']
+    need(type(page)is list and 0<len(page)<=1000 and h._integer(high,low+1)
+         and coverage.get('after_global_sequence_exclusive')==low
+         and coverage.get('through_snapshot_watermark_inclusive')==high
+         and coverage.get('complete_to_snapshot_watermark')is True
+         and coverage.get('global_sequence_contiguous')is True
+         and coverage.get('row_count')==len(page)
+         and [row.get('global_sequence')for row in page]==list(range(low+1,high+1)),
+         'catalogue_race_external_fullpage_gap')
+    events=[row for row in page if low<row['global_sequence']<=recognition['to_cursor']]
+    snap=dict(from_cursor=low,to_cursor=recognition['to_cursor'],events=events)
+    events=snap['events'];changes=recognition['task_changes']
+    need(type(events)is list and 0<len(events)<=128 and len(events)==2*len(changes)
+         and len(changes)<=64 and len(events)==snap['to_cursor']-snap['from_cursor'],
+         'catalogue_race_external_event_population')
+    need([r.get('global_sequence')for r in events]==list(range(snap['from_cursor']+1,snap['to_cursor']+1)),
+         'catalogue_race_external_event_gap')
+    from datetime import datetime,timezone
+    for row in events:
+        need(type(row)is dict and h._text(row.get('recorded_at'))and type(row.get('body'))is dict,
+             'catalogue_race_external_event_shape')
+        try:
+            timestamp=datetime.fromisoformat(row['recorded_at'].replace('Z','+00:00'))
+            need(timestamp.tzinfo is not None and timestamp.utcoffset()==timezone.utc.utcoffset(timestamp),
+                 'catalogue_race_external_event_timezone')
+            epoch=timestamp.timestamp()
+        except (TypeError,ValueError,OverflowError) as error:
+            raise ExecutorHold('catalogue_race_external_event_clock')from error
+        need(h._number(epoch)and proof['started_at']<=epoch<=proof['finished_at']
+             and row['body'].get('recorded_at')==row['recorded_at']
+             and row['body'].get('event_type')==row.get('event_type'),
+             'catalogue_race_external_event_not_during_original_cycle')
+    # Each evidence/report descriptor comes from the actual original event,
+    # whose independent read acceptance was already joined above.
+    evidence=[]
+    for change in changes:
+        rows=[row for row in events if row.get('task_cid')==change['task_cid']
+              and row.get('event_type')=='intent.evidence_recorded']
+        need(len(rows)==1,'catalogue_race_actual_completion_evidence_missing')
+        payload=rows[0]['body']['body']['body']
+        evidence.append(dict(task_cid=change['task_cid'],manifest_ref=payload.get('manifest'),
+                             report_ref=payload.get('report')))
+    by={row['task_cid']:row for row in evidence}
+    for change in changes:
+        cid=change['task_cid'];rows=[r for r in events if r.get('task_cid')==cid]
+        need(len(rows)==2 and [r.get('event_type')for r in rows]==[
+            'intent.evidence_recorded','intent.completion_recorded'], 'catalogue_race_external_event_pair')
+        first,last=(r['body']for r in rows);item=first['body'];completion=last['body']
+        need(first.get('schema')==last.get('schema')=='ipfs_accelerate_py/agent-supervisor/intent-event@1'
+             and h._text(first.get('owner_id'))and first['owner_id']==last.get('owner_id')
+             and first.get('subject_id')==item.get('evidence_id')
+             and last.get('subject_id')==cid and item.get('task_cid')==completion.get('task_cid')==cid
+             and item.get('digest')in completion.get('evidence_digests',[])
+             and completion.get('previous_status')==change['before']['status']
+             and completion.get('status')==change['after']['status']
+             and completion.get('revision')==change['after']['revision']
+             and change['after']['revision']==change['before']['revision']+1,
+             'catalogue_race_external_completion_join')
+        refs=by[cid];h._keys(refs,{'task_cid','manifest_ref','report_ref'},'catalogue_race_completion_refs')
+        receipt=completion.get('receipt',{});payload=item.get('body',{})
+        need(all(receipt.get(key)is False for key in ('attempt_budget_reset','attempts_rearmed',
+            'dispatch_authorized','launcher_invoked','native_admission','new_training_launched',
+            'training_authorized','formalized','admitted','gold_or_teacher_admission_granted',
+            'Lean_admitted','task_completion_authority')),
+            'catalogue_race_external_completion_not_metadata_only')
+        need(receipt.get('manifest')==payload.get('manifest')==refs['manifest_ref']
+             and receipt.get('report')==payload.get('report')==refs['report_ref'],
+             'catalogue_race_external_evidence_descriptor_join')
+        _catalogue_race_event_evidence_data(refs['manifest_ref'])
+        report=h._decode(_catalogue_race_event_evidence_data(refs['report_ref']))
+        need(type(report)is dict,'catalogue_race_external_report_not_object')
+        need(report.get('manifest')==refs['manifest_ref']and report.get('task_cid')==cid,
+             'catalogue_race_independent_completion_report_join')
+    return {'event_window':events,'task_changes':changes,'health_or_task_credit':False}
+
+
+
+def _catalogue_race_unit_projection(argv,entrypoint):
+    argv=list(argv)
+    parser_flags=('--catalogue-parser-source','--catalogue-parser-sha256')
+    if any(flag in argv for flag in parser_flags):
+        need(all(argv.count(flag)==1 and argv.index(flag)+1<len(argv)for flag in parser_flags),
+             'catalogue_race_unit_parser_pair')
+        for flag in parser_flags:
+            index=argv.index(flag);del argv[index:index+2]
+    flags=[x for x in ('--known-source-admission-recovery','--known-closed-catalogue-race-recovery')if x in argv]
+    need(len(flags)==1 and argv.count(flags[0])==1,'catalogue_race_unit_mode')
+    normalized=list(argv);index=normalized.index(flags[0]);need(index+1<len(normalized),'catalogue_race_unit_mode_path')
+    normalized[index:index+2]=['--known-source-admission-recovery','<recovery>']
+    return source_admission_unit_projection(normalized,entrypoint)
+
+
+def catalogue_parser_reference(profile):
+    """The optional parser is selected by two literal unit argv slots only."""
+    h=health_owner();argv=profile['unit']['argv']
+    flags=('--catalogue-parser-source','--catalogue-parser-sha256')
+    need(all(argv.count(flag)==1 and argv.index(flag)+1<len(argv)for flag in flags),
+         'catalogue_parser_explicit_pair_required')
+    path=argv[argv.index(flags[0])+1];sha=argv[argv.index(flags[1])+1]
+    producer=Path(profile['main_entrypoint']['path']).parent
+    need(path==str(producer/'native_catalogue_probe.py')and len(sha)==64
+         and set(sha)<=set('0123456789abcdef'),'catalogue_parser_exact_sibling_or_digest')
+    selected=[row for row in profile['source_descriptors']if row['path']==path]
+    need(len(selected)==1 and selected[0]['sha256']==sha,'catalogue_parser_not_profile_pinned')
+    h._bound(selected[0]);return selected[0]
+
+
+def catalogue_race_source_inventory(reference,profile,parser_ref):
+    """Explicit @2 producer commitment binds exactly five declared source files.
+
+    The old four-file producer contract remains unchanged for its old modes.
+    This new join grants no SDK/cache/health replacement or source discovery.
+    """
+    h=health_owner();source=h._document(reference)
+    h._keys(source,{'schema','source_root','source_commit','source_tree','source_inventory',
+        'source_operation_plan','source_qualification','runtime_activation_or_task_authority',
+        'catalogue_parser'},'catalogue_parser_source_commitment_shape')
+    producer=Path(profile['main_entrypoint']['path']).parents[3]
+    need(source['schema']=='agent-supervisor/scientific-producer-source-commitment@2'
+         and source['source_root']==str(producer)and source['catalogue_parser']==parser_ref
+         and source['runtime_activation_or_task_authority']is False
+         and parser_ref==catalogue_parser_reference(profile)
+         and all(type(source[k])is str and len(source[k])==40 and set(source[k])<=set('0123456789abcdef')
+                 for k in ('source_commit','source_tree')),'catalogue_parser_source_commitment')
+    invref=source['source_inventory']
+    need(any(root in Path(invref['path']).parents for root in ORIGINAL_NAMED_ROOTS),
+         'catalogue_parser_inventory_not_durable')
+    inventory=h._document(invref);rows=inventory.get('files',[])
+    expected={str(producer/'ipfs_accelerate_py/__init__.py'),
+        str(producer/'ipfs_accelerate_py/agent_supervisor/__init__.py'),
+        str(producer/'ipfs_accelerate_py/agent_supervisor/rescue/__init__.py'),
+        profile['main_entrypoint']['path'],parser_ref['path']}
+    indexed={r['path']:r for r in rows}
+    selected={p['path']:p for p in profile['source_descriptors']if producer in Path(p['path']).parents}
+    need(inventory.get('schema')=='legal-ir-scientific-source-inventory/v1'
+         and all(inventory.get(k)==source[k]for k in ('source_root','source_commit','source_tree'))
+         and inventory.get('file_count')==len(rows)==len(indexed)==len(selected)==5
+         and set(indexed)==set(selected)==expected,'catalogue_parser_exact_five_source_population')
+    for path,pin in selected.items():
+        need(all(indexed[path].get(k)==pin[k]for k in ('path','bytes','sha256'))
+             and indexed[path].get('mode')==stat.S_IMODE(Path(path).lstat().st_mode)
+             and not Path(path).lstat().st_mode&0o222,'catalogue_parser_inventory_bytes_or_modes_changed')
+        h._bound(pin)
+    for key in ('source_inventory','source_operation_plan','source_qualification'):
+        h._bound(source[key])
+    return inventory
+
+
+class _ExplicitCatalogueParser:
+    __slots__=('descriptor','module','observer')
+
+
+def load_explicit_catalogue_parser(reference):
+    """Compile authenticated raw bytes at the real filename, bypassing pyc.
+
+    This is an opaque metadata parser import. It makes no normal package or
+    sys.path claim and never accepts a preexisting module as source authority.
+    Callers must first establish the explicit profile/five-file source join.
+    """
+    import importlib.machinery
+    import importlib.util
+    import types
+    h=health_owner();raw=h._bound(reference);path=Path(reference['path'])
+    need(not path.lstat().st_mode&0o222,'catalogue_parser_source_must_be_readonly')
+    class AuthenticatedRawLoader(importlib.machinery.SourceFileLoader):
+        def get_code(self,fullname):
+            offered=h._bound(reference)
+            need(offered==raw,'catalogue_parser_source_changed_before_compile')
+            return compile(offered,str(path),'exec',dont_inherit=True)
+    name='_ipfs_scientific_catalogue_parser_'+reference['sha256']
+    need(name not in sys.modules,'catalogue_parser_opaque_name_already_present')
+    loader=AuthenticatedRawLoader(name,str(path))
+    spec=importlib.util.spec_from_file_location(name,str(path),loader=loader)
+    need(spec is not None and spec.origin==str(path),'catalogue_parser_real_source_spec_required')
+    module=importlib.util.module_from_spec(spec);module.__package__='';sys.modules[name]=module
+    try:
+        loader.exec_module(module)
+        need(h._bound(reference)==raw,'catalogue_parser_source_changed_during_execution')
+        observer=module.__dict__.get('observe_native_catalogue')
+        need(module.__file__==str(path)and module.__package__==''and module.__spec__.origin==str(path)
+             and type(observer)is types.FunctionType and observer.__module__==name
+             and observer.__code__.co_filename==str(path),'catalogue_parser_callable_origin_changed')
+        result=_ExplicitCatalogueParser();result.descriptor=dict(reference)
+        result.module=module;result.observer=observer;return result
+    except BaseException:
+        if sys.modules.get(name)is module:del sys.modules[name]
+        raise
+
+
+def _catalogue_race_owned_artifact(attempt_binding,row):
+    """Read one archived OWNED DATA row, without changing code-reader policy.
+
+    Ordinary historical data may be empty or group-writable. Every read still
+    binds its literal relative path, released attempt identity, manifest inode,
+    byte count and digest, and stable owned single-link FD/path identities.
+    """
+    h=health_owner()
+    need(type(attempt_binding)is dict and set(attempt_binding)=={'path','device','inode'}
+         and type(attempt_binding['path'])is str
+         and type(attempt_binding['device'])is int and attempt_binding['device']>=0
+         and type(attempt_binding['inode'])is int and attempt_binding['inode']>0,
+         'owned_data_attempt_binding_shape')
+    attempt=Path(attempt_binding['path'])
+    need(attempt.is_absolute()and str(attempt)==attempt_binding['path']
+         and attempt.resolve(strict=True)==attempt,'owned_data_attempt_path')
+    root_before=attempt.lstat()
+    need(stat.S_ISDIR(root_before.st_mode)and root_before.st_uid==os.geteuid()
+         and(root_before.st_dev,root_before.st_ino)==(attempt_binding['device'],attempt_binding['inode']),
+         'owned_data_attempt_identity')
+    need(type(row)is dict and set(row)=={'path','bytes','sha256','device','inode'}
+         and type(row['path'])is str and bool(row['path']) and '\x00'not in row['path']
+         and not Path(row['path']).is_absolute()
+         and all(part not in('','.','..')for part in row['path'].split('/'))
+         and type(row['bytes'])is int and 0<=row['bytes']<=h.MAX_JSON
+         and type(row['device'])is int and row['device']>=0
+         and type(row['inode'])is int and row['inode']>0
+         and type(row['sha256'])is str and len(row['sha256'])==64
+         and set(row['sha256'])<=set('0123456789abcdef'),
+         'owned_data_manifest_row')
+    path=attempt/row['path']
+    need(path.resolve(strict=True)==path and attempt in path.parents,
+         'owned_data_relative_attempt_path')
+    stamp=lambda value:(value.st_dev,value.st_ino,value.st_mode,value.st_uid,
+        value.st_nlink,value.st_size,value.st_mtime_ns,value.st_ctime_ns)
+    directory_flags=os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW|os.O_CLOEXEC
+    directories=[];fd=None
+    try:
+        root_fd=os.open(attempt,directory_flags)
+        directories.append((root_fd,attempt,root_before))
+        need(stamp(os.fstat(root_fd))==stamp(root_before),'owned_data_attempt_changed_before_open')
+        parent_fd=root_fd;parent_path=attempt
+        parts=row['path'].split('/')
+        for part in parts[:-1]:
+            parent_path=parent_path/part
+            next_fd=os.open(part,directory_flags,dir_fd=parent_fd)
+            before=os.fstat(next_fd);directories.append((next_fd,parent_path,before))
+            need(stat.S_ISDIR(before.st_mode)and before.st_uid==os.geteuid()
+                 and stamp(before)==stamp(parent_path.lstat()),'owned_data_parent_identity')
+            parent_fd=next_fd
+        fd=os.open(parts[-1],os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK|os.O_CLOEXEC,dir_fd=parent_fd)
+        first=os.fstat(fd)
+        need(stat.S_ISREG(first.st_mode)and first.st_uid==os.geteuid()and first.st_nlink==1
+             and not first.st_mode&0o002 and 0<=first.st_size<=h.MAX_JSON
+             and first.st_size==row['bytes']
+             and(first.st_dev,first.st_ino)==(row['device'],row['inode']),
+             'owned_data_manifest_fd_identity_or_permissions')
+        chunks=[];left=first.st_size
+        while left:
+            part=os.read(fd,min(left,65536));need(bool(part),'owned_data_truncated')
+            chunks.append(part);left-=len(part)
+        need(os.read(fd,1)==b'','owned_data_grew');last=os.fstat(fd)
+        need(stamp(first)==stamp(last)==stamp(path.lstat()),'owned_data_changed_during_read')
+        for directory_fd,directory_path,before in directories:
+            need(stamp(before)==stamp(os.fstat(directory_fd))==stamp(directory_path.lstat()),
+                 'owned_data_parent_changed_during_read')
+        raw=b''.join(chunks)
+        need(len(raw)==row['bytes']and hashlib.sha256(raw).hexdigest()==row['sha256'],
+             'owned_data_manifest_bytes_or_digest')
+        return raw
+    finally:
+        if fd is not None:os.close(fd)
+        for directory_fd,_,_ in reversed(directories):os.close(directory_fd)
+
+
+def catalogue_race_native_owner_qualification(reference,owner):
+    """Port of the shared exact Owner128 reader; receipts are DATA, never code.
+
+    The reviewed contract is embedded as source DATA to avoid importing a TMP
+    helper. Original execution paths remain exact; deployment joins use bytes
+    and SHA by explicit source role. No live or task authority is inferred.
+    """
+    import xml.etree.ElementTree as ET
+    h=health_owner();document=h._document;exact=h._bound;descriptor=h.descriptor;raw=h._raw
+    spec={"future_owner128_acceptance":reference}
+    OWNER128_ACCEPTANCE_KEYS=frozenset(['schema', 'accepted', 'original_root_closeout', 'plan', 'request', 'scope', 'observation', 'owner_source', 'owning_test_source', 'cases', 'natural_phases', 'selector_contract_mode', 'raw_subjects', 'all_raw_subjects_compiled_and_executed', 'original_source_native_process_storage_closed', 'runtime_activation_or_task_authority'])
+    OWNER128_METADATA={'plan': {'path': '/tmp/legal-ir-native-owner128-controls-20261107-v01/plan-v01.json', 'bytes': 3729, 'sha256': '652d987ab1fc633d6c6f2e05f98d2575d83663208ef20b78930db004403bbdca'}, 'request': {'path': '/tmp/legal-ir-native-owner128-controls-20261107-v01/request-v01.json', 'bytes': 31865, 'sha256': 'e80b5d432d5f4e70404f2c4c0af0049ae488ac88f11d3a4a3688863b190c132b'}, 'scope': {'path': '/tmp/legal-ir-native-owner128-controls-20261107-v01/scope-v01.json', 'bytes': 154253, 'sha256': 'a1c6d4b4178e0ba600f6774e792fa4961cd991f5efa8d82040f8843d5d597d38'}}
+    CURRENT_SCHEDULER_SHA='f07cb14289fcb6275e4497dcc36be0dcf8bfc3dc87531ff7a9537eb85fdcc661'
+    contract={'acceptance_keys': ['schema', 'accepted', 'original_root_closeout', 'plan', 'request', 'scope', 'observation', 'owner_source', 'owning_test_source', 'cases', 'natural_phases', 'selector_contract_mode', 'raw_subjects', 'all_raw_subjects_compiled_and_executed', 'original_source_native_process_storage_closed', 'runtime_activation_or_task_authority'], 'acceptance_schema': 'legal-ir-native-owner128-source-acceptance/v1', 'actual_acceptance': None, 'authority_supplied': False, 'binding_rules': ['original_root_closeout is exactly the original0bb Root artifact supplied with explicit expected SHA256, not a synthetic summary.', 'plan652d987a/requeste80b5d43/scopea1c6d4b4 authenticate the precise original17 Owner128 request and worker93656 contract.', "observation is the original child's focused-qualification-result.json joined through original terminal artifact inventory and durability.", 'Require actual source/native/process/storage closure, child exit0/reaped, original released reservation and unchanged source/installed inputs before acceptance.', 'Require observation selector_contract_mode whole_owner_file_128, exact collected128 IDs in order, exact natural384 passed phases, JUnit128/0failure/0error/0skip and all four authenticated raw compilations/executions.', 'Preserve exact32978-byte existing test prefix and qualified old75 ordered IDs; all53 additional cases must be observed.', 'owner_source and owning_test_source are frozen actual execution paths. Future Git projection may compare bytes/SHA by relative role; it must not require a not-yet-existing Git publication before this source qualification.', 'Native owner4 Git materialization and source-operation-plan/commitment proofs remain a separate later qualification.', 'Artifact checks, full OWNED durability and no surviving original process/group remain required; old175 source results are not pooled.', 'Source-only acceptance supplies no live restart, native execution route, legal meaning, numerical, graph, Lean or task authority.'], 'descriptor_keys': ['original_root_closeout', 'plan', 'request', 'scope', 'observation', 'owner_source', 'owning_test_source'], 'fixed_values': {'accepted': True, 'all_raw_subjects_compiled_and_executed': True, 'cases': 128, 'natural_phases': 384, 'original_source_native_process_storage_closed': True, 'runtime_activation_or_task_authority': False, 'schema': 'legal-ir-native-owner128-source-acceptance/v1', 'selector_contract_mode': 'whole_owner_file_128'}, 'raw_subject_hashes': {'driver': '2e9ba7653bbc0939bb41f1fbbdd14f5f0e9a51fd78577dbbb5aa044fc14e3ea6', 'guard': '141b7da6a57bd65d03c673c5e1041d8e26bce0ed7c02803a3d11f829925da95e', 'owner': '82b0fd08a2e343350578269ef9d90ec5f6537830434bf5c0cd98135933f0ca13', 'owning_test': '2bdcfad397a96d150bf958570042123dbbeebe2d8087fdb06aed50d8804fc67c'}, 'raw_subject_keys': ['owner', 'owning_test', 'driver', 'guard'], 'schema': 'legal-ir-owner128-acceptance-source-contract/v1', 'source_ref_schema': {'bytes_type': 'exact positive int', 'keys': ['path', 'bytes', 'sha256'], 'path': 'ordinary absolute bounded file', 'sha256': '64 lowercase hex'}, 'strict_types': {'accepted': 'bool is True', 'all_raw_subjects_compiled_and_executed': 'bool is True', 'cases': 'exact int', 'natural_phases': 'exact int', 'original_source_native_process_storage_closed': 'bool is True', 'runtime_activation_or_task_authority': 'bool is False'}}
+    accepted=document(spec['future_owner128_acceptance'])
+    need(set(accepted)==OWNER128_ACCEPTANCE_KEYS
+         and accepted['schema']==contract['acceptance_schema']
+         and accepted['accepted'] is True and type(accepted['cases']) is int and accepted['cases']==128
+         and type(accepted['natural_phases']) is int and accepted['natural_phases']==384
+         and accepted['selector_contract_mode']=='whole_owner_file_128'
+         and accepted['all_raw_subjects_compiled_and_executed'] is True
+         and accepted['original_source_native_process_storage_closed'] is True
+         and accepted['runtime_activation_or_task_authority'] is False
+         and owner['source_qualification']==spec['future_owner128_acceptance'],
+         'actual exact Owner128 whole-file qualification required; no old175 pooling')
+    for key in contract['descriptor_keys']:exact(accepted[key])
+    need(all(accepted[key]==OWNER128_METADATA[key] for key in ('plan','request','scope')),
+         'Owner128 original request/plan/scope generation differs')
+    plan=document(accepted['plan']);request=document(accepted['request']);scope=document(accepted['scope'])
+    observation=document(accepted['observation']);root=document(accepted['original_root_closeout'])
+    need(root['plan']==accepted['plan'] and root['request']==accepted['request']
+         and plan['request']==accepted['request'] and plan['scope']==accepted['scope']
+         and root['returncode']==0 and root.get('failure') is None
+         and root['cleanup_errors']==root['received_signals']==[]
+         and all(root[key] is True for key in ('completed','child_reaped','source_READ_closed',
+             'source_custody_closed','original_native_compute_closed','original_CLI_exit_observed',
+             'source_pins_unchanged','installed_tools_unchanged')),
+         'actual original Owner128 closed root and exact source/native/process chain required')
+    need(len(request)==17 and request['schema']=='owned-validation-request/v1'
+         and request['declared_external_writable_paths']==[]
+         and request['expected_scheduler_policy_sha256']==CURRENT_SCHEDULER_SHA,
+         'original Owner128 public17/current-policy request differs')
+    selected=scope['selected_checks'];selection=scope['selector_contract']
+    need(scope['expected_cases']==128 and scope['expected_phases']==384
+         and type(selected) is list and len(selected)==len(set(selected))==128
+         and selection['mode']=='whole_owner_file_128' and selection['expanded_checks']==selected
+         and observation['schema']=='scientific-executor-focused-observation/v1'
+         and observation['passed'] is True and observation['case_count']==128 and observation['phase_count']==384
+         and observation['selected_checks']==selected
+         and observation['pytest_selected_checks']==selection['pytest_selectors']
+         and observation['selector_contract_mode']=='whole_owner_file_128'
+         and observation['error'] is None and observation['guard_denials']==[]
+         and observation['JUnit']=={'tests':128,'failures':0,'errors':0,'skipped':0}
+         and [(row['nodeid'],row['when'],row['outcome']) for row in observation['phases']]==[
+             (node,when,'passed') for node in selected for when in ('setup','call','teardown')]
+         and observation['whole_owner_file_contract']=={'pytest_target':selection['pytest_selectors'][0],
+             'function_case_counts':selection['function_case_counts'],'exact_expanded_collection_observed':True,
+             'expected_cases':128,'expected_natural_phases':384},
+         'actual exact ordered Owner128 collection and natural384 phases required')
+    subjects=accepted['raw_subjects']
+    need(type(subjects) is dict and set(subjects)==set(contract['raw_subject_keys'])
+         and subjects['owner']==accepted['owner_source']
+         and subjects['owning_test']==accepted['owning_test_source']
+         and set(scope['required_raw_subjects'])=={pin['path'] for pin in subjects.values()},
+         'four closed actual execution-role source descriptors required')
+    for role,pin in subjects.items():
+        exact(pin)
+        need(pin['bytes']>0 and pin['sha256']==contract['raw_subject_hashes'][role]
+             and scope['sources'].get(pin['path'])==pin
+             and request['source_sha256'].get(pin['path'])==pin['sha256']
+             and observation['raw_compiled_sources'].get(pin['path'])==pin['sha256']
+             and pin['path'] in observation['executed_raw_paths'],
+             'Owner128 actual raw compile/execution role differs: '+role)
+    # Projection paths legitimately differ. Body/hash equality by named role is
+    # the source qualification join; the inventory above owns new physical paths.
+    need(all(owner['owner_source'][key]==subjects['owner'][key] for key in ('bytes','sha256'))
+         and all(owner['native_backend_source'][key]==subjects['driver'][key] for key in ('bytes','sha256')),
+         'future OW owner or retained H backend differs from actual qualified bodies')
+    terminal=root['owner_terminal'];reservation=terminal['reservation'];record=reservation['record']
+    need(reservation['status']==record['status']=='released' and record['artifacts_durable_asserted'] is True
+         and record['validation_request_sha256']==accepted['request']['sha256']
+         and record['attempt_exceeded_reservation'] is False and record['external_charges']=={}
+         and record['final_external_charged_bytes']==0 and reservation['resource_lease']['released'] is True
+         and reservation['process_observation']['live_processes']==0
+         and reservation['process_observation']['tracking_error']==''
+         and reservation['process_observation']['out_of_group_live_identities']==[],
+         'actual original Owner128 released promise and no surviving sampled group required')
+    attempt=Path(request['attempt_directory']);observation_path=attempt/'exports/focused-qualification-result.json'
+    owned=json.loads(raw(attempt/'logs/result.json'));execution=json.loads(raw(attempt/'logs/execution.json'))
+    need(descriptor(observation_path)==accepted['observation']
+         and terminal['result']==str(attempt/'logs/result.json')
+         and document(root['stdout'])==terminal
+         and owned['schema']==execution['schema']=='owned-validation-result/v1'
+         and owned['completed'] is execution['completed'] is True
+         and owned['returncode']==execution['returncode']==0
+         and owned['request_sha256']==execution['request_sha256']==accepted['request']['sha256']
+         and owned['executed_checks']==execution['executed_checks']==request['selected_checks'],
+         'Owner128 observation and successful owned result must join the exact original terminal/request')
+    durability=json.loads(raw(attempt/'logs/validation-durability.json'))
+    need(durability['schema']=='owned-validation-durability/v1'
+         and durability['request_sha256']==accepted['request']['sha256']
+         and durability['reservation_id']==record['reservation_id'],
+         'Owner128 original OWNED concrete durability join required')
+    observed_files={str(path.relative_to(attempt)) for path in _bounded_proof_walk(attempt,
+        max_entries=40002,max_directories=20001,max_pending=20001) if path.is_file()}
+    need(observed_files=={row['path'] for row in durability['files']}|{'logs/validation-durability.json'},
+         'Owner128 complete ordinary durable file population differs')
+    need(record['attempt_directory'].get('path')==str(attempt)
+         and type(durability['files'])is list and len(durability['files'])<=20000
+         and len({row['path']for row in durability['files']})==len(durability['files']),
+         'Owner128 exact released attempt and unique bounded manifest paths required')
+    junit_raw=None
+    for row in durability['files']:
+        archived=_catalogue_race_owned_artifact(record['attempt_directory'],row)
+        if row['path']=='exports/test-results.xml':junit_raw=archived
+    need(sum(row['bytes'] for row in durability['files'])+len(raw(attempt/'logs/validation-durability.json'))
+             ==record['final_attempt_bytes']==record['final_total_charged_bytes']
+         and 0<record['final_attempt_bytes']<=record['storage_bytes'],
+         'Owner128 released record must bind the complete original durable ordinary byte count')
+    need(junit_raw is not None,'Owner128 JUnit must be bound in the original OWNED manifest')
+    junit=ET.fromstring(junit_raw)
+    need({key:sum(int(suite.get(key,'0')) for suite in junit.findall('.//testsuite'))
+             for key in ('tests','failures','errors','skipped')}==observation['JUnit'],
+         'original Owner128 JUnit must contain128 actual cases with zero failures/errors/skips')
+    return accepted
+
+
+def catalogue_race_native_owner_inventory(reference,prior,profile):
+    """Allow only the qualified explicit 4662-to-f07 native-owner transition.
+
+    The prior H owner, H driver/cache and every historical source pin remain
+    selected. New owner code has its own four-file immutable source lineage;
+    this does not turn a producer inventory into native-owner authority.
+    """
+    h=health_owner();value=h._document(reference)
+    h._keys(value,{'schema','source_root','source_commit','source_tree','source_inventory',
+        'source_operation_plan','source_qualification','owner_source','prior_owner_source',
+        'native_backend_source','scheduler_policy_transition','runtime_activation_or_task_authority'},
+        'catalogue_race_owner_commitment_shape')
+    transition={'prior_sha256':'4662bd8fe6caf6f2c048e3d7cff7abb4d80e5c875b21e02e204b1b89371b8286',
+        'target_sha256':'f07cb14289fcb6275e4497dcc36be0dcf8bfc3dc87531ff7a9537eb85fdcc661'}
+    need(value['schema']=='agent-supervisor/scientific-native-owner-policy-source-commitment@1'
+         and value['runtime_activation_or_task_authority']is False
+         and value['scheduler_policy_transition']==transition
+         and value['prior_owner_source']==prior['owner_source']
+         and prior['owner_source']['bytes']==72407
+         and prior['owner_source']['sha256']=='e243cdf7b22a63f55e3c55101a2a7aeeee31492a98c8dbfe9f05b4d43b7fdc06'
+         and value['owner_source']==profile['owner_source']and profile['owner_source']!=prior['owner_source']
+         and value['native_backend_source']==profile['driver_source']==prior['driver_source']
+         and profile['driver_source']['bytes']==28162
+         and profile['driver_source']['sha256']=='2e9ba7653bbc0939bb41f1fbbdd14f5f0e9a51fd78577dbbb5aa044fc14e3ea6'
+         and profile['health_module']==prior['health_module'],
+         'catalogue_race_owner_policy_or_backend_transition_changed')
+    owner_root=Path(value['source_root']);producer=Path(profile['main_entrypoint']['path']).parents[3]
+    native_root=Path(prior['owner_source']['path']).parents[3]
+    need(profile['owner_source']['path']==str(owner_root/'ipfs_accelerate_py/agent_supervisor/rescue/original_embedded_observation_owner.py')
+         and owner_root==Path(profile['owner_source']['path']).parents[3]
+         and all(owner_root!=root and owner_root not in root.parents and root not in owner_root.parents
+                 for root in (producer,native_root))
+         and all(type(value[k])is str and len(value[k])==40 and set(value[k])<=set('0123456789abcdef')
+                 for k in ('source_commit','source_tree')),'catalogue_race_owner_root_or_generation_changed')
+    need(any(root in Path(value['source_inventory']['path']).parents for root in ORIGINAL_NAMED_ROOTS),
+         'catalogue_race_owner_inventory_not_durable')
+    inventory=h._document(value['source_inventory']);rows=inventory.get('files',[])
+    expected={str(owner_root/'ipfs_accelerate_py/__init__.py'),
+        str(owner_root/'ipfs_accelerate_py/agent_supervisor/__init__.py'),
+        str(owner_root/'ipfs_accelerate_py/agent_supervisor/rescue/__init__.py'),profile['owner_source']['path']}
+    indexed={r['path']:r for r in rows}
+    selected={p['path']:p for p in profile['source_descriptors']if owner_root in Path(p['path']).parents}
+    need(inventory.get('schema')=='legal-ir-scientific-source-inventory/v1'
+         and all(inventory.get(k)==value[k]for k in ('source_root','source_commit','source_tree'))
+         and inventory.get('file_count')==len(rows)==len(indexed)==len(selected)==4
+         and set(indexed)==set(selected)==expected,'catalogue_race_owner_exact_four_source_roles')
+    for path,pin in selected.items():
+        need(all(indexed[path].get(k)==pin[k]for k in ('path','bytes','sha256'))
+             and indexed[path].get('mode')==stat.S_IMODE(Path(path).lstat().st_mode)
+             and not Path(path).lstat().st_mode&0o222,'catalogue_race_owner_inventory_changed')
+        h._bound(pin)
+    for key in ('source_inventory','source_operation_plan','source_qualification'):
+        h._bound(value[key])
+    catalogue_race_native_owner_qualification(value['source_qualification'],value)
+    return value,selected
+
+
+def _catalogue_race_template_transition(reference,owner_ref,owner,owner_pins,prior,profile,oldconfig,config):
+    """Compare unissued template DATA; never normalize historical evidence."""
+    h=health_owner();certificate=h._document(reference)
+    h._keys(certificate,{'schema','native_owner_source_commitment','prior_template_ref','template_ref',
+        'scheduler_policy_transition','independent_review_ref','runtime_activation_or_task_authority'},
+        'catalogue_race_policy_transition_shape')
+    need(certificate['schema']=='agent-supervisor/scientific-native-owner-policy-transition@1'
+         and certificate['runtime_activation_or_task_authority']is False
+         and certificate['native_owner_source_commitment']==owner_ref
+         and certificate['scheduler_policy_transition']==owner['scheduler_policy_transition']
+         and certificate['prior_template_ref']==oldconfig['idle_template_ref']
+         and certificate['template_ref']==config['idle_template_ref'],
+         'catalogue_race_policy_transition_certificate_join')
+    oldtemplate=h._document(certificate['prior_template_ref']);newtemplate=h._document(certificate['template_ref'])
+    validate_template(oldtemplate,prior,'genuine_scoped_idle');validate_template(newtemplate,profile,'genuine_scoped_idle')
+    oldseed=Path(oldtemplate['seed_root']);newseed=Path(newtemplate['seed_root'])
+    need(newseed!=oldseed and newseed not in oldseed.parents and oldseed not in newseed.parents,
+         'catalogue_race_new_template_not_distinct_same_scope')
+    restored=relocate(newtemplate,newseed,oldseed)
+    for key in ('request_ref','plan_ref'):restored[key]=oldtemplate[key]
+    need(restored==oldtemplate,'catalogue_race_template_shape_or_links_changed')
+    oldplan=h._document(oldtemplate['plan_ref']);newplan=h._document(newtemplate['plan_ref'])
+    oldrequest=h._document(oldtemplate['request_ref']);newrequest=h._document(newtemplate['request_ref'])
+    for request,template,selected in ((oldrequest,oldtemplate,prior),(newrequest,newtemplate,profile)):
+        need(request.get('argv')==[selected['unit']['argv'][0],'-B',selected['driver_source']['path'],
+            '--plan',template['plan_ref']['path'],'--plan-sha256',template['plan_ref']['sha256']],
+            'catalogue_race_template_original_driver_argv_or_plan_digest_changed')
+    transition=owner['scheduler_policy_transition']
+    need(oldrequest.get('expected_scheduler_policy_sha256')==transition['prior_sha256']
+         and newrequest.get('expected_scheduler_policy_sha256')==transition['target_sha256']
+         and all(type(request.get(k))is int and request[k]==v for request in (oldrequest,newrequest)
+                 for k,v in dict(cpu_slots=1,memory_mb=1536,child_process_slots=8,
+                     storage_bytes=384*1024**2,timeout_seconds=300).items())
+         and oldrequest['source_roots']==newrequest['source_roots']==[
+             '/home/barberb/lift_coding/external/ipfs_datasets','/home/barberb/lift_coding/external/ipfs_accelerate']
+         and oldrequest['resource_ledger']==newrequest['resource_ledger']==str(ORIGINAL_RESOURCE_LEDGER)
+         and oldrequest['scheduler_state_path']==newrequest['scheduler_state_path'],
+         'catalogue_race_original_native_envelope_or_policy_changed')
+    # A future prepare_cycle refreshes these two explicit DB descriptor roles.
+    # This projection is of unissued templates, never of the failed162 proof.
+    for request,plan in ((oldrequest,oldplan),(newrequest,newplan)):
+        db=request.get('database_preimage',{})
+        need(db.get('path')==oldconfig['catalogue']['database_path']==config['catalogue']['database_path']
+             and h._integer(db.get('bytes'),1,128*1024**2)
+             and type(db.get('sha256'))is str and len(db['sha256'])==64
+             and set(db['sha256'])<=set('0123456789abcdef')
+             and plan['native_metadata_cli']['observation_binding']['database_preimage']==db,
+             'catalogue_race_template_database_role_changed')
+    projected_plan=relocate(newplan,newseed,oldseed)
+    projected_plan['native_metadata_cli']['observation_binding']['database_preimage']=oldrequest['database_preimage']
+    need(projected_plan==oldplan,'catalogue_race_template_native_backend_or_task_scope_changed')
+    projected_request=relocate(newrequest,newseed,oldseed)
+    projected_request['database_preimage']=oldrequest['database_preimage']
+    projected_request['expected_scheduler_policy_sha256']=transition['prior_sha256']
+    projected_request['argv'][projected_request['argv'].index('--plan-sha256')+1]=oldtemplate['plan_ref']['sha256']
+    oldpins=dict(oldrequest['source_sha256']);newpins=dict(projected_request['source_sha256'])
+    # Only the selected plan's physical descriptor and explicit OW source pins
+    # differ. Original H and canonical R source pins cannot be removed/changed.
+    need(oldpins.pop(oldtemplate['plan_ref']['path'],None)==oldtemplate['plan_ref']['sha256']
+         and newpins.pop(oldtemplate['plan_ref']['path'],None)==newtemplate['plan_ref']['sha256'],
+         'catalogue_race_template_plan_descriptor_join')
+    for path,pin in owner_pins.items():
+        if path in newpins:
+            need(newpins[path]==pin['sha256']and path not in oldpins,
+                 'catalogue_race_template_owner_source_changed')
+            newpins.pop(path)
+    need(all(newrequest['source_sha256'].get(path)==pin['sha256']for path,pin in owner_pins.items())
+         and newpins==oldpins,'catalogue_race_template_original_source_pin_changed')
+    projected_request['source_sha256']=oldrequest['source_sha256']
+    need(projected_request==oldrequest,'catalogue_race_template_request_authority_changed')
+    review=h._document(certificate['independent_review_ref'])
+    need(review.get('schema')=='scientific-native-owner-policy-transition-independent-review/v1'
+         and review.get('accepted_explicit_owner_policy_transition')is True
+         and review.get('native_owner_source_commitment')==owner_ref
+         and review.get('prior_template_ref')==certificate['prior_template_ref']
+         and review.get('template_ref')==certificate['template_ref']
+         and review.get('scheduler_policy_transition')==transition
+         and review.get('runtime_or_task_completion_authority')is False,
+         'catalogue_race_policy_transition_independent_review_join')
+    for ref in (reference,certificate['independent_review_ref'],certificate['template_ref']):
+        need(not Path(ref['path']).lstat().st_mode&0o222,'catalogue_race_policy_transition_not_frozen')
+    return certificate
+
+
+def _catalogue_race_scheduler_transition(request,snapshot_ref,transition):
+    """Check historical4662 and currentf07 separately; preserve original proof."""
+    h=health_owner();archived=h._document(snapshot_ref);path=Path(request['scheduler_state_path'])
+    need(request['expected_scheduler_policy_sha256']==transition['prior_sha256'],
+         'catalogue_race_original_policy_not_prior')
+    before=path.lstat();need(0<before.st_size<=h.MAX_JSON,'catalogue_race_scheduler_data_bound')
+    reference=h.database_descriptor(path)
+    stamp=lambda s:(s.st_dev,s.st_ino,s.st_mode,s.st_uid,s.st_gid,s.st_nlink,s.st_size,s.st_mtime_ns,s.st_ctime_ns)
+    with os.fdopen(os.open(path,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK),'rb')as stream:
+        first=os.fstat(stream.fileno());raw=stream.read(h.MAX_JSON+1);last=os.fstat(stream.fileno())
+    need(stamp(before)==stamp(first)==stamp(last)==stamp(path.lstat())
+         and len(raw)==reference['bytes']<=h.MAX_JSON
+         and hashlib.sha256(raw).hexdigest()==reference['sha256']
+         and h.database_descriptor(path)==reference,'catalogue_race_scheduler_data_changed')
+    family={request['request_id'],request['request_id']+':root',request['request_id']+':phase'}
+    for state,expected in ((archived,transition['prior_sha256']),(h._decode(raw),transition['target_sha256'])):
+        need(type(state.get('config'))is dict,'catalogue_race_scheduler_config_missing')
+        digest=hashlib.sha256(json.dumps(state['config'],sort_keys=True,separators=(',',':'),allow_nan=False).encode()).hexdigest()
+        need(digest==expected,'catalogue_race_scheduler_not_exact_qualified_policy')
+        for field in ('leases','waiters'):
+            rows=state.get(field)
+            need(type(rows)is dict and all(type(row)is dict for row in rows.values())
+                 and not any(row.get('request_id')in family for row in rows.values()),
+                 'catalogue_race_original_request_still_active_or_unknown')
+
+
+def _validate_closed_catalogue_race_recovery(value,profile_ref,profile,config):
+    h=health_owner();h._keys(value,CATALOGUE_RACE_KEYS,'catalogue_race_recovery_shape')
+    need(value['schema']==CATALOGUE_RACE_SCHEMA
+         and value['authorization']=='resume_idle_after_proved_closed_catalogue_observation_race'
+         and value['profile_ref']==profile_ref and h._profile(profile_ref)==profile,
+         'catalogue_race_recovery_authority')
+    need(not os.path.lexists(Path(profile['proof_root'])/'catalogue-race-reconciliation-v01.json'),
+         'catalogue_race_authorization_already_consumed')
+    need(h._number(value['recorded_at'])and 0<=time.time()-value['recorded_at']<=profile['max_age_seconds']
+         and value['manager_before'].get('Id')==profile['unit']['name']
+         and value['manager_before'].get('MainPID')=='0'
+         and value['manager_before'].get('ActiveState')in ('failed','inactive'),
+         'catalogue_race_admin_clock_or_manager')
+    prior=h._document(value['prior_profile_snapshot_ref']);oldconfig=h._document(value['prior_config_snapshot_ref'])
+    need(_same_payload(value['prior_profile_ref'],value['prior_profile_snapshot_ref'])
+         and profile['proof_root']==prior['proof_root']and profile['receipt_path']!=prior['receipt_path']
+         and Path(profile['proof_root'])in Path(profile['receipt_path']).parents
+         and not os.path.lexists(profile['receipt_path']),'catalogue_race_same_root_new_absent_health_epoch')
+    for key in ('task_scope','max_age_seconds','max_cycle_seconds','cycle_contract'):
+        need(prior[key]==profile[key],'catalogue_race_scope_changed')
+    need(all(prior[k]==profile[k]for k in ('health_module','driver_source'))
+         and all(p in profile['source_descriptors']for p in prior['source_descriptors']),
+         'catalogue_race_original_backend_or_source_removed')
+    owner,owner_pins=catalogue_race_native_owner_inventory(value['native_owner_source_commitment_ref'],prior,profile)
+    need(all(prior['unit'][k]==profile['unit'][k]for k in ('name','interpreter','working_directory','environment'))
+         and _catalogue_race_unit_projection(prior['unit']['argv'],prior['main_entrypoint']['path'])
+             ==_catalogue_race_unit_projection(profile['unit']['argv'],profile['main_entrypoint']['path']),
+         'catalogue_race_unit_authority_changed')
+    oldcat=dict(prior['catalogue']);newcat=dict(profile['catalogue'])
+    oldcat.pop('population_sha256');newcat.pop('population_sha256')
+    need(oldcat==newcat,'catalogue_race_catalogue_identity_changed')
+    oldcat=dict(oldconfig['catalogue']);newcat=dict(config['catalogue'])
+    for key in ('population_path','population_sha256'):oldcat.pop(key);newcat.pop(key)
+    need(oldcat==newcat
+         and oldconfig['execution_templates']==config['execution_templates']==[]
+         and all(oldconfig[k]==config[k]for k in ('max_cycles','max_proof_bytes','poll_seconds'))
+         and value['max_cycles']==config['max_cycles']and value['max_proof_bytes']==config['max_proof_bytes'],
+         'catalogue_race_budgets_or_dispatch_authority_changed')
+    _catalogue_race_template_transition(value['scheduler_policy_transition_ref'],
+        value['native_owner_source_commitment_ref'],owner,owner_pins,prior,profile,oldconfig,config)
+    boundary_observation=_catalogue_race_population_boundary(value['population_boundary_ref'],
+        value['population_boundary_independent_review_ref'],value['external_progress_ref'],
+        prior,profile,oldconfig,config)
+    auth=h._document(value['prior_generation_authorization_ref']);ack=h._document(value['prior_generation_ack_ref'])
+    admission=h._document(value['prior_source_admission_authorization_ref'])
+    admitted=h._document(value['prior_source_admission_ack_ref'])
+    need(auth['schema']==GENERATION_SCHEMA and ack['schema']=='agent-supervisor/scientific-bounded-generation-ack@1'
+         and ack['handover_ref']==value['prior_generation_authorization_ref']
+         and auth['generation_number']==ack['generation_number']==value['generation_number']==2
+         and auth['max_generations']==ack['max_generations']==value['max_generations']==2
+         and auth['global_max_bytes']==GLOBAL_RETAINED_BYTES
+         and admission['schema']==ADMISSION_SCHEMA and admitted['schema']==ADMISSION_ACK_SCHEMA
+         and admitted['recovery_ref']==value['prior_source_admission_authorization_ref']
+         and admission['prior_generation_authorization_ref']==value['prior_generation_authorization_ref']
+         and admission['prior_generation_ack_ref']==value['prior_generation_ack_ref']
+         and admitted['consuming_main_identity']==value['prior_main_identity']
+         and admission['profile_ref']==value['prior_profile_ref']
+         and admission['spent_cycle_count']==admitted['spent_cycle_count']
+         and admitted['next_cycle_number']==admission['spent_cycle_count']+1
+         and admission['generation_number']==admission['max_generations']==2
+         and admitted['generation_number']==admitted['max_generations']==2,
+         'catalogue_race_prior_consumed_authority_changed')
+    root=Path(profile['proof_root']);spent=value['spent_cycle_count'];base=ack['spent_cycle_count']
+    need(h._integer(spent,admission['spent_cycle_count']+1,config['max_cycles']-1)
+         and value['prior_source_admission_ack_ref']['path']==str(root/'source-admission-reconciliation.json')
+         and value['prior_generation_ack_ref']['path']==str(root/'bounded-generation-handover.json')
+         and value['global_hold_ref']==admitted['retained_global_hold_ref'],
+         'catalogue_race_counter_or_authority_path_changed')
+    need(h._integer(base,1)and h._integer(admission['spent_cycle_count'],base+1,spent-1),
+         'catalogue_race_counter_types')
+    h._bound(value['global_hold_ref'])
+    prior_identity=value['prior_main_identity'];h._stored_identity(prior_identity,value['prior_profile_ref'],prior)
+    need(h._definitely_dead_identity(prior_identity,dict(boot_id=Path('/proc/sys/kernel/random/boot_id').read_text().strip())),
+         'catalogue_race_prior_Main_live_or_unknown')
+    for ref in auth['retained_generations']:_generation_census(ref)
+    refs=value['local_cycle_census_refs'];need(type(refs)is list and len(refs)==spent-base,
+        'catalogue_race_complete_local_cycle_census_required')
+    censuses={row['root']:row for row in (_generation_census(ref)for ref in refs)}
+    cycles={};identities={}
+    older=h._document(admission['prior_profile_snapshot_ref'])
+    old_identity=admission['prior_main_identity']
+    for cycle in root.glob('cycle-*'):
+        intent=h._document(h.descriptor(cycle/'intent.json'));number=intent.get('cycle_number',intent.get('sequence'))
+        need(h._integer(number,base+1,spent)and number not in cycles
+             and cycle.name.startswith('cycle-%08d-'%number)and str(cycle)in censuses,
+             'catalogue_race_cycle_number_gap_or_alias')
+        cycles[number]=(cycle,intent)
+    need(len(censuses)==len(refs)==len(cycles)and set(cycles)==set(range(base+1,spent+1)),
+         'catalogue_race_spent_history_reset')
+    for number,(cycle,intent)in cycles.items():
+        need(intent['kind']=='genuine_scoped_idle'and intent['automatic_retry_admitted']is False,
+             'catalogue_race_non_idle_history')
+        if number==admission['spent_cycle_count']:
+            need(admission['failed_intent_ref']==h.descriptor(cycle/'intent.json')
+                 and admission['failed_request_ref']==intent['request_ref']
+                 and admission['failed_stdout_ref']==h.descriptor(cycle/'owner.stdout')
+                 and admitted['retained_cycle_hold_ref']==h.descriptor(cycle/'cycle-held.json')
+                 and not (cycle/'closed.json').exists(),'catalogue_race_prior_source_negative_changed')
+            continue
+        if number==spent:continue
+        closed=h._document(h.descriptor(cycle/'closed.json'));proof_ref=closed['cycle_proof_ref'];proof=h._document(proof_ref)
+        selected,identity=(older,old_identity)if number<admission['spent_cycle_count']else(prior,prior_identity)
+        need(proof_ref['path']==str(cycle/'cycle-proof.json')and proof['request_ref']==intent['request_ref']
+             and proof['sequence']==intent['sequence'],'catalogue_race_historical_cycle_join')
+        native=h._document(proof['native_diagnostic_ref'])
+        h._cycle(proof_ref,selected,identity,h._native(native,selected,now=proof['finished_at']),
+            now=proof['finished_at'],monotonic_ns=proof['finished_monotonic_ns'])
+    failed,intent=cycles[spent];proof_ref=value['failed_cycle_proof_ref'];proof=h._document(proof_ref)
+    need(proof_ref['path']==str(failed/'cycle-proof.json')and proof['sequence']==intent['sequence']
+         and proof['request_ref']==intent['request_ref']and not (failed/'closed.json').exists()
+         and value['failed_cycle_hold_ref']==h.descriptor(failed/'cycle-held.json'),
+         'catalogue_race_latest_negative_cycle_join')
+    need(h._definitely_dead_identity(proof['owner_observation'],
+        dict(boot_id=Path('/proc/sys/kernel/random/boot_id').read_text().strip())),
+        'catalogue_race_prior_owner_live_or_unknown')
+    hold=h._document(value['failed_cycle_hold_ref'])
+    need(hold.get('schema')=='agent-supervisor/scientific-cycle-held@1'
+         and hold.get('reason')in CATALOGUE_RACE_REJECTIONS and hold.get('automatic_retry_admitted')is False,
+         'catalogue_race_not_exact_original_hold')
+    recognition=closed_catalogue_race_rejection(proof_ref,prior,prior_identity)
+    need(recognition['rejection']==hold['reason'],'catalogue_race_original_hold_reason_differs')
+    previous=h._document(value['prior_health_receipt_ref'])
+    need(value['prior_health_receipt_ref']['path']==prior['receipt_path']
+         and previous['cycle_proof_ref']['path']==str(cycles[spent-1][0]/'cycle-proof.json')
+         and previous['sequence']==cycles[spent-1][1]['sequence']==proof['sequence']-1,
+         'catalogue_race_last_positive_receipt_not_current_history')
+    n=h._document(h._document(previous['cycle_proof_ref'])['native_diagnostic_ref'])
+    h._receipt(value['prior_health_receipt_ref'],value['prior_profile_ref'],prior,
+        h._native(n,prior,now=previous['observed_at']),prior_identity,
+        now=previous['observed_at'],monotonic_ns=previous['observed_monotonic_ns'])
+    negative=h._document(value['negative_audit_ref'])
+    need(negative.get('schema')=='scientific-closed-catalogue-race-independent-negative/v1'
+         and negative.get('accepted_as_closed_negative')is True
+         and negative.get('accepted_as_runtime_health')is False
+         and negative.get('cycle_proof_ref')==proof_ref
+         and negative.get('recognition')==recognition
+         and negative.get('spent_cycle_count')==spent
+         and negative.get('prior_source_admission_ack_ref')==value['prior_source_admission_ack_ref']
+         and negative.get('recovery_or_retry_authority')is False,
+         'catalogue_race_independent_negative_join')
+    _catalogue_race_external_progress(value['external_progress_ref'],recognition,proof,
+        h._document(proof['result_ref']),boundary_observation=boundary_observation)
+    request=h._document(proof['request_ref'])
+    _catalogue_race_scheduler_transition(request,value['scheduler_snapshot_ref'],owner['scheduler_policy_transition'])
+    _released_initialization_record(request,h._document(proof['terminal_ref']))
+    fresh=h._document(value['current_native_ref']);h._native(fresh,profile)
+    _catalogue_race_current_progress(boundary_observation,recognition,profile,fresh)
+    need(select_template(config,profile,fresh)[1]=='genuine_scoped_idle',
+         'catalogue_race_current_scope_not_quiet')
+    catalogue_race_source_inventory(value['source_commitment_ref'],profile,catalogue_parser_reference(profile))
+    check_proof_budget(root,config['max_proof_bytes'],reserve_bytes=REUSE_CYCLE_RESERVE_BYTES,
+        reserve_files=REUSE_CYCLE_RESERVE_FILES)
+    for field in ('prior_profile_snapshot_ref','prior_config_snapshot_ref','negative_audit_ref',
+                  'external_progress_ref','population_boundary_ref','population_boundary_independent_review_ref','current_native_ref','source_commitment_ref',
+                  'scheduler_snapshot_ref','native_owner_source_commitment_ref','scheduler_policy_transition_ref'):
+        need(not Path(value[field]['path']).lstat().st_mode&0o222,'catalogue_race_control_snapshot_not_frozen')
+    return spent,list(auth['retained_generations'])
+
+
+def authorize_closed_catalogue_race_recovery(spec_ref,output):
+    """Issue a fresh explicit one-use grant; do not start, replay or clear holds."""
+    h=health_owner();spec=h._document(spec_ref)
+    h._keys(spec,CATALOGUE_RACE_KEYS-{'recorded_at','manager_before'},'catalogue_race_authorization_spec')
+    profile=h._profile(spec['profile_ref']);argv=profile['unit']['argv']
+    config_pin=next(p for p in profile['source_descriptors']if p['path']==argv[argv.index('--config')+1])
+    config,profile_ref,_=load_configuration(config_pin);root=Path(profile['proof_root'])
+    need(not os.path.lexists(root/'catalogue-race-reconciliation-v01.json'),
+         'catalogue_race_authorization_already_consumed')
+    with os.fdopen(os.open(root/'scientific-executor.lock',os.O_RDWR|os.O_NOFOLLOW),'rb')as lock:
+        fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
+        manager=h._manager(profile['unit']['name'])
+        need(manager.get('MainPID')=='0'and manager.get('ActiveState')in ('failed','inactive'),
+             'catalogue_race_admin_requires_no_Main')
+        value=dict(spec,recorded_at=time.time(),manager_before=manager)
+        _validate_closed_catalogue_race_recovery(value,profile_ref,profile,config)
+        output=h._path(str(output));need(root in output.parents,'catalogue_race_grant_outside_same_root')
+        reference=put(output,value);output.chmod(0o400);return reference
+
+
+def reconcile_closed_catalogue_race_recovery(reference,profile_ref,profile,config,opening_identity):
+    h=health_owner();value=h._document(reference);argv=profile['unit']['argv']
+    flag='--known-closed-catalogue-race-recovery'
+    need(not os.path.lexists(Path(profile['proof_root'])/'catalogue-race-reconciliation-v01.json'),
+         'catalogue_race_authorization_already_consumed')
+    need(os.environ.get(CATALOGUE_RACE_SHA_ENV)==reference['sha256']
+         and argv.count(flag)==1 and argv[argv.index(flag)+1]==reference['path']
+         and not any(x in argv for x in ('--known-nonstarted-recovery','--known-closed-idle-recovery',
+             '--bounded-generation-handover','--known-source-admission-recovery'))
+         and not Path(reference['path']).lstat().st_mode&0o222,'catalogue_race_grant_not_unit_pinned')
+    spent,censuses=_validate_closed_catalogue_race_recovery(value,profile_ref,profile,config)
+    ack=dict(schema=CATALOGUE_RACE_ACK_SCHEMA,recovery_ref=reference,
+        consuming_main_identity=opening_identity,spent_cycle_count=spent,next_cycle_number=spent+1,
+        generation_number=2,max_generations=2,retained_global_hold_ref=value['global_hold_ref'],
+        retained_failed_cycle_hold_ref=value['failed_cycle_hold_ref'],
+        prior_source_admission_ack_ref=value['prior_source_admission_ack_ref'],
+        initial_consecutive_catalogue_race_failures=1,no_health_or_task_credit_for_failed_cycle=True)
+    put(Path(profile['proof_root'])/'catalogue-race-reconciliation-v01.json',ack)
+    return spent,censuses
+
+
+
+def _validate_source_admission_recovery(value, profile_ref, profile, config):
+    """Same-root producer repair; preserve consumed generation and physical cycles."""
+    h=health_owner();h._keys(value,ADMISSION_KEYS,'source_admission_recovery_shape')
+    need(value['schema']==ADMISSION_SCHEMA and value['authorization']=='resume_idle_after_closed_source_admission_timeout'
+         and value['profile_ref']==profile_ref and h._profile(profile_ref)==profile,'source_admission_recovery_authority')
+    now=time.time()
+    need(h._number(value['recorded_at'])and 0<=now-value['recorded_at']<=profile['max_age_seconds']
+         and type(value['manager_before'])is dict and value['manager_before'].get('Id')==profile['unit']['name']
+         and value['manager_before'].get('MainPID')=='0'
+         and value['manager_before'].get('ActiveState')in('failed','inactive'),'source_admission_admin_clock_or_manager')
+    for field in ('prior_profile_snapshot_ref','prior_config_snapshot_ref','negative_audit_ref','scheduler_snapshot_ref','current_native_ref','source_commitment_ref'):
+        need(not Path(value[field]['path']).lstat().st_mode&0o222,'source_admission_control_snapshot_not_frozen')
+    prior=h._document(value['prior_profile_snapshot_ref']);oldconfig=h._document(value['prior_config_snapshot_ref'])
+    need(_same_payload(value['prior_profile_snapshot_ref'],value['prior_profile_ref'])
+         and profile['proof_root']==prior['proof_root'] and profile['receipt_path']!=prior['receipt_path']
+         and Path(profile['proof_root']) in Path(profile['receipt_path']).parents
+         and not os.path.lexists(profile['receipt_path']),'source_admission_same_root_new_health_epoch')
+    for key in ('catalogue','task_scope','max_age_seconds','max_cycle_seconds','cycle_contract'):
+        need(profile[key]==prior[key],'source_admission_scope_changed')
+    for role in ('health_module','owner_source','driver_source'):
+        need(profile[role]==prior[role],'source_admission_backend_or_verifier_descriptor_changed')
+    need(all(pin in profile['source_descriptors']for pin in prior['source_descriptors']),
+         'source_admission_original_native_source_pin_removed')
+    need(profile['unit']['name']==prior['unit']['name']and profile['unit']['interpreter']==prior['unit']['interpreter']
+         and profile['unit']['working_directory']==prior['unit']['working_directory'], 'source_admission_unit_scope_changed')
+    oldargv=prior['unit']['argv'];oldconfigpath=oldargv[oldargv.index('--config')+1]
+    oldconfigpin=next(pin for pin in prior['source_descriptors']if pin['path']==oldconfigpath)
+    need(_same_payload(value['prior_config_snapshot_ref'],oldconfigpin)and oldconfigpin['sha256']==oldargv[oldargv.index('--config-sha256')+1], 'source_admission_prior_configuration_snapshot')
+    need(source_admission_unit_projection(profile['unit']['argv'],profile['main_entrypoint']['path'])==source_admission_unit_projection(prior['unit']['argv'],prior['main_entrypoint']['path']),'source_admission_unit_command_broadened')
+    need(profile['unit']['environment']==prior['unit']['environment'],'source_admission_unit_environment_changed')
+    need(oldconfig['execution_templates']==config['execution_templates']==[]
+         and oldconfig['idle_template_ref']==config['idle_template_ref']
+         and all(config[k]==oldconfig[k]for k in ('catalogue','max_cycles','max_proof_bytes','poll_seconds'))
+         and value['max_cycles']==config['max_cycles']and value['max_proof_bytes']==config['max_proof_bytes'],
+         'source_admission_budgets_or_task_authority_changed')
+    auth=h._document(value['prior_generation_authorization_ref']);ack=h._document(value['prior_generation_ack_ref'])
+    need(auth['schema']==GENERATION_SCHEMA and auth['generation_number']==ack['generation_number']==value['generation_number']==2
+         and auth['max_generations']==ack['max_generations']==value['max_generations']==2
+         and ack['schema']=='agent-supervisor/scientific-bounded-generation-ack@1'
+         and ack['handover_ref']==value['prior_generation_authorization_ref']
+         and value['prior_generation_ack_ref']['path']==str(Path(profile['proof_root'])/'bounded-generation-handover.json')
+         and ack['spent_cycle_count']==auth['spent_cycle_count']and ack['next_cycle_number']==auth['spent_cycle_count']+1
+         and auth['profile_ref']==value['prior_profile_ref']and ack['consuming_main_identity']==value['prior_main_identity'],
+         'source_admission_consumed_generation_changed')
+    need(oldargv.count('--bounded-generation-handover')==1 and oldargv[oldargv.index('--bounded-generation-handover')+1]==value['prior_generation_authorization_ref']['path']
+         and type(auth['retained_generations'])is list and len(auth['retained_generations'])==1,'source_admission_prior_generation_authority_join')
+    for ref in auth['retained_generations']:_generation_census(ref)
+    oldtemplate=h._document(config['idle_template_ref']);oldplan=h._document(oldtemplate['plan_ref'])
+    need(oldplan['native_metadata_cli'].get('schema')=='native-embedded-scoped-observation-cli/v3'
+         and oldplan['native_metadata_cli'].get('source_capsule_ref')==auth['source_capsule_ref']
+         and auth['source_capsule_ref']in profile['source_descriptors'],'source_admission_original_cache_binding_changed')
+    need(auth['global_max_bytes']==GLOBAL_RETAINED_BYTES,'source_admission_global_budget_changed')
+    root=Path(profile['proof_root']);base=ack['spent_cycle_count'];spent=value['spent_cycle_count']
+    need(h._integer(base,1)and h._integer(spent,base+1,config['max_cycles']-1),'source_admission_spent_count')
+    cycles=list(root.glob('cycle-*'));numbers={}
+    for cycle in cycles:
+        intent=h._document(h.descriptor(cycle/'intent.json'));number=intent.get('cycle_number',intent.get('sequence'))
+        need(h._integer(number,base+1,spent)and cycle.name.startswith('cycle-%08d-'%number)and number not in numbers,
+             'source_admission_cycle_number_changed')
+        numbers[number]=(cycle,intent)
+    need(set(numbers)==set(range(base+1,spent+1))and len(cycles)+base==spent,'source_admission_spent_history_reset_or_gap')
+    old_identity=value['prior_main_identity'];h._stored_identity(old_identity,value['prior_profile_ref'],prior)
+    boot=Path('/proc/sys/kernel/random/boot_id').read_text().strip()
+    need(old_identity['boot_id']==boot and source_admission_PID_absent(old_identity['pid']),
+         'source_admission_original_Main_PID_not_absent_same_boot')
+    for number,(cycle,intent)in numbers.items():
+        need(intent.get('kind')=='genuine_scoped_idle'and intent.get('automatic_retry_admitted')is False,'source_admission_non_idle_history')
+        if number==spent:continue
+        closed=h._document(h.descriptor(cycle/'closed.json'));proof_ref=closed['cycle_proof_ref'];proof=h._document(proof_ref)
+        need(proof_ref['path']==str(cycle/'cycle-proof.json')and proof['request_ref']==intent['request_ref']
+             and proof['sequence']==intent['sequence'],'source_admission_historical_proof_join')
+        native=h._document(proof['native_diagnostic_ref'])
+        h._cycle(proof_ref,prior,old_identity,h._native(native,prior,now=proof['finished_at']),
+                 now=proof['finished_at'],monotonic_ns=proof['finished_monotonic_ns'])
+    need(value['prior_health_receipt_ref']['path']==prior['receipt_path'],'source_admission_prior_health_path')
+    receipt=h._document(value['prior_health_receipt_ref']);need(receipt['cycle_proof_ref']['path']==str(numbers[spent-1][0]/'cycle-proof.json')
+         and receipt['sequence']==numbers[spent-1][1]['sequence']==numbers[spent][1]['sequence']-1,'source_admission_latest_health_cycle_join')
+    native=h._document(h._document(receipt['cycle_proof_ref'])['native_diagnostic_ref'])
+    h._receipt(value['prior_health_receipt_ref'],value['prior_profile_ref'],prior,h._native(native,prior,now=receipt['observed_at']),
+               old_identity,now=receipt['observed_at'],monotonic_ns=receipt['observed_monotonic_ns'])
+    failed,intent=numbers[spent]
+    need(value['failed_intent_ref']['path']==str(failed/'intent.json')and h._document(value['failed_intent_ref'])==intent
+         and value['failed_request_ref']==intent['request_ref']and value['failed_stdout_ref']['path']==str(failed/'owner.stdout'),
+         'source_admission_failed_cycle_artifact_join')
+    request=h._document(value['failed_request_ref']);terminal=original_terminal(h._bound(value['failed_stdout_ref']),value['failed_request_ref'])
+    source_admission_terminal(terminal,value['failed_request_ref'],request,failed)
+    need(request['source_sha256'].get(prior['owner_source']['path'])==prior['owner_source']['sha256']
+         and request['source_sha256'].get(prior['driver_source']['path'])==prior['driver_source']['sha256']
+         and request['source_roots']==[str(ORIGINAL_NAMED_ROOTS[0].parents[1]),'/home/barberb/lift_coding/external/ipfs_accelerate'],
+         'source_admission_original_owner_or_source_roots_changed')
+    need(value['global_hold_ref']['path']==str(root/'executor-held.json')and value['cycle_hold_ref']['path']==str(failed/'cycle-held.json'),
+         'source_admission_hold_paths_changed')
+    global_hold=h._document(value['global_hold_ref']);cycle_hold=h._document(value['cycle_hold_ref'])
+    need(global_hold.get('cycle_root')==str(failed)and global_hold.get('reason')=='original_owner_failed'
+         and cycle_hold.get('reason')=='original_owner_failed'and global_hold.get('automatic_retry_admitted')is False
+         and cycle_hold.get('automatic_retry_admitted')is False,'source_admission_original_holds_changed')
+    audit=h._document(value['negative_audit_ref']);need(audit.get('schema')=='scientific-nonstarted-source-admission-independent-negative/v1'
+         and audit.get('accepted_as_known_nonstarted_negative')is True and audit.get('accepted_as_runtime_health')is False
+         and audit.get('no_child_native_storage_or_control_effects')is True and audit.get('attempt_directory_empty')is True
+         and audit.get('same_boot_literal_Main_PID_absence_verified')is True
+         and audit.get('same_boot_literal_owner_PID_absence_verified')is True and audit.get('owner_birth_not_present_or_fabricated')is True
+         and audit.get('prior_profile_ref')==value['prior_profile_ref']
+         and audit.get('prior_health_receipt_ref')==value['prior_health_receipt_ref']
+         and audit.get('prior_generation_authorization_ref')==value['prior_generation_authorization_ref']
+         and audit.get('prior_generation_ack_ref')==value['prior_generation_ack_ref']
+         and audit.get('spent_cycle_count')==spent and audit.get('historical_carried_cycle_count')==base
+         and audit.get('local_cycle_count')==len(cycles)and audit.get('recovery_or_retry_authority')is False
+         and audit.get('request_ref')==value['failed_request_ref']and audit.get('owner_stdout_ref')==value['failed_stdout_ref']
+         and audit.get('global_hold_ref')==value['global_hold_ref']and audit.get('cycle_hold_ref')==value['cycle_hold_ref'],
+         'source_admission_independent_negative_artifact_join')
+    _recovery_scheduler(request,value['scheduler_snapshot_ref'])
+    fresh=h._document(value['current_native_ref']);h._native(fresh,profile)
+    need(select_template(config,profile,fresh)[1]=='genuine_scoped_idle','source_admission_current_scope_not_quiet')
+    source_admission_source_inventory(value['source_commitment_ref'],profile)
+    check_proof_budget(root,config['max_proof_bytes'],reserve_bytes=REUSE_CYCLE_RESERVE_BYTES,reserve_files=REUSE_CYCLE_RESERVE_FILES)
+    return spent
+
+
+def authorize_source_admission_recovery(spec_ref, output):
+    """One explicit source-qualified administrative grant; no start or rearm."""
+    h=health_owner();spec=h._document(spec_ref);h._keys(spec,ADMISSION_KEYS-{'recorded_at','manager_before'},'source_admission_spec')
+    profile=h._profile(spec['profile_ref']);config_pin=next(pin for pin in profile['source_descriptors']if pin['path']==profile['unit']['argv'][profile['unit']['argv'].index('--config')+1])
+    config,profile_ref,_=load_configuration(config_pin);manager=h._manager(profile['unit']['name'])
+    need(manager.get('MainPID')=='0'and manager.get('ActiveState')in('failed','inactive'),'source_admission_admin_requires_no_Main')
+    value=dict(spec,recorded_at=time.time(),manager_before=manager);_validate_source_admission_recovery(value,profile_ref,profile,config)
+    output=h._path(str(output));need(Path(profile['proof_root'])in output.parents,'source_admission_grant_outside_same_root')
+    ref=put(output,value);output.chmod(0o400);return ref
+
+
+def reconcile_source_admission_recovery(reference, profile_ref, profile, config, opening_identity):
+    h=health_owner();value=h._document(reference)
+    need(os.environ.get(ADMISSION_SHA_ENV)==reference['sha256'],'source_admission_grant_not_unit_pinned')
+    argv=profile['unit']['argv'];flag='--known-source-admission-recovery'
+    need(argv.count(flag)==1 and argv[argv.index(flag)+1]==reference['path']
+         and not any(x in argv for x in ('--known-nonstarted-recovery','--known-closed-idle-recovery','--bounded-generation-handover'))
+         and not Path(reference['path']).lstat().st_mode&0o222,'source_admission_grant_argv_or_mode')
+    spent=_validate_source_admission_recovery(value,profile_ref,profile,config)
+    acknowledgement=dict(schema=ADMISSION_ACK_SCHEMA,recovery_ref=reference,consuming_main_identity=opening_identity,
+        retained_global_hold_ref=value['global_hold_ref'],retained_cycle_hold_ref=value['cycle_hold_ref'],spent_cycle_count=spent,
+        next_cycle_number=spent+1,generation_number=value['generation_number'],max_generations=value['max_generations'],
+        initial_consecutive_admission_failures=1,no_health_or_task_credit_for_failed_cycle=True)
+    put(Path(profile['proof_root'])/'source-admission-reconciliation.json',acknowledgement)
+    return spent,1
+
+
+def health_owner():
+    from ipfs_accelerate_py.agent_supervisor.rescue import native_executor_health
+    return native_executor_health
+
+
+def need(value, reason):
+    if not value:
+        raise ExecutorHold(reason)
+
+
+def put(path, value):
+    """Create one immutable private artifact; never replace an existing one."""
+    path = Path(path)
+    raw = (json.dumps(value, sort_keys=True, separators=(',', ':'), allow_nan=False) + '\n').encode()
+    need(len(raw) <= 4 * 1024**2, 'artifact_bound')
+    with os.fdopen(os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600), 'wb') as stream:
+        stream.write(raw); stream.flush(); os.fsync(stream.fileno())
+    fd = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+    return health_owner().descriptor(path)
+
+
+def load_configuration(config_ref):
+    h = health_owner()
+    value = h._document(config_ref)
+    h._keys(value, CONFIG_KEYS, 'service_config_shape')
+    need(value['schema'] == CONFIG_SCHEMA, 'service_config_schema')
+    profile_ref = h.descriptor(h._path(value['profile_path']))
+    profile = h._profile(profile_ref)
+    need(config_ref in profile['source_descriptors'], 'service_config_not_source_pinned')
+    h._keys(value['catalogue'], CATALOGUE_KEYS, 'service_catalogue_shape')
+    catalogue = value['catalogue']
+    h._path(catalogue['database_path']); h._path(catalogue['population_path'])
+    need(catalogue['board_id'] == 'legal-ir-scientific', 'service_board_scope')
+    need(all(catalogue[k] == profile['catalogue'][k] for k in
+        ('board_namespace', 'plan_root_cid', 'repository_tree_id', 'population_sha256')), 'service_catalogue_binding')
+    need(h._integer(catalogue['max_age_seconds'], 1, profile['max_age_seconds']) and
+        h._integer(catalogue['timeout_seconds'], 1, min(30, profile['max_cycle_seconds'])), 'service_observation_bounds')
+    need(h._integer(value['poll_seconds'], 1, 60) and h._integer(value['max_cycles'], 2, 10000)
+        and h._integer(value['max_proof_bytes'], 1024**2, 16 * 1024**3), 'service_finite_limits')
+    idle = h._document(value['idle_template_ref'])
+    validate_template(idle, profile, 'genuine_scoped_idle')
+    templates = value['execution_templates']
+    need(type(templates) is list and len(templates) <= len(profile['task_scope']), 'service_execution_population')
+    seen = set()
+    for row in templates:
+        h._keys(row, {'task_cid', 'expected_revision', 'template_ref'}, 'service_execution_template_shape')
+        need(row['task_cid'] in profile['task_scope'] and row['task_cid'] not in seen and
+            h._integer(row['expected_revision'], 1), 'service_execution_binding')
+        seen.add(row['task_cid'])
+        validate_template(h._document(row['template_ref']), profile, 'native_execution')
+    return value, profile_ref, profile
+
+
+def validate_template(template, profile, kind):
+    h = health_owner()
+    h._keys(template, TEMPLATE_KEYS, 'cycle_template_shape')
+    need(template['schema'] == TEMPLATE_SCHEMA and template['kind'] == kind, 'cycle_template_kind')
+    seed = h._path(template['seed_root'])
+    need(Path(profile['proof_root']) in seed.parents, 'seed_outside_proof_root')
+    for field in ('request_ref', 'plan_ref'):
+        h._bound(template[field]); need(seed in Path(template[field]['path']).parents, 'template_artifact_outside_seed')
+    h._keys(template['links'], {'execution_request', 'result', 'origins'}, 'cycle_template_links')
+    for value in template['links'].values():
+        need(type(value) is str and value and not Path(value).is_absolute() and '..' not in Path(value).parts,
+            'template_relative_link')
+    need(len(set(template['links'].values())) == 3, 'template_link_alias')
+
+
+def observe_native(config, *, catalogue_parser=None):
+    if catalogue_parser is None:
+        from ipfs_accelerate_py.agent_supervisor.rescue.native_catalogue_probe import observe_native_catalogue
+    else:
+        need(type(catalogue_parser)is _ExplicitCatalogueParser,'catalogue_parser_unselected_callable')
+        h=health_owner();raw=h._bound(catalogue_parser.descriptor)
+        observe_native_catalogue=catalogue_parser.observer
+        need(catalogue_parser.module.__dict__.get('observe_native_catalogue')is observe_native_catalogue
+             and observe_native_catalogue.__globals__ is catalogue_parser.module.__dict__
+             and observe_native_catalogue.__code__.co_filename==catalogue_parser.descriptor['path'],
+             'catalogue_parser_callback_source_changed')
+    binding = dict(config['catalogue'])
+    database, population = Path(binding.pop('database_path')), Path(binding.pop('population_path'))
+    report = observe_native_catalogue(database, population, **binding)
+    if catalogue_parser is not None:
+        need(h._bound(catalogue_parser.descriptor)==raw,'catalogue_parser_source_changed_during_observation')
+    value = report.get('details', {}).get('native_catalogue')
+    need(type(value) is dict, 'native_observation_missing')
+    return value
+
+
+def select_template(config, profile, native):
+    """Never interpret zero globally ready tasks as authority to ignore scope."""
+    health_owner()._native(native, profile)
+    tasks = {row['task_cid']: row for row in native['tasks']}
+    scoped = [tasks[cid] for cid in profile['task_scope']]
+    if all(row['status'] in QUIET_STATUSES for row in scoped):
+        return config['idle_template_ref'], 'genuine_scoped_idle'
+    permitted = {(row['task_cid'], row['expected_revision']): row['template_ref']
+                 for row in config['execution_templates']}
+    for row in sorted(scoped, key=lambda item: item['task_cid']):
+        if row['status'] == 'ready' and (row['task_cid'], row['revision']) in permitted:
+            return permitted[(row['task_cid'], row['revision'])], 'native_execution'
+    raise ExecutorHold('scoped_work_has_no_explicit_execution_binding')
+
+
+def relocate(value, seed, root):
+    """Rewrite only paths rooted in the sealed seed; preserve external pins."""
+    if isinstance(value, str):
+        if value == str(seed) or value.startswith(str(seed) + os.sep):
+            return str(root) + value[len(str(seed)):]
+        return value
+    if type(value) is list:
+        return [relocate(item, seed, root) for item in value]
+    if type(value) is dict:
+        return {relocate(key, seed, root): relocate(item, seed, root) for key, item in value.items()}
+    return value
+
+
+def _bounded_proof_walk(root, *, max_entries, max_directories, max_pending):
+    """Bounded iterative replacement for the three proof rglob walks.
+
+    Each directory buffer is populated incrementally under finite limits, then
+    its iterator closes before yielding/descending. Read errors discard that
+    buffer, retaining Path.rglob's suppression without an unbounded list().
+    Each caller keeps its original symlink/hardlink, DATA permission, file/byte
+    and hash predicates. No directory-mtime snapshot, lock or write is added.
+    """
+    need(all(type(value)is int and value>0 for value in
+             (max_entries,max_directories,max_pending)),'proof_scan_bounds')
+    pending=[Path(root)];entries=0;directories=1
+    while pending:
+        directory=pending.pop();buffer=[];subdirectories=[]
+        try:
+            with os.scandir(directory) as iterator:
+                for child in iterator:
+                    entries+=1;need(entries<=max_entries,'proof_scan_entry_bound')
+                    path=directory/child.name
+                    try:info=child.stat(follow_symlinks=False)
+                    except OSError:info=None
+                    if info is not None and stat.S_ISDIR(info.st_mode):
+                        directories+=1
+                        need(directories<=max_directories,'proof_scan_directory_bound')
+                        need(len(pending)+len(subdirectories)<max_pending,'proof_scan_pending_bound')
+                        subdirectories.append(path)
+                    buffer.append(path)
+        except OSError:
+            continue
+        pending.extend(subdirectories)
+        yield from buffer
+
+
+def check_proof_budget(root, maximum, *, reserve_bytes=0, reserve_files=0):
+    need(type(reserve_bytes)is int and reserve_bytes>=0 and type(reserve_files)is int and reserve_files>=0, 'proof_reserve_shape')
+    total = count = 0
+    for path in _bounded_proof_walk(root,max_entries=40000,max_directories=20000,max_pending=20000):
+        info = path.lstat()
+        need(not stat.S_ISLNK(info.st_mode), 'proof_symlink')
+        if stat.S_ISDIR(info.st_mode):
+            continue
+        need(stat.S_ISREG(info.st_mode) and info.st_nlink == 1, 'proof_nonordinary_artifact')
+        total += info.st_size; count += 1
+        need(count <= 20000 and total <= maximum, 'proof_storage_bound')
+    need(count+reserve_files <= 20000 and total+reserve_bytes <= maximum, 'proof_projected_storage_bound')
+    return {'files':count,'bytes':total}
+
+
+def prepare_cycle(template_ref, kind, config, profile, root):
+    h = health_owner(); template = h._document(template_ref)
+    validate_template(template, profile, kind)
+    seed = Path(template['seed_root'])
+    plan = relocate(h._document(template['plan_ref']), seed, root)
+    request = relocate(h._document(template['request_ref']), seed, root)
+    need(plan.get('schema') == profile['cycle_contract']['plan_schema'] and
+        plan.get('operation') == profile['cycle_contract']['plan_operation'], 'prepared_plan_contract')
+    if kind == 'genuine_scoped_idle':
+        need(plan.get('task_scope') == profile['task_scope'], 'prepared_idle_scope')
+    else:
+        need(plan.get('task_cid') in profile['task_scope'] and any(row['task_cid'] == plan.get('task_cid')
+            and row['expected_revision'] == plan.get('expected_ready_revision')
+            and row['template_ref'] == template_ref for row in config['execution_templates']), 'prepared_execution_scope')
+    need(request.get('schema') == 'legal-ir-original-native-control-request/v1' and
+        request.get('purpose') == 'native_control_metadata', 'prepared_original_request_schema')
+    need(h._integer(request.get('timeout_seconds'), 1, profile['max_cycle_seconds']), 'prepared_owner_timeout')
+    sources = request.get('source_sha256')
+    need(type(sources) is dict and all(sources.get(profile[field]['path']) == profile[field]['sha256']
+        for field in ('owner_source', 'driver_source')), 'prepared_original_source_binding')
+    # Refresh only the read-only DB preimage. Nothing changes task admission.
+    preimage = request.get('database_preimage')
+    need(type(preimage) is dict and preimage.get('path') == config['catalogue']['database_path'], 'prepared_database_binding')
+    current_db = h.database_descriptor(config['catalogue']['database_path'])
+    request['database_preimage'] = current_db
+    command = plan.get('native_metadata_cli', {})
+    if kind == 'genuine_scoped_idle':
+        binding = command.get('observation_binding', {})
+        need(binding.get('database_preimage', {}).get('path') == current_db['path'], 'prepared_observation_database')
+        binding['database_preimage'] = current_db
+    attempt = h._path(request['attempt_directory'])
+    need(root in attempt.parents and not attempt.exists(), 'prepared_attempt_directory')
+    attempt.mkdir(mode=0o700, parents=True)
+    plan_ref = put(root / 'operation-plan.json', plan)
+    old_plan = str(root / Path(template['plan_ref']['path']).relative_to(seed))
+    sources.pop(old_plan, None); sources[plan_ref['path']] = plan_ref['sha256']
+    request['argv'] = [profile['unit']['argv'][0], '-B', profile['driver_source']['path'],
+        '--plan', plan_ref['path'], '--plan-sha256', plan_ref['sha256']]
+    request['request_id'] = 'scientific-executor:' + root.name
+    request_ref = put(root / 'request.json', request)
+    links = {key: root / value for key, value in template['links'].items()}
+    need(command.get('result_path') == str(links['result']), 'prepared_result_link')
+    return request_ref, plan_ref, links
+
+
+def original_terminal(raw, request_ref):
+    h = health_owner(); candidates = []
+    try:
+        candidates.append(h._decode(raw))
+    except (ValueError, TypeError):
+        pass
+    for line in raw.splitlines():
+        try:
+            candidate = h._decode(line)
+        except (ValueError, TypeError):
+            continue
+        if candidate not in candidates:
+            candidates.append(candidate)
+    matches = [row for row in candidates if type(row) is dict and
+        row.get('schema') == 'legal-ir-original-native-control-terminal/v1' and
+        row.get('request_sha256') == request_ref['sha256']]
+    need(len(matches) == 1, 'original_terminal_missing_or_ambiguous')
+    return matches[0]
+
+
+def persistent_hold(proof_root, cycle_root, reason):
+    path = Path(proof_root) / 'executor-held.json'
+    if not os.path.lexists(path):
+        put(path, {'schema': 'agent-supervisor/scientific-executor-persistent-hold@1',
+            'cycle_root': str(cycle_root), 'reason': str(reason)[:2048],
+            'recorded_at': time.time(), 'automatic_retry_admitted': False})
+
+
+def _same_payload(left, right):
+    """A durable historical snapshot keeps bytes/hash, not its temporary name."""
+    return type(left) is dict and type(right) is dict and all(left.get(key) == right.get(key) for key in ('bytes', 'sha256'))
+
+
+def _recovery_scheduler(request, snapshot_ref):
+    """Read the original state; never allocate, normalize, prune or persist it."""
+    h = health_owner(); expected = request['expected_scheduler_policy_sha256']
+    family = {request['request_id'], request['request_id'] + ':root', request['request_id'] + ':phase'}
+    archived = h._document(snapshot_ref)
+    # The live scheduler is operational DATA; group-write permission is not
+    # executable authority. The archived snapshot retains strict control rules.
+    path = Path(request['scheduler_state_path']); before = path.lstat()
+    need(0 < before.st_size <= h.MAX_JSON, 'recovery_scheduler_data_bound')
+    live_ref = h.database_descriptor(path)
+    stamp = lambda s: (s.st_dev, s.st_ino, s.st_mode, s.st_uid, s.st_gid,
+                       s.st_nlink, s.st_size, s.st_mtime_ns, s.st_ctime_ns)
+    with os.fdopen(os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK), 'rb') as stream:
+        first = os.fstat(stream.fileno()); raw = stream.read(h.MAX_JSON + 1)
+        last = os.fstat(stream.fileno())
+    need(stamp(before) == stamp(first) == stamp(last) == stamp(path.lstat())
+         and len(raw) == live_ref['bytes'] <= h.MAX_JSON
+         and hashlib.sha256(raw).hexdigest() == live_ref['sha256']
+         and h.database_descriptor(path) == live_ref, 'recovery_scheduler_data_changed')
+    for state in (archived, h._decode(raw)):
+        need(type(state.get('config')) is dict, 'recovery_scheduler_policy_missing')
+        digest = hashlib.sha256(json.dumps(state['config'], sort_keys=True,
+            separators=(',', ':'), allow_nan=False).encode()).hexdigest()
+        need(digest == expected, 'recovery_scheduler_policy_changed')
+        for field in ('waiters', 'leases'):
+            rows = state.get(field)
+            need(type(rows) is dict and all(type(row) is dict for row in rows.values()), 'recovery_scheduler_rows_unknown')
+            need(not any(row.get('request_id') in family for row in rows.values()), 'recovery_original_request_still_active')
+
+
+def _validate_nonstarted_recovery(value, profile_ref, profile, config):
+    """Closed, idle-only negative reconciliation; this cannot establish health."""
+    h = health_owner(); h._keys(value, RECOVERY_KEYS, 'recovery_shape')
+    need(h._profile(profile_ref) == profile, 'recovery_current_profile_changed')
+    need(value['schema'] == RECOVERY_SCHEMA and value['authorization'] == 'resume_genuine_scoped_idle'
+         and value['profile_ref'] == profile_ref and value['max_cycles'] == config['max_cycles']
+         and config['execution_templates'] == [], 'recovery_profile_or_authority')
+    root = Path(profile['proof_root']); archive = root / 'reconciliation-v01'
+    total = 0
+    for field in RECOVERY_ARCHIVE_FIELDS:
+        h._within(value[field], archive); h._bound(value[field]); total += value[field]['bytes']
+    need(total <= 1024**2, 'recovery_archive_bound')
+    prior = h._document(value['prior_profile_snapshot_ref'])
+    need(_same_payload(value['prior_profile_ref'], value['prior_profile_snapshot_ref'])
+         and value['prior_profile_ref']['path'] == profile_ref['path'], 'recovery_prior_profile_snapshot')
+    for field in ('catalogue', 'task_scope', 'proof_root', 'receipt_path', 'max_age_seconds', 'max_cycle_seconds',
+                  'health_module', 'owner_source', 'driver_source'):
+        need(prior.get(field) == profile[field], 'recovery_prior_profile_scope')
+    need(all(prior['unit'][key] == profile['unit'][key] for key in
+         ('name', 'interpreter', 'working_directory', 'environment')), 'recovery_prior_unit_scope')
+    need(prior['main_entrypoint']['path'] == profile['main_entrypoint']['path'], 'recovery_main_source_path')
+    source = h._document(value['source_commitment_ref'])
+    source_root = Path(profile['owner_source']['path']).parents[3]
+    need(source.get('schema') == 'legal-ir-scientific-source-commitment/v1'
+         and source.get('runtime_activation_or_task_authority') is False
+         and source.get('source_root') == str(source_root),
+         'recovery_source_commitment')
+    inventory_ref = source['source_inventory']
+    need(Path(profile['proof_root']).parent in Path(inventory_ref['path']).parents,
+         'recovery_inventory_not_durable')
+    inventory = h._document(inventory_ref)
+    need(inventory.get('schema') == 'legal-ir-scientific-source-inventory/v1'
+         and all(inventory.get(key) == source.get(key) for key in ('source_root', 'source_commit', 'source_tree'))
+         and type(source.get('source_commit')) is str and len(source['source_commit']) == 40
+         and set(source['source_commit']) <= set('0123456789abcdef')
+         and type(source.get('source_tree')) is str and len(source['source_tree']) == 40
+         and set(source['source_tree']) <= set('0123456789abcdef'), 'recovery_inventory_commitment_join')
+    rows = inventory.get('files')
+    need(type(rows) is list and 0 < len(rows) <= 4096 and inventory.get('file_count') == len(rows)
+         and all(type(row) is dict and type(row.get('path')) is str for row in rows), 'recovery_inventory_shape')
+    indexed = {row['path']: row for row in rows}
+    need(len(indexed) == len(rows), 'recovery_inventory_duplicate_paths')
+    selected = [pin for pin in profile['source_descriptors'] if Path(pin['path']).is_relative_to(source_root)
+        and Path(pin['path']).suffix == '.py']
+    need(all(profile[field] in selected for field in ('main_entrypoint', 'health_module', 'owner_source', 'driver_source'))
+         and all(all(indexed.get(pin['path'], {}).get(key) == pin[key] for key in ('path', 'bytes', 'sha256'))
+             for pin in selected), 'recovery_inventory_current_source_mismatch')
+    hold = h._document(value['hold_ref']); failed = h._path(value['failed_cycle_root'])
+    need(value['hold_ref']['path'] == str(root / 'executor-held.json') and failed.parent == root
+         and hold.get('schema') == 'agent-supervisor/scientific-executor-persistent-hold@1'
+         and hold.get('cycle_root') == str(failed) and hold.get('reason') == 'original_owner_failed'
+         and hold.get('automatic_retry_admitted') is False, 'recovery_exact_original_hold')
+    need(value['intent_ref']['path'] == str(failed / 'intent.json')
+         and value['request_ref']['path'] == str(failed / 'request.json')
+         and value['owner_stdout_ref']['path'] == str(failed / 'owner.stdout'), 'recovery_original_artifact_paths')
+    intent = h._document(value['intent_ref']); request = h._document(value['request_ref'])
+    need(intent.get('kind') == 'genuine_scoped_idle' and intent.get('automatic_retry_admitted') is False
+         and intent.get('request_ref') == value['request_ref'] and h._integer(intent.get('sequence'), 1),
+         'recovery_original_idle_intent')
+    need(request.get('schema') == 'legal-ir-original-native-control-request/v1'
+         and request.get('purpose') == 'native_control_metadata'
+         and all(request['source_sha256'].get(prior[field]['path']) == prior[field]['sha256']
+             for field in ('owner_source', 'driver_source')), 'recovery_original_owner_source')
+    terminal = original_terminal(h._bound(value['owner_stdout_ref']), value['request_ref'])
+    need(terminal.get('completed') is False and terminal.get('child_launch_attempted') is False
+         and terminal.get('child_reaped') is False and terminal.get('child_returncode') is None
+         and terminal.get('control_effects') == 'not_started'
+         and terminal.get('storage_status') == 'not_requested'
+         and terminal.get('original_native_compute_closed') is True and terminal.get('source_READ_closed') is True
+         and terminal.get('absolute_resource_operation_deadline_closed') is True
+         and terminal.get('cleanup_errors') == [] and terminal.get('received_signals') == []
+         and terminal.get('error_type') == 'ResourceAdmissionDeadlineError'
+         and terminal.get('task_completion_authority_granted_by_resource_owner') is False
+         and not any(field in terminal for field in ('reservation', 'execution_request', 'external_precharge', 'process_spawn_receipts')),
+         'recovery_not_proven_known_nonstarted')
+    need(terminal.get('database_preimage_before_grants') == request.get('database_preimage')
+         and request['database_preimage']['path'] == config['catalogue']['database_path'],
+         'recovery_original_database_join')
+    attempt = h._path(request['attempt_directory'])
+    need(failed in attempt.parents and attempt.is_dir() and not any(attempt.iterdir())
+         and not (failed / 'closed.json').exists() and not (failed / 'cycle-proof.json').exists(),
+         'recovery_attempt_or_receipt_not_empty')
+    capture = h._document(value['activation_capture_ref']); plan = h._document(value['activation_plan_ref'])
+    need(capture.get('schema') == 'legal-ir-scientific-first-install-actual-capture/v1'
+         and capture.get('accepted') is False and capture.get('applied') is True
+         and capture.get('source_READ_closed_before_start') is True and capture.get('start_requested') is True
+         and _same_payload(capture['plan'], value['activation_plan_ref'])
+         and _same_payload(plan['files'][1]['after'], value['prior_profile_snapshot_ref']), 'recovery_original_activation_join')
+    need(all(config[key] == plan['main_loop_limits'][key]
+         for key in ('max_cycles', 'poll_seconds', 'max_proof_bytes')), 'recovery_original_budget_changed')
+    old_main = capture['opening_actual_main_identity']
+    h._stored_identity(old_main, value['prior_profile_ref'], prior)
+    negative = h._document(value['negative_audit_ref'])
+    need(negative.get('schema') == 'scientific-first-activation-independent-negative-audit/v1'
+         and negative.get('accepted_as_runtime_activation') is False
+         and negative.get('negative_terminal_and_hold_verified') is True
+         and negative.get('attempt_directory_empty') is True and negative.get('cycle_receipts_absent') is True
+         and negative.get('original_terminal') == terminal and negative.get('persistent_hold') == hold
+         and negative['failed_initial_activation']['opening_identity'] == old_main, 'recovery_independent_negative_join')
+    correction = h._document(value['memory_correction_ref'])
+    need(correction.get('schema') == 'scientific-service-memory-context-actual-repair/v1'
+         and correction.get('accepted') is True and correction.get('native_envelope_and_policy_changed') is False
+         and correction.get('restart_or_cycle_replay') is False
+         and correction['scientific_after'].get('Id') == profile['unit']['name']
+         and correction['scientific_after'].get('MainPID') == '0'
+         and correction['scientific_after'].get('MemoryHigh') == 'infinity', 'recovery_cause_not_corrected')
+    dropin = correction['persistent_manager_dropin']
+    h._bound({key: dropin[key] for key in ('path', 'bytes', 'sha256')})
+    need(dropin.get('text') and 'MemoryHigh=infinity' in dropin['text'].splitlines(), 'recovery_durable_memory_correction')
+    observation = value['manager_before']
+    need(type(observation) is dict and observation.get('Id') == profile['unit']['name']
+         and observation.get('MainPID') == '0' and observation.get('ActiveState') in ('failed', 'inactive')
+         and h._number(value['recorded_at']) and value['recorded_at'] <= time.time(), 'recovery_admin_main_absence')
+    current_boot = dict(boot_id=Path('/proc/sys/kernel/random/boot_id').read_text().strip())
+    need(h._definitely_dead_identity(old_main, current_boot), 'recovery_old_main_still_alive')
+    need(type(terminal.get('owner_birth')) is str and terminal['owner_birth'].isdecimal(), 'recovery_owner_birth_unknown')
+    owner = dict(pid=terminal['owner_pid'], birth_ticks=int(terminal['owner_birth']), boot_id=old_main['boot_id'])
+    need(h._integer(owner['pid'], 2) and h._integer(owner['birth_ticks'], 1)
+         and h._definitely_dead_identity(owner, current_boot), 'recovery_old_owner_still_alive')
+    _recovery_scheduler(request, value['scheduler_snapshot_ref'])
+    return failed
+
+
+def authorize_known_nonstarted_recovery(spec_ref, output):
+    """Explicit admin-only metadata step while the actual unit has no MainPID.
+
+    Source/config adoption precedes this call; unit ENV pins the returned digest
+    afterward. Evidence snapshots are data under the SAME proof-root archive.
+    This function never starts a service, allocates resources or removes a hold.
+    """
+    h = health_owner(); spec = h._document(spec_ref)
+    h._keys(spec, RECOVERY_KEYS - {'schema', 'recorded_at', 'manager_before'}, 'recovery_authorization_spec')
+    profile = h._profile(spec['profile_ref'])
+    config_ref = next(pin for pin in profile['source_descriptors'] if pin['path'] in profile['unit']['argv']
+        and pin['path'].endswith('.json') and h._document(pin).get('schema') == CONFIG_SCHEMA)
+    config, _, _ = load_configuration(config_ref)
+    root = Path(profile['proof_root']); output = h._path(str(output))
+    need((root / 'reconciliation-v01') in output.parents, 'recovery_authorization_outside_archive')
+    with os.fdopen(os.open(root / 'scientific-executor.lock', os.O_RDWR | os.O_NOFOLLOW), 'rb') as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        manager = h._manager(profile['unit']['name'])
+        need(manager.get('MainPID') == '0' and manager.get('ActiveState') in ('failed', 'inactive'), 'recovery_admin_requires_no_main')
+        value = dict(spec, schema=RECOVERY_SCHEMA, recorded_at=time.time(), manager_before=manager)
+        _validate_nonstarted_recovery(value, spec['profile_ref'], profile, config)
+        return put(output, value)
+
+
+def reconcile_known_nonstarted(recovery_ref, profile_ref, profile, config, opening_identity):
+    """One exact negative acknowledgement; no closed.json or health receipt."""
+    h = health_owner(); h._within(recovery_ref, Path(profile['proof_root']) / 'reconciliation-v01')
+    value = h._document(recovery_ref)
+    need(os.environ.get(RECOVERY_SHA_ENV) == recovery_ref['sha256'], 'recovery_receipt_not_unit_pinned')
+    argv = profile['unit']['argv']; flag = '--known-nonstarted-recovery'
+    need(argv.count(flag) == 1 and argv.index(flag) + 1 < len(argv)
+         and argv[argv.index(flag) + 1] == recovery_ref['path'], 'recovery_receipt_not_in_unit_argv')
+    failed = _validate_nonstarted_recovery(value, profile_ref, profile, config)
+    ack_path = failed / 'nonstarted-reconciliation.json'
+    ack = dict(schema='agent-supervisor/scientific-nonstarted-reconciliation@1',
+        recovery_ref=recovery_ref, hold_ref=value['hold_ref'], failed_cycle_root=str(failed),
+        consuming_main_identity=opening_identity, health_credit=False, completion_authority=False,
+        dispatch_authority=False)
+    numbers = []
+    for cycle in Path(profile['proof_root']).glob('cycle-*'):
+        intent = h._document(h.descriptor(cycle / 'intent.json'))
+        number = intent.get('cycle_number', intent.get('sequence'))
+        need(h._integer(number, 1, config['max_cycles']), 'recovery_cycle_counter_unknown')
+        need(cycle.name.startswith('cycle-%08d-' % number), 'recovery_cycle_number_path')
+        need(cycle == failed or (cycle / 'closed.json').is_file(), 'recovery_other_unfinished_cycle')
+        numbers.append(number)
+    need(sorted(numbers) == list(range(1, len(numbers) + 1)), 'recovery_cycle_counter_gap_or_duplicate')
+    need(len(numbers) < config['max_cycles'], 'recovery_cycle_budget_exhausted')
+    if os.path.lexists(ack_path):
+        need(h._document(h.descriptor(ack_path)) == ack, 'recovery_authorization_already_consumed_by_other_main')
+    else:
+        put(ack_path, ack)
+    return len(numbers)
+
+
+def _closed_idle_source_inventory(value, profile):
+    """Authenticate the adopted generation; historical owner/driver may differ."""
+    h = health_owner(); source = h._document(value['source_commitment_ref'])
+    source_root = Path(profile['owner_source']['path']).parents[3]
+    need(source.get('schema') == 'legal-ir-scientific-source-commitment/v1'
+         and source.get('runtime_activation_or_task_authority') is False
+         and source.get('source_root') == str(source_root), 'closed_idle_source_commitment')
+    inventory_ref = source['source_inventory']
+    need(Path(profile['proof_root']).parent in Path(inventory_ref['path']).parents,
+         'closed_idle_inventory_not_durable')
+    inventory = h._document(inventory_ref); rows = inventory.get('files')
+    need(inventory.get('schema') == 'legal-ir-scientific-source-inventory/v1'
+         and all(inventory.get(key) == source.get(key) for key in ('source_root', 'source_commit', 'source_tree'))
+         and all(type(source.get(key)) is str and len(source[key]) == 40
+                 and set(source[key]) <= set('0123456789abcdef') for key in ('source_commit', 'source_tree'))
+         and type(rows) is list and 0 < len(rows) <= 4096 and inventory.get('file_count') == len(rows)
+         and all(type(row) is dict and type(row.get('path')) is str for row in rows),
+         'closed_idle_inventory_shape')
+    indexed = {row['path']: row for row in rows}
+    selected = [pin for pin in profile['source_descriptors']
+                if Path(pin['path']).is_relative_to(source_root) and Path(pin['path']).suffix == '.py']
+    need(len(indexed) == len(rows)
+         and all(profile[field] in selected for field in ('main_entrypoint', 'health_module', 'owner_source', 'driver_source'))
+         and all(all(indexed.get(pin['path'], {}).get(key) == pin[key]
+                     for key in ('path', 'bytes', 'sha256')) for pin in selected),
+         'closed_idle_inventory_current_source_mismatch')
+
+
+def _closed_idle_origins(origins, prior, request, plan, negative):
+    """Historical incomplete execution provenance remains unlabelled; no health credit."""
+    h = health_owner()
+    need(type(origins) is dict and origins.get('schema') == 'legal-ir-pre-execution-project-import-origins/v1'
+         and origins.get('project_origins_checked_before_module_execution') is True
+         and origins.get('denials') == [], 'closed_idle_origin_guard_unknown')
+    rows = origins.get('project_imports'); pins = {pin['path']: pin for pin in prior['source_descriptors']}
+    need(type(rows) is list and 1 <= len(rows) <= 4096
+         and len({row.get('module') for row in rows if type(row) is dict}) == len(rows),
+         'closed_idle_origin_population')
+    missing = []
+    for row in rows:
+        need(type(row) is dict and h._text(row.get('module')), 'closed_idle_origin_shape')
+        pin = {key: row.get(key) for key in ('path', 'bytes', 'sha256')}
+        need(pins.get(row.get('path')) == pin and request['source_sha256'].get(pin['path']) == pin['sha256'],
+             'closed_idle_origin_unpinned')
+        h._bound_project_source(pin, prior)
+        if 'execution_profile' not in row:
+            missing.append(row)
+        else:
+            need(row['execution_profile'] == 'compiled_exact_authenticated_source_bytes',
+                 'closed_idle_origin_other_execution_state')
+    need(len(missing) == 1 and missing[0].get('module') == 'ipfs_datasets_py.ipfs_backend_router'
+         and missing[0] == negative.get('exact_unlabeled_origin')
+         and negative.get('actual_origin_rows') == len(rows)
+         and negative.get('compiled_authenticated_origin_rows') == len(rows) - 1,
+         'closed_idle_not_exact_unlabelled_origin_refusal')
+    command = plan['native_metadata_cli']; declared = command['project_import_plan']['source_pins']
+    need(type(declared) is list and missing[0]['path'] == str(Path(command['project_import_plan']['datasets_root']) /
+         'ipfs_datasets_py/ipfs_backend_router.py') and pins[missing[0]['path']] in declared,
+         'closed_idle_resolution_source_binding')
+    # Do not add execution_profile, rewrite origins, or call a health publisher.
+    return rows
+
+
+def _closed_idle_observation(result, request, plan, origins, prior, native, terminal):
+    """Validate the read-only outcome separately from rejected health evidence."""
+    h = health_owner(); command = plan.get('native_metadata_cli', {}); binding = command.get('observation_binding', {})
+    h._keys(result, {'schema', 'backend', 'database_path', 'task_scope', 'observer_source', 'observer_callable',
+        'catalogue_binding', 'ready_task_count', 'selection_idle_reason', 'unchanged', 'write_count',
+        'provider_dispatched', 'attempt_consumed', 'completion_authority'}, 'closed_idle_result_shape')
+    need(plan.get('schema') == 'native-embedded-scoped-observation-plan/v1'
+         and plan.get('operation') == 'native_embedded_scoped_observation_v1'
+         and result['schema'] == 'native-embedded-daemon-observation@1' and result['backend'] == 'embedded'
+         and result['observer_callable'] == 'observe_embedded_database_without_dispatch'
+         and result['selection_idle_reason'] == 'no_scoped_ready_tasks'
+         and result['task_scope'] == plan.get('task_scope') == prior['task_scope']
+         and type(result['ready_task_count']) is int and result['ready_task_count'] == 0
+         and type(result['write_count']) is int and result['write_count'] == 0
+         and result['unchanged'] is True and all(result[key] is False for key in
+             ('provider_dispatched', 'attempt_consumed', 'completion_authority')),
+         'closed_idle_outcome_not_readonly')
+    db = request['database_preimage']
+    h._keys(db, {'path', 'bytes', 'sha256'}, 'closed_idle_database_descriptor')
+    need(h._integer(db['bytes'], 1, 128 * 1024**2) and type(db['sha256']) is str
+         and len(db['sha256']) == 64 and set(db['sha256']) <= set('0123456789abcdef'), 'closed_idle_database_descriptor_bounds')
+    h._path(db['path'])
+    need(terminal.get('database_preimage_before_grants') == db == terminal.get('database_preimage_observed')
+         == terminal.get('database_postimage') == binding.get('database_preimage')
+         and result['database_path'] == db['path'] and h.database_descriptor(db['path']) == db,
+         'closed_idle_database_history_or_current_changed')
+    source = result['observer_source']; route = command.get('import_head_capsule_Git', {}).get('route_source')
+    need(command.get('schema') == 'native-embedded-scoped-observation-cli/v2'
+         and command.get('runtime_root') == plan.get('accelerate_root')
+         and binding.get('schema') == 'native-embedded-daemon-observation-binding@1'
+         and source == binding.get('observer_source') and source in prior['source_descriptors']
+         and route in prior['source_descriptors']
+         and all(request['source_sha256'].get(pin['path']) == command['source_sha256'].get(pin['path']) == pin['sha256']
+                 for pin in (source, route)), 'closed_idle_observer_or_route_source')
+    rows = origins['project_imports']
+    for name, pin in (('ipfs_accelerate_py.agent_supervisor.todo_daemon.native_owner_bootstrap', source),
+                      ('ipfs_accelerate_py.agent_implementation_route', route)):
+        need(any(row.get('module') == name and all(row.get(key) == pin[key] for key in ('path', 'bytes', 'sha256'))
+                 and row.get('execution_profile') == 'compiled_exact_authenticated_source_bytes' for row in rows),
+             'closed_idle_observer_body_not_compiled')
+    catalogue = result['catalogue_binding']
+    h._keys(catalogue, {'database_preimage', 'plan_root_cid', 'repository_tree_id', 'source_schema',
+        'event_cursor', 'task_statuses'}, 'closed_idle_catalogue_shape')
+    need(catalogue['database_preimage'] == db and binding.get('task_scope') == prior['task_scope']
+         and catalogue['source_schema'] == binding.get('source_schema') ==
+             'ipfs_accelerate_py/agent-supervisor/database-task-source@1'
+         and all(catalogue[key] == binding.get(key) == prior['catalogue'][key]
+                 for key in ('plan_root_cid', 'repository_tree_id'))
+         and h._integer(catalogue['event_cursor']) and catalogue['event_cursor'] == native['event_cursor'], 'closed_idle_catalogue_binding')
+    expected = {row['task_cid']: {key: row[key] for key in ('task_cid', 'status', 'revision')}
+                for row in native['tasks'] if row['task_cid'] in prior['task_scope']}
+    tasks = catalogue['task_statuses']
+    need(type(tasks) is list and len(tasks) == len(expected) == len(prior['task_scope'])
+         and len({row.get('task_cid') for row in tasks if type(row) is dict}) == len(tasks)
+         and all(type(row) is dict and set(row) == {'task_cid', 'status', 'revision'}
+                 and h._integer(row.get('revision'), 1)
+                 and row == expected.get(row['task_cid']) and row['status'] in QUIET_STATUSES for row in tasks),
+         'closed_idle_catalogue_tasks_changed')
+
+
+def _validate_closed_idle_recovery(value, profile_ref, profile, config):
+    """Explicit negative reconciliation of exactly two spent idle observations."""
+    h = health_owner(); h._keys(value, CLOSED_IDLE_KEYS, 'closed_idle_recovery_shape')
+    need(value['schema'] == CLOSED_IDLE_SCHEMA and value['recovery_kind'] == 'known_closed_idle_health_rejection'
+         and value['authorization'] == 'resume_genuine_scoped_idle' and value['profile_ref'] == profile_ref
+         and h._profile(profile_ref) == profile and value['max_cycles'] == config['max_cycles']
+         and config['max_cycles'] > 2 and config['execution_templates'] == [], 'closed_idle_recovery_authority')
+    root = Path(profile['proof_root']); archive = root / 'reconciliation-v02'; total = 0
+    for key in CLOSED_IDLE_ARCHIVE_FIELDS:
+        h._within(value[key], archive); h._bound(value[key]); total += value[key]['bytes']
+    need(total <= 1024**2, 'closed_idle_archive_bound')
+    prior = h._document(value['prior_profile_snapshot_ref'])
+    need(_same_payload(value['prior_profile_ref'], value['prior_profile_snapshot_ref'])
+         and value['prior_profile_ref']['path'] == profile_ref['path'], 'closed_idle_prior_profile_snapshot')
+    for key in ('catalogue', 'task_scope', 'proof_root', 'receipt_path', 'max_age_seconds', 'max_cycle_seconds', 'cycle_contract'):
+        need(prior.get(key) == profile[key], 'closed_idle_prior_scope_changed')
+    need(all(prior['unit'][key] == profile['unit'][key] for key in
+         ('name', 'interpreter', 'working_directory', 'environment')), 'closed_idle_prior_unit_changed')
+    _closed_idle_source_inventory(value, profile)
+    old_auth = h._document(value['prior_authorization_ref']); old_ack = h._document(value['prior_ack_ref'])
+    capture = h._document(value['prior_administrative_capture_ref']); negative = h._document(value['negative_audit_ref'])
+    need(old_auth.get('schema') == RECOVERY_SCHEMA and old_auth.get('profile_ref') == value['prior_profile_ref']
+         and old_auth.get('authorization') == 'resume_genuine_scoped_idle'
+         and old_auth.get('max_cycles') == config['max_cycles']
+         and old_ack.get('schema') == 'agent-supervisor/scientific-nonstarted-reconciliation@1'
+         and old_ack.get('recovery_ref') == value['prior_authorization_ref']
+         and all(old_ack.get(key) is False for key in ('health_credit', 'completion_authority', 'dispatch_authority')),
+         'closed_idle_prior_authorization_or_ack')
+    original_plan = h._document(old_auth['activation_plan_ref'])
+    need(all(config[key] == original_plan['main_loop_limits'][key] for key in
+             ('max_cycles', 'poll_seconds', 'max_proof_bytes')), 'closed_idle_original_budget_changed')
+    first_request = h._document(old_auth['request_ref'])
+    first_terminal = original_terminal(h._bound(old_auth['owner_stdout_ref']), old_auth['request_ref'])
+    first_negative = h._document(old_auth['negative_audit_ref'])
+    need(first_terminal.get('completed') is False and first_terminal.get('child_launch_attempted') is False
+         and first_terminal.get('child_reaped') is False and first_terminal.get('child_returncode') is None
+         and first_terminal.get('control_effects') == 'not_started' and first_terminal.get('storage_status') == 'not_requested'
+         and first_terminal.get('source_READ_closed') is True and first_terminal.get('original_native_compute_closed') is True
+         and first_terminal.get('absolute_resource_operation_deadline_closed') is True
+         and first_terminal.get('cleanup_errors') == [] and first_terminal.get('received_signals') == []
+         and first_terminal.get('task_completion_authority_granted_by_resource_owner') is False
+         and first_terminal.get('database_preimage_before_grants') == first_request.get('database_preimage')
+         and first_negative.get('negative_terminal_and_hold_verified') is True
+         and first_negative.get('original_terminal') == first_terminal
+         and first_negative.get('persistent_hold') == h._document(value['global_hold_ref']),
+         'closed_idle_first_nonstarted_history_changed')
+    first_capture = h._document(old_auth['activation_capture_ref'])
+    first_main = first_capture['opening_actual_main_identity']
+    first_prior = h._document(old_auth['prior_profile_snapshot_ref'])
+    h._stored_identity(first_main, old_auth['prior_profile_ref'], first_prior)
+    old_main = capture.get('opening_identity'); h._stored_identity(old_main, value['prior_profile_ref'], prior)
+    need(capture.get('schema') == 'scientific-explicit-known-nonstarted-recovery-actual-capture/v1'
+         and capture.get('accepted') is False and capture.get('start_requested') is True
+         and capture.get('source_leases_closed_before_start') is True and capture.get('hold_removed') is False
+         and capture.get('native_or_task_or_epoch_or_policy_reset') is False
+         and capture.get('recovery_authorization_ref') == value['prior_authorization_ref']
+         and old_ack.get('consuming_main_identity') == old_main, 'closed_idle_original_main_lineage')
+    need(negative.get('schema') == 'scientific-native-completed-idle-health-failure-independent-negative-audit/v1'
+         and _same_payload(negative.get('actual_administrative_capture'), value['prior_administrative_capture_ref'])
+         and negative.get('actual_profile_ref') == value['prior_profile_ref']
+         and negative.get('authorization_ref') == value['prior_authorization_ref']
+         and negative.get('negative_ack_ref') == value['prior_ack_ref']
+         and negative.get('accepted_as_executor_health_or_activation') is False
+         and negative.get('completed_native_read_only_cycle_independently_verified') is True
+         and negative.get('native_source_process_storage_closed') is True
+         and negative.get('task_or_provider_or_completion_effects') is False
+         and negative.get('database_unchanged_during_original_cycle') is True
+         and negative.get('exact_original_cycle_number') == 2 and negative.get('health_sequence_attempted') == 1,
+         'closed_idle_independent_negative_join')
+    hold = h._document(value['global_hold_ref']); cycle_hold = h._document(value['cycle_hold_ref'])
+    failed = Path(value['cycle_proof_ref']['path']).parent
+    need(value['global_hold_ref'] == old_auth['hold_ref'] == old_ack['hold_ref'] == negative['global_original_hold_ref']
+         and value['global_hold_ref']['path'] == str(root / 'executor-held.json')
+         and hold.get('reason') == 'original_owner_failed' and hold.get('automatic_retry_admitted') is False
+         and value['cycle_hold_ref']['path'] == str(failed / 'cycle-held.json')
+         and value['cycle_hold_ref'] == negative['new_cycle_hold_ref']
+         and cycle_hold.get('schema') == 'agent-supervisor/scientific-cycle-held@1'
+         and cycle_hold.get('reason') == 'original_import_origin_unbound'
+         and cycle_hold.get('automatic_retry_admitted') is False, 'closed_idle_exact_two_holds')
+    cycles = sorted(root.glob('cycle-*'))
+    need(len(cycles) == 2 and failed.parent == root and failed.name.startswith('cycle-00000002-')
+         and cycles[0] == Path(old_auth['failed_cycle_root'])
+         and cycles[1] == failed and value['prior_ack_ref']['path'] == str(cycles[0] / 'nonstarted-reconciliation.json')
+         and all(not (cycle / 'closed.json').exists() for cycle in cycles)
+         and not os.path.lexists(profile['receipt_path']), 'closed_idle_cycle_history_or_receipt')
+    intent = h._document(h.descriptor(failed / 'intent.json')); proof = h._document(value['cycle_proof_ref'])
+    need(intent.get('kind') == 'genuine_scoped_idle' and intent.get('automatic_retry_admitted') is False
+         and type(intent.get('cycle_number')) is int and intent['cycle_number'] == 2
+         and type(intent.get('sequence')) is int and intent['sequence'] == 1
+         and intent.get('request_ref') == proof.get('request_ref')
+         and proof.get('kind') == 'genuine_scoped_idle' and proof.get('sequence') == 1,
+         'closed_idle_original_intent')
+    for key in ('request_ref', 'execution_request_ref', 'terminal_ref', 'result_ref', 'plan_ref', 'origins_ref', 'native_diagnostic_ref'):
+        need(proof[key] == negative.get(key), 'closed_idle_negative_artifact_join')
+    request, terminal, result, plan, origins, native = (h._document(proof[key]) for key in
+         ('request_ref', 'terminal_ref', 'result_ref', 'plan_ref', 'origins_ref', 'native_diagnostic_ref'))
+    need(original_terminal(h._raw(failed / 'owner.stdout'), proof['request_ref']) == terminal,
+         'closed_idle_original_stdout_terminal')
+    native_identity = h._native(native, prior, now=proof['finished_at'])
+    need(proof['started_at'] <= native['checked_at_epoch'] <= proof['finished_at'], 'closed_idle_native_capture_outside_cycle')
+    execution = h._document(proof['execution_request_ref'])
+    need(execution.get('completion_authority') is False and execution.get('provider_authority') is False,
+         'closed_idle_execution_authority')
+    # Reuse every original terminal/process/native/storage check preceding the
+    # historical label refusal. This is an expected rejection, never health.
+    try:
+        h._cycle(value['cycle_proof_ref'], prior, old_main, native_identity,
+                 now=proof['finished_at'], monotonic_ns=proof['finished_monotonic_ns'])
+    except h.ExecutorHealthError as exc:
+        need(str(exc) == 'original_import_origin_unbound', 'closed_idle_other_original_cycle_refusal')
+    else:
+        raise ExecutorHold('closed_idle_historical_health_was_not_rejected')
+    _closed_idle_origins(origins, prior, request, plan, negative)
+    _closed_idle_observation(result, request, plan, origins, prior, native, terminal)
+    need(terminal.get('absolute_resource_operation_deadline_closed') is True
+         and terminal.get('child_launch_attempted') is True
+         and terminal.get('control_effects') == 'actor_exit_zero_independent_task_receipt_still_required'
+         and terminal.get('task_completion_authority_granted_by_resource_owner') is False,
+         'closed_idle_original_terminal_authority')
+    current = h._document(value['current_native_ref']); h._native(current, profile)
+    def scoped_tasks(report):
+        return sorted(({key: row[key] for key in ('task_cid', 'status', 'revision')}
+                       for row in report['tasks'] if row['task_cid'] in profile['task_scope']), key=lambda row: row['task_cid'])
+    need(current['event_cursor'] == native['event_cursor'] and scoped_tasks(current) == scoped_tasks(native),
+         'closed_idle_current_tasks_changed')
+    boot = dict(boot_id=Path('/proc/sys/kernel/random/boot_id').read_text().strip())
+    need(h._definitely_dead_identity(first_main, boot), 'closed_idle_first_main_alive')
+    need(type(first_terminal.get('owner_birth')) is str and first_terminal['owner_birth'].isdecimal(),
+         'closed_idle_first_owner_birth_unknown')
+    first_owner = dict(pid=first_terminal['owner_pid'], birth_ticks=int(first_terminal['owner_birth']), boot_id=first_main['boot_id'])
+    need(h._integer(first_owner['pid'], 2) and h._integer(first_owner['birth_ticks'], 1)
+         and h._definitely_dead_identity(first_owner, boot), 'closed_idle_first_owner_alive')
+    need(h._definitely_dead_identity(old_main, boot), 'closed_idle_prior_main_alive')
+    for old in terminal['sampled_process_custody_final']['observed_identities']:
+        need(type(old) is dict and h._integer(old.get('pid'), 2) and h._integer(old.get('birth_ticks'), 1)
+             and h._definitely_dead_identity(dict(old, boot_id=old_main['boot_id']), boot), 'closed_idle_prior_descendant_alive')
+    owner = proof['owner_observation']
+    need(h._definitely_dead_identity(owner, boot), 'closed_idle_prior_owner_alive')
+    manager = value['manager_before']
+    need(manager.get('Id') == profile['unit']['name'] and manager.get('MainPID') == '0'
+         and manager.get('ActiveState') in ('failed', 'inactive')
+         and h._number(value['recorded_at']) and value['recorded_at'] <= time.time(), 'closed_idle_admin_main_absence')
+    _recovery_scheduler(request, value['scheduler_snapshot_ref'])
+    _recovery_scheduler(h._document(old_auth['request_ref']), value['scheduler_snapshot_ref'])
+    # The replacement source must bind the corrected guard plus new owners;
+    # historical role hashes are evidence and are never imposed on the new run.
+    future = h._document(h._document(config['idle_template_ref'])['plan_ref'])['native_metadata_cli']
+    guard = future.get('pre_body_guard'); prior_guard = plan['native_metadata_cli'].get('pre_body_guard')
+    need(type(guard) is dict and guard in profile['source_descriptors'] and guard != prior_guard
+         and all(profile[key]['sha256'] != prior[key]['sha256'] for key in ('owner_source', 'driver_source')),
+         'closed_idle_cause_source_not_adopted')
+    h._bound(guard)
+    return failed
+
+
+def authorize_known_closed_idle_recovery(spec_ref, output):
+    """Existing administrative protocol, distinct typed one-use authorization."""
+    h = health_owner(); spec = h._document(spec_ref)
+    h._keys(spec, CLOSED_IDLE_KEYS - {'schema', 'recorded_at', 'manager_before'}, 'closed_idle_authorization_spec')
+    profile = h._profile(spec['profile_ref'])
+    config_ref = next(pin for pin in profile['source_descriptors'] if pin['path'] in profile['unit']['argv']
+        and pin['path'].endswith('.json') and h._document(pin).get('schema') == CONFIG_SCHEMA)
+    config, _, _ = load_configuration(config_ref); root = Path(profile['proof_root']); output = h._path(str(output))
+    need(output.parent == root / 'reconciliation-v02' and output.name == 'known-closed-idle-authorization.json',
+         'closed_idle_authorization_versioned_path')
+    with os.fdopen(os.open(root / 'scientific-executor.lock', os.O_RDWR | os.O_NOFOLLOW), 'rb') as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        manager = h._manager(profile['unit']['name'])
+        need(manager.get('MainPID') == '0' and manager.get('ActiveState') in ('failed', 'inactive'),
+             'closed_idle_admin_requires_no_main')
+        value = dict(spec, schema=CLOSED_IDLE_SCHEMA, recorded_at=time.time(), manager_before=manager)
+        _validate_closed_idle_recovery(value, spec['profile_ref'], profile, config)
+        return put(output, value)
+
+
+def reconcile_known_closed_idle(recovery_ref, profile_ref, profile, config, opening_identity):
+    """Retain both holds and consumed old AUTH/ACK; spend neither a third run nor health."""
+    h = health_owner(); root = Path(profile['proof_root'])
+    need(recovery_ref['path'] == str(root / 'reconciliation-v02/known-closed-idle-authorization.json'),
+         'closed_idle_recovery_versioned_path')
+    value = h._document(recovery_ref)
+    need(os.environ.get(CLOSED_IDLE_SHA_ENV) == recovery_ref['sha256'], 'closed_idle_receipt_not_unit_pinned')
+    argv = profile['unit']['argv']; flag = '--known-closed-idle-recovery'
+    need(argv.count(flag) == 1 and argv.index(flag) + 1 < len(argv) and argv[argv.index(flag) + 1] == recovery_ref['path']
+         and '--known-nonstarted-recovery' not in argv, 'closed_idle_receipt_not_in_unit_argv')
+    failed = _validate_closed_idle_recovery(value, profile_ref, profile, config)
+    ack_path = failed / 'closed-idle-reconciliation-v01.json'
+    ack = dict(schema='agent-supervisor/scientific-closed-idle-reconciliation@1', recovery_ref=recovery_ref,
+        retained_global_hold_ref=value['global_hold_ref'], retained_cycle_hold_ref=value['cycle_hold_ref'],
+        prior_authorization_ref=value['prior_authorization_ref'], prior_ack_ref=value['prior_ack_ref'],
+        rejected_cycle_proof_ref=value['cycle_proof_ref'], consuming_main_identity=opening_identity,
+        spent_cycle_count=2, next_cycle_number=3, first_health_sequence=1,
+        health_credit=False, completion_authority=False, dispatch_authority=False, historical_origins_relabelled=False)
+    if os.path.lexists(ack_path):
+        need(h._document(h.descriptor(ack_path)) == ack, 'closed_idle_authorization_consumed_by_other_main')
+    else:
+        put(ack_path, ack)
+    return 2
+
+
+CAPACITY_SCHEMA = 'agent-supervisor/scientific-known-unselected-capacity-handover@1'
+CAPACITY_SHA_ENV = 'IPFS_SCIENTIFIC_KNOWN_UNSELECTED_CAPACITY_HANDOVER_SHA256'
+CAPACITY_KEYS = frozenset({'schema', 'recovery_kind', 'profile_ref', 'prior_profile_ref',
+    'prior_profile_snapshot_ref', 'prior_config_snapshot_ref', 'prior_history_ref',
+    'source_commitment_ref', 'scheduler_snapshot_ref', 'current_native_ref',
+    'spent_cycle_count', 'max_cycles', 'authorization', 'recorded_at', 'manager_before'})
+CAPACITY_ARCHIVE_FIELDS = ('prior_profile_snapshot_ref', 'prior_config_snapshot_ref',
+    'prior_history_ref', 'source_commitment_ref', 'scheduler_snapshot_ref', 'current_native_ref')
+CAPACITY_HISTORY_KEYS = frozenset({'schema', 'prior_profile_ref', 'prior_config_ref',
+    'prior_source_commitment_ref', 'closed_idle_authorization_ref', 'closed_idle_ack_ref',
+    'global_hold_ref', 'cycle2_hold_ref', 'latest_receipt_ref', 'capacity_intent_ref',
+    'capacity_hold_ref', 'old_root_storage'})
+READ_ONLY_IMPORT_SCOPE = 'read-only normal import checks clean HEAD/tree without archiving a control-plane capsule; implementation is forbidden'
+
+
+def _capacity_root_storage(root):
+    """Bounded read-only footprint; never prune or make space in prior proofs."""
+    total = count = directories = 0
+    pending = [Path(root)]
+    while pending:
+        directory = pending.pop(); directories += 1
+        need(directories <= 2048, 'capacity_old_root_directory_bound')
+        with os.scandir(directory) as entries:
+            for entry in entries:
+                info = entry.stat(follow_symlinks=False)
+                if stat.S_ISDIR(info.st_mode):
+                    need(info.st_uid == os.geteuid(), 'capacity_old_root_foreign_directory')
+                    pending.append(Path(entry.path)); continue
+                need(stat.S_ISREG(info.st_mode) and info.st_nlink == 1 and info.st_uid == os.geteuid(),
+                     'capacity_old_root_nonordinary_artifact')
+                count += 1; total += info.st_size
+                need(count <= 40000 and total <= 2 * 1024**3, 'capacity_old_root_read_bound')
+    return dict(regular_files=count, regular_bytes=total)
+
+
+def _capacity_dead_family(proof, terminal, old_main):
+    h = health_owner(); boot = dict(boot_id=Path('/proc/sys/kernel/random/boot_id').read_text().strip())
+    need(h._definitely_dead_identity(old_main, boot), 'capacity_prior_main_alive')
+    owner = proof['owner_observation']
+    need(h._definitely_dead_identity(owner, boot), 'capacity_prior_owner_alive')
+    rows = terminal.get('sampled_process_custody_final', {}).get('observed_identities')
+    need(type(rows) is list and len(rows) <= 4096, 'capacity_prior_descendant_custody_unknown')
+    for row in rows:
+        need(type(row) is dict and h._integer(row.get('pid'), 2) and h._integer(row.get('birth_ticks'), 1)
+             and h._definitely_dead_identity(dict(row, boot_id=old_main['boot_id']), boot),
+             'capacity_prior_descendant_alive')
+
+
+def _capacity_negative_history(history, prior, prior_ref, cycles, old_main, scheduler_ref):
+    """Keep the two original negative histories negative; never relabel origins."""
+    h = health_owner(); closed_auth = h._document(history['closed_idle_authorization_ref'])
+    closed_ack = h._document(history['closed_idle_ack_ref'])
+    need(closed_auth.get('schema') == CLOSED_IDLE_SCHEMA and closed_auth.get('profile_ref') == prior_ref
+         and closed_auth.get('authorization') == 'resume_genuine_scoped_idle'
+         and closed_auth.get('max_cycles') == 10000
+         and closed_ack.get('schema') == 'agent-supervisor/scientific-closed-idle-reconciliation@1'
+         and closed_ack.get('recovery_ref') == history['closed_idle_authorization_ref']
+         and closed_ack.get('consuming_main_identity') == old_main
+         and type(closed_ack.get('spent_cycle_count')) is int and closed_ack['spent_cycle_count'] == 2
+         and closed_ack.get('next_cycle_number') == 3 and closed_ack.get('first_health_sequence') == 1
+         and all(closed_ack.get(k) is False for k in ('health_credit', 'completion_authority',
+             'dispatch_authority', 'historical_origins_relabelled')), 'capacity_closed_idle_lineage')
+    first_auth = h._document(closed_auth['prior_authorization_ref']); first_ack = h._document(closed_auth['prior_ack_ref'])
+    need(first_auth.get('schema') == RECOVERY_SCHEMA and first_auth.get('authorization') == 'resume_genuine_scoped_idle'
+         and first_ack.get('schema') == 'agent-supervisor/scientific-nonstarted-reconciliation@1'
+         and first_ack.get('recovery_ref') == closed_auth['prior_authorization_ref']
+         and closed_ack.get('prior_authorization_ref') == closed_auth['prior_authorization_ref']
+         and closed_ack.get('prior_ack_ref') == closed_auth['prior_ack_ref']
+         and all(first_ack.get(k) is False for k in ('health_credit', 'completion_authority', 'dispatch_authority')),
+         'capacity_nonstarted_lineage')
+    hold = h._document(history['global_hold_ref']); second_hold = h._document(history['cycle2_hold_ref'])
+    need(history['global_hold_ref']['path'] == str(cycles[0].parent / 'executor-held.json')
+         and history['global_hold_ref'] == closed_auth['global_hold_ref'] == first_auth['hold_ref']
+         == first_ack['hold_ref'] == closed_ack['retained_global_hold_ref']
+         and history['cycle2_hold_ref'] == closed_auth['cycle_hold_ref'] == closed_ack['retained_cycle_hold_ref']
+         and history['cycle2_hold_ref']['path'] == str(cycles[1] / 'cycle-held.json')
+         and hold.get('reason') == 'original_owner_failed' and hold.get('cycle_root') == str(cycles[0])
+         and second_hold.get('reason') == 'original_import_origin_unbound'
+         and hold.get('automatic_retry_admitted') is False and second_hold.get('automatic_retry_admitted') is False,
+         'capacity_original_holds_changed')
+    need(first_auth['request_ref']['path'] == str(cycles[0] / 'request.json')
+         and first_auth['owner_stdout_ref']['path'] == str(cycles[0] / 'owner.stdout')
+         and not any((cycle / 'closed.json').exists() for cycle in cycles[:2]), 'capacity_negative_paths_or_health_changed')
+    first_request = h._document(first_auth['request_ref'])
+    first_terminal = original_terminal(h._bound(first_auth['owner_stdout_ref']), first_auth['request_ref'])
+    first_negative = h._document(first_auth['negative_audit_ref'])
+    need(first_auth['failed_cycle_root'] == str(cycles[0]) and first_ack.get('failed_cycle_root') == str(cycles[0])
+         and first_terminal.get('completed') is False and first_terminal.get('child_launch_attempted') is False
+         and first_terminal.get('child_reaped') is False and first_terminal.get('child_returncode') is None
+         and first_terminal.get('control_effects') == 'not_started' and first_terminal.get('storage_status') == 'not_requested'
+         and first_terminal.get('error_type') == 'ResourceAdmissionDeadlineError'
+         and not any(k in first_terminal for k in ('reservation', 'execution_request', 'external_precharge', 'process_spawn_receipts'))
+         and first_terminal.get('source_READ_closed') is True and first_terminal.get('original_native_compute_closed') is True
+         and first_terminal.get('absolute_resource_operation_deadline_closed') is True
+         and first_terminal.get('cleanup_errors') == [] and first_terminal.get('received_signals') == []
+         and first_terminal.get('task_completion_authority_granted_by_resource_owner') is False
+         and first_negative.get('negative_terminal_and_hold_verified') is True
+         and first_negative.get('original_terminal') == first_terminal and first_negative.get('persistent_hold') == hold,
+         'capacity_first_negative_unknown')
+    first_capture = h._document(first_auth['activation_capture_ref']); first_main = first_capture['opening_actual_main_identity']
+    first_prior = h._document(first_auth['prior_profile_snapshot_ref'])
+    h._stored_identity(first_main, first_auth['prior_profile_ref'], first_prior)
+    need(type(first_terminal.get('owner_birth')) is str and first_terminal['owner_birth'].isdecimal(),
+         'capacity_first_owner_birth_unknown')
+    first_owner = dict(pid=first_terminal.get('owner_pid'), birth_ticks=int(first_terminal['owner_birth']),
+                       boot_id=first_main['boot_id'])
+    boot = dict(boot_id=Path('/proc/sys/kernel/random/boot_id').read_text().strip())
+    need(h._integer(first_owner['pid'], 2) and h._integer(first_owner['birth_ticks'], 1)
+         and h._definitely_dead_identity(first_main, boot) and h._definitely_dead_identity(first_owner, boot),
+         'capacity_first_negative_family_alive')
+    attempt = h._path(first_request['attempt_directory'])
+    need(cycles[0] in attempt.parents and not any(attempt.iterdir()), 'capacity_first_negative_attempt_changed')
+    old_plan = h._document(first_auth['activation_plan_ref'])
+    need(old_plan.get('main_loop_limits') == dict(max_cycles=10000, poll_seconds=60, max_proof_bytes=1024**3),
+         'capacity_original_limits_unknown')
+    second_ref = h.descriptor(cycles[1] / 'cycle-proof.json'); proof = h._document(second_ref)
+    need(second_ref == closed_auth['cycle_proof_ref'] == closed_ack['rejected_cycle_proof_ref'],
+         'capacity_second_negative_proof_changed')
+    prior2 = h._document(closed_auth['prior_profile_snapshot_ref']); negative = h._document(closed_auth['negative_audit_ref'])
+    capture2 = h._document(closed_auth['prior_administrative_capture_ref']); main2 = capture2['opening_identity']
+    h._stored_identity(main2, closed_auth['prior_profile_ref'], prior2)
+    need(first_ack.get('consuming_main_identity') == main2, 'capacity_first_ack_main_changed')
+    second_intent = h._document(h.descriptor(cycles[1] / 'intent.json'))
+    need(type(second_intent.get('sequence')) is int and second_intent['sequence'] == 1
+         and second_intent.get('request_ref') == proof.get('request_ref'), 'capacity_second_intent_changed')
+    request, terminal, result, plan, origins, native = (h._document(proof[k]) for k in
+        ('request_ref', 'terminal_ref', 'result_ref', 'plan_ref', 'origins_ref', 'native_diagnostic_ref'))
+    need(proof.get('kind') == 'genuine_scoped_idle' and type(proof.get('sequence')) is int and proof['sequence'] == 1
+         and negative.get('accepted_as_executor_health_or_activation') is False
+         and negative.get('cycle_proof_ref') == second_ref
+         and original_terminal(h._raw(cycles[1] / 'owner.stdout'), proof['request_ref']) == terminal,
+         'capacity_second_negative_unknown')
+    native_identity = h._native(native, prior2, now=proof['finished_at'])
+    try:
+        h._cycle(second_ref, prior2, main2, native_identity, now=proof['finished_at'],
+                 monotonic_ns=proof['finished_monotonic_ns'])
+    except h.ExecutorHealthError as exc:
+        need(str(exc) == 'original_import_origin_unbound', 'capacity_second_negative_other_refusal')
+    else:
+        raise ExecutorHold('capacity_unknown_history_cannot_gain_health')
+    _closed_idle_origins(origins, prior2, request, plan, negative)
+    _closed_idle_observation(result, request, plan, origins, prior2, native, terminal)
+    _capacity_dead_family(proof, terminal, main2)
+    _recovery_scheduler(first_request, scheduler_ref); _recovery_scheduler(request, scheduler_ref)
+    return closed_auth
+
+
+def _validate_capacity_handover(value, profile_ref, profile, config):
+    """Exact thirteen-spent, idle-only transfer into a distinct empty proof root."""
+    h = health_owner(); h._keys(value, CAPACITY_KEYS, 'capacity_handover_shape')
+    need(value['schema'] == CAPACITY_SCHEMA and value['recovery_kind'] == 'known_unselected_capacity_hold'
+         and value['authorization'] == 'resume_genuine_scoped_idle_in_fresh_root'
+         and value['profile_ref'] == profile_ref and h._profile(profile_ref) == profile
+         and type(value['spent_cycle_count']) is int and value['spent_cycle_count'] == 13
+         and value['max_cycles'] == config['max_cycles'] == 10000 and config['poll_seconds'] == 60
+         and config['max_proof_bytes'] == 1024**3 and config['execution_templates'] == [], 'capacity_handover_authority')
+    root = h._path(profile['proof_root']); archive = root / 'reconciliation-v03'
+    total = 0
+    for field in CAPACITY_ARCHIVE_FIELDS:
+        h._within(value[field], archive); h._bound(value[field]); total += value[field]['bytes']
+    need(total <= 1024**2, 'capacity_archive_bound')
+    prior = h._document(value['prior_profile_snapshot_ref']); prior_config = h._document(value['prior_config_snapshot_ref'])
+    history = h._document(value['prior_history_ref']); h._keys(history, CAPACITY_HISTORY_KEYS, 'capacity_history_shape')
+    need(history['schema'] == 'agent-supervisor/scientific-capacity-prior-history@1'
+         and history['prior_profile_ref'] == value['prior_profile_ref']
+         and _same_payload(value['prior_profile_ref'], value['prior_profile_snapshot_ref'])
+         and value['prior_profile_ref']['path'] == profile_ref['path'], 'capacity_prior_profile_snapshot')
+    old_root = h._path(prior['proof_root'])
+    need(old_root != root and old_root.parent == root.parent and not old_root.is_relative_to(root)
+         and not root.is_relative_to(old_root), 'capacity_requires_distinct_sibling_proof_root')
+    for directory in (old_root, root):
+        info = directory.lstat()
+        need(stat.S_ISDIR(info.st_mode) and info.st_uid == os.geteuid() and stat.S_IMODE(info.st_mode) == 0o700,
+             'capacity_proof_root_not_private')
+    check_proof_budget(root, config['max_proof_bytes'])
+    need(not list(root.glob('cycle-*')) and not os.path.lexists(root / 'executor-held.json')
+         and not os.path.lexists(profile['receipt_path'])
+         and Path(profile['receipt_path']).parent == root, 'capacity_new_root_not_fresh')
+    need(all(prior.get(k) == profile[k] for k in ('catalogue', 'task_scope', 'max_age_seconds', 'max_cycle_seconds', 'cycle_contract'))
+         and all(prior['unit'][k] == profile['unit'][k] for k in ('name', 'interpreter', 'working_directory')),
+         'capacity_prior_scope_or_unit_changed')
+    old_source = Path(prior['owner_source']['path']).parents[3]; new_source = Path(profile['owner_source']['path']).parents[3]
+    need(old_source != new_source and not old_source.is_relative_to(new_source) and not new_source.is_relative_to(old_source)
+         and _same_payload(prior['health_module'], profile['health_module']), 'capacity_requires_retained_source_generation')
+    expected_env = dict(prior['unit']['environment'])
+    if 'PYTHONPATH' in expected_env:
+        expected_env['PYTHONPATH'] = ':'.join(str(new_source) if part == str(old_source) else part
+            for part in expected_env['PYTHONPATH'].split(':'))
+    need(profile['unit']['environment'] == expected_env, 'capacity_unit_environment_changed')
+    old_argv = prior['unit']['argv']; old_config_path = old_argv[old_argv.index('--config') + 1]
+    need(history['prior_config_ref']['path'] == old_config_path
+         and history['prior_config_ref'] in prior['source_descriptors']
+         and _same_payload(history['prior_config_ref'], value['prior_config_snapshot_ref'])
+         and prior_config.get('schema') == CONFIG_SCHEMA and prior_config.get('execution_templates') == []
+         and all(prior_config[k] == config[k] for k in ('catalogue', 'max_cycles', 'poll_seconds', 'max_proof_bytes')),
+         'capacity_original_configuration_changed')
+    for pin in prior['source_descriptors']:
+        if pin == history['prior_config_ref']: continue
+        if pin['path'] == prior['unit']['interpreter']: h._bound_installed_tool(pin)
+        else: h._bound_project_source(pin, prior)
+    _closed_idle_source_inventory(value, profile)
+    _closed_idle_source_inventory({'source_commitment_ref': history['prior_source_commitment_ref']}, prior)
+    cycles = sorted(old_root.glob('cycle-*'))
+    need(len(cycles) == 13, 'capacity_old_cycle_population')
+    for number, cycle in enumerate(cycles, 1):
+        need(cycle.name.startswith('cycle-%08d-' % number), 'capacity_old_cycle_counter_gap_or_duplicate')
+        intent = h._document(h.descriptor(cycle / 'intent.json'))
+        need(type(intent.get('cycle_number', intent.get('sequence'))) is int
+             and intent.get('cycle_number', intent.get('sequence')) == number
+             and intent.get('automatic_retry_admitted') is False, 'capacity_old_cycle_intent_unknown')
+        if number < 13:
+            need(intent.get('kind') == 'genuine_scoped_idle', 'capacity_prior_execution_or_unknown_intent')
+    last = cycles[-1]; intent = h._document(history['capacity_intent_ref']); held = h._document(history['capacity_hold_ref'])
+    need(history['capacity_intent_ref']['path'] == str(last / 'intent.json')
+         and history['capacity_hold_ref']['path'] == str(last / 'cycle-held.json')
+         and set(path.name for path in last.iterdir()) == {'intent.json', 'cycle-held.json'}
+         and intent == dict(kind='not_selected', sequence=11, cycle_number=13, automatic_retry_admitted=False)
+         and held.get('schema') == 'agent-supervisor/scientific-cycle-held@1'
+         and held.get('reason') == 'proof_storage_bound' and held.get('automatic_retry_admitted') is False,
+         'capacity_not_exact_unselected_storage_hold')
+    h._keys(history['old_root_storage'], {'regular_files', 'regular_bytes'}, 'capacity_old_storage_shape')
+    need(all(type(history['old_root_storage'][k]) is int for k in ('regular_files', 'regular_bytes')), 'capacity_old_storage_types')
+    footprint = _capacity_root_storage(old_root)
+    need(footprint == history['old_root_storage'] and footprint['regular_files'] > 20000
+         and footprint['regular_bytes'] <= 1024**3, 'capacity_old_file_limit_not_proven')
+    receipt = h._document(history['latest_receipt_ref']); old_main = receipt['identity']
+    need(history['latest_receipt_ref']['path'] == prior['receipt_path'] and type(receipt.get('sequence')) is int
+         and receipt['sequence'] == 10 and receipt.get('profile_ref') == value['prior_profile_ref'], 'capacity_last_receipt_binding')
+    h._stored_identity(old_main, value['prior_profile_ref'], prior)
+    closed_auth = _capacity_negative_history(history, prior, value['prior_profile_ref'], cycles, old_main, value['scheduler_snapshot_ref'])
+    need(_same_payload(closed_auth['source_commitment_ref'], history['prior_source_commitment_ref']),
+         'capacity_prior_source_history_join')
+    for number, cycle in enumerate(cycles[2:12], 3):
+        intent = h._document(h.descriptor(cycle / 'intent.json')); closed = h._document(h.descriptor(cycle / 'closed.json'))
+        h._keys(closed, {'cycle_proof_ref', 'receipt_ref'}, 'capacity_closed_cycle_shape')
+        need(type(closed.get('receipt_ref')) is dict and closed['receipt_ref'].get('path') == prior['receipt_path'],
+             'capacity_prior_receipt_path_changed')
+        proof_ref = h.descriptor(cycle / 'cycle-proof.json'); proof = h._document(proof_ref)
+        need(closed.get('cycle_proof_ref') == proof_ref and proof.get('kind') == 'genuine_scoped_idle'
+             and type(intent.get('sequence')) is int and intent['sequence'] == number - 2 == proof.get('sequence')
+             and intent.get('request_ref') == proof.get('request_ref')
+             and not os.path.lexists(cycle / 'cycle-held.json'), 'capacity_prior_cycle_not_genuine_closed_idle')
+        native = h._document(proof['native_diagnostic_ref']); native_identity = h._native(native, prior, now=proof['finished_at'])
+        h._cycle(proof_ref, prior, old_main, native_identity, now=proof['finished_at'], monotonic_ns=proof['finished_monotonic_ns'])
+        request = h._document(proof['request_ref']); terminal = h._document(proof['terminal_ref'])
+        need(original_terminal(h._raw(cycle / 'owner.stdout'), proof['request_ref']) == terminal
+             and terminal.get('task_completion_authority_granted_by_resource_owner') is False,
+             'capacity_prior_terminal_or_authority_changed')
+        _capacity_dead_family(proof, terminal, old_main); _recovery_scheduler(request, value['scheduler_snapshot_ref'])
+    need(receipt.get('cycle_proof_ref') == proof_ref and closed.get('receipt_ref') == history['latest_receipt_ref'],
+         'capacity_last_cycle_receipt_join')
+    h._receipt(history['latest_receipt_ref'], value['prior_profile_ref'], prior, native_identity, old_main,
+               now=receipt['observed_at'], monotonic_ns=receipt['observed_monotonic_ns'])
+    current = h._document(value['current_native_ref']); h._native(current, profile)
+    def tasks(report):
+        return sorted(({k: row[k] for k in ('task_cid', 'status', 'revision')} for row in report['tasks']
+            if row['task_cid'] in profile['task_scope']), key=lambda row: row['task_cid'])
+    need(current['event_cursor'] == native['event_cursor'] and tasks(current) == tasks(native)
+         and all(row['status'] in QUIET_STATUSES for row in current['tasks'] if row['task_cid'] in profile['task_scope']),
+         'capacity_current_catalogue_changed_or_runnable')
+    request = h._document(proof['request_ref']); database = request['database_preimage']
+    need(h.database_descriptor(config['catalogue']['database_path']) == database
+         and terminal.get('database_preimage_before_grants') == database == terminal.get('database_preimage_observed')
+         == terminal.get('database_postimage'), 'capacity_database_history_or_current_changed')
+    template = h._document(config['idle_template_ref']); validate_template(template, profile, 'genuine_scoped_idle')
+    future = h._document(template['plan_ref']); cli = future.get('native_metadata_cli', {}); git = cli.get('import_head_capsule_Git', {})
+    commitment = h._document(value['source_commitment_ref']); future_request = h._document(template['request_ref'])
+    observer = cli.get('observation_binding', {}).get('observer_source')
+    declared = cli.get('project_import_plan', {}).get('source_pins')
+    need(future_request.get('schema') == 'legal-ir-original-native-control-request/v1'
+         and future_request.get('purpose') == 'native_control_metadata'
+         and future.get('schema') == profile['cycle_contract']['plan_schema'] and future.get('operation') == profile['cycle_contract']['plan_operation']
+         and future.get('task_scope') == profile['task_scope'] and git.get('scope') == READ_ONLY_IMPORT_SCOPE
+         and git.get('source_root') == cli.get('runtime_root') == future.get('accelerate_root') == str(new_source)
+         and git.get('source_head') == commitment['source_commit']
+         and git.get('route_source') in profile['source_descriptors']
+         and git['route_source']['path'] == str(new_source / 'ipfs_accelerate_py/agent_implementation_route.py')
+         and cli.get('schema') == 'native-embedded-scoped-observation-cli/v2'
+         and cli.get('observation_binding', {}).get('task_scope') == profile['task_scope']
+         and observer in profile['source_descriptors']
+         and observer['path'] == str(new_source / 'ipfs_accelerate_py/agent_supervisor/todo_daemon/native_owner_bootstrap.py')
+         and cli.get('pre_body_guard') in profile['source_descriptors']
+         and cli['pre_body_guard']['path'] == str(new_source / 'ipfs_accelerate_py/agent_supervisor/rescue/project_import_source_guard.py')
+         and type(declared) is list
+         and any(pin['path'] == str(new_source / 'ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py')
+             for pin in profile['source_descriptors'])
+         and all(pin in declared and cli.get('source_sha256', {}).get(pin['path']) == future_request.get('source_sha256', {}).get(pin['path']) == pin['sha256']
+             for pin in profile['source_descriptors'] if Path(pin['path']).is_relative_to(new_source) and Path(pin['path']).suffix == '.py')
+         and all(future_request.get('source_sha256', {}).get(profile[k]['path']) == profile[k]['sha256']
+             for k in ('owner_source', 'driver_source')),
+         'capacity_readonly_source_successor_not_adopted')
+    need({k: future_request.get(k) for k in ('cpu_slots', 'memory_mb', 'child_process_slots', 'storage_bytes', 'timeout_seconds')}
+         == dict(cpu_slots=1, memory_mb=1536, child_process_slots=8, storage_bytes=384 * 1024**2, timeout_seconds=300),
+         'capacity_original_native_envelope_changed')
+    manager = value['manager_before']
+    need(manager.get('Id') == profile['unit']['name'] and manager.get('MainPID') == '0'
+         and manager.get('ActiveState') in ('failed', 'inactive') and h._number(value['recorded_at'])
+         and value['recorded_at'] <= time.time(), 'capacity_admin_main_absence')
+    return 13
+
+
+def authorize_known_unselected_capacity_handover(spec_ref, output):
+    """Explicit one-use administrative metadata; old root stays read-only."""
+    h = health_owner(); spec = h._document(spec_ref)
+    h._keys(spec, CAPACITY_KEYS - {'schema', 'recorded_at', 'manager_before'}, 'capacity_authorization_spec')
+    profile = h._profile(spec['profile_ref'])
+    config_ref = next(pin for pin in profile['source_descriptors'] if pin['path'] in profile['unit']['argv']
+        and pin['path'].endswith('.json') and h._document(pin).get('schema') == CONFIG_SCHEMA)
+    config, _, _ = load_configuration(config_ref); root = h._path(profile['proof_root']); output = h._path(str(output))
+    prior = h._document(spec['prior_profile_snapshot_ref']); old_root = h._path(prior['proof_root'])
+    need(output == root / 'reconciliation-v03/known-unselected-capacity-authorization.json', 'capacity_authorization_versioned_path')
+    with os.fdopen(os.open(old_root / 'scientific-executor.lock', os.O_RDWR | os.O_NOFOLLOW), 'rb') as old_lock, \
+         os.fdopen(os.open(root / 'scientific-executor.lock', os.O_RDWR | os.O_NOFOLLOW), 'rb') as new_lock:
+        fcntl.flock(old_lock, fcntl.LOCK_EX | fcntl.LOCK_NB); fcntl.flock(new_lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        manager = h._manager(profile['unit']['name'])
+        need(manager.get('MainPID') == '0' and manager.get('ActiveState') in ('failed', 'inactive'), 'capacity_admin_requires_no_main')
+        value = dict(spec, schema=CAPACITY_SCHEMA, recorded_at=time.time(), manager_before=manager)
+        _validate_capacity_handover(value, spec['profile_ref'], profile, config)
+        need(h._manager(profile['unit']['name']) == manager, 'capacity_manager_changed_before_authorization')
+        return put(output, value)
+
+
+def reconcile_known_unselected_capacity_handover(recovery_ref, profile_ref, profile, config, opening_identity):
+    """Acknowledge thirteen spent slots; only subsequent real cycles earn health."""
+    h = health_owner(); root = h._path(profile['proof_root'])
+    need(recovery_ref['path'] == str(root / 'reconciliation-v03/known-unselected-capacity-authorization.json'),
+         'capacity_recovery_versioned_path')
+    value = h._document(recovery_ref)
+    need(os.environ.get(CAPACITY_SHA_ENV) == recovery_ref['sha256'], 'capacity_receipt_not_unit_pinned')
+    need(not any(name in os.environ for name in (RECOVERY_SHA_ENV, CLOSED_IDLE_SHA_ENV)),
+         'capacity_previous_authorization_environment_retained')
+    argv = profile['unit']['argv']; flag = '--known-unselected-capacity-handover'
+    need(argv.count(flag) == 1 and argv.index(flag) + 1 < len(argv) and argv[argv.index(flag) + 1] == recovery_ref['path']
+         and '--known-nonstarted-recovery' not in argv and '--known-closed-idle-recovery' not in argv,
+         'capacity_receipt_not_in_unit_argv')
+    spent = _validate_capacity_handover(value, profile_ref, profile, config)
+    ack = dict(schema='agent-supervisor/scientific-unselected-capacity-handover-ack@1', recovery_ref=recovery_ref,
+        prior_history_ref=value['prior_history_ref'], prior_profile_ref=value['prior_profile_ref'],
+        prior_proof_root=h._document(value['prior_profile_snapshot_ref'])['proof_root'],
+        new_proof_root=str(root), consuming_main_identity=opening_identity, spent_cycle_count=spent,
+        next_cycle_number=14, first_health_sequence=1, remaining_cycle_count=9987,
+        health_credit=False, completion_authority=False, dispatch_authority=False, historical_origins_relabelled=False)
+    ack_path = root / 'reconciliation-v03/capacity-handover-acknowledgement.json'
+    if os.path.lexists(ack_path):
+        need(h._document(h.descriptor(ack_path)) == ack, 'capacity_authorization_consumed_by_other_main')
+    else:
+        put(ack_path, ack)
+    return spent
+
+
+def _recovery_failure(root, cycle_number, sequence, reason):
+    """Retain a later failure even while the original global hold is immutable."""
+    matches = list(root.glob('cycle-%08d-*' % cycle_number))
+    need(len(matches) <= 1, 'recovery_duplicate_cycle_number')
+    if matches:
+        cycle = matches[0]
+    else:
+        cycle = root / ('cycle-%08d-%s' % (cycle_number, uuid.uuid4().hex)); cycle.mkdir(mode=0o700)
+        put(cycle / 'intent.json', dict(kind='not_selected', sequence=sequence,
+            cycle_number=cycle_number, automatic_retry_admitted=False))
+    if not (cycle / 'cycle-held.json').exists():
+        put(cycle / 'cycle-held.json', dict(schema='agent-supervisor/scientific-cycle-held@1',
+            reason=str(reason)[:2048], recorded_at=time.time(), automatic_retry_admitted=False))
+
+
+def require_main_process(profile_ref, profile):
+    """Authenticate the producer before spawning any original owner."""
+    h = health_owner()
+    need(threading.current_thread() is threading.main_thread(), 'service_not_main_thread')
+    need(Path(__file__).resolve() == Path(profile['main_entrypoint']['path']) and
+        Path(h.__file__).resolve() == Path(profile['health_module']['path']), 'service_live_source_origin_changed')
+    identity = h._identity(profile_ref, profile, h._manager, h._process)
+    need(identity['pid'] == os.getpid(), 'service_not_systemd_main_pid')
+    return identity
+
+
+SOURCE_LEASE_SCHEMA = 'agent-supervisor/scientific-source-lease-prestart-recovery@1'
+SOURCE_LEASE_ENV = 'IPFS_SCIENTIFIC_SOURCE_LEASE_RECOVERY_SHA256'
+SOURCE_LEASE_MAX_ADDITIONAL = 2
+SOURCE_LEASE_COOLDOWN_SECONDS = 60
+SOURCE_LEASE_INCIDENT = 'cycle48-source-lease-timeout-v1'
+SOURCE_LEASE_OLD_MAIN_SHA = '8f28efa64dd222dd2c92bc1e75375460fbe6d6914bc9c42b2d6bc694db09d06a'
+SOURCE_LEASE_OLD_PROFILE_SHA = '1adefd8d5f9e71fc6ded92359f5e8dfede91931da45a357d658931ea86558da3'
+SOURCE_LEASE_REQUEST_SHA = 'a0e48edc79e615636060d265eee57a0fe85148d5eddbb8bb8a25dbf16d099cfc'
+SOURCE_LEASE_STDOUT_SHA = '950def5cabc0cc27aaad5baac8d2079196328eb5e9a1944f5d39f6c2be71a08b'
+SOURCE_LEASE_AUDIT_SHA = '77367cc9ad4dc342c75ba63befa3cd0ff0a739f437d38716011566a079cf36a2'
+SOURCE_LEASE_LAST_HEALTH_SHA = 'ac696614679aa2f31cdf3c1b8cbf7d9d5d0e3ab3c6edd28e9bb3a4cd871e6507'
+SOURCE_LEASE_GENERATION_ACK_SHA = '3e5635e9ef0414e6f87772579d20cf16b1b295943f73d3b756120d3b91134c28'
+SOURCE_LEASE_GENERATION_AUTH_SHA = 'c54a0d595f42dbfa9a72593aa30b2188e21db0b73d7d1f11d842fbdcdc8dd7ae'
+
+
+def _source_lease_attempt_empty(request_ref, root, links):
+    h = health_owner(); request = h._document(request_ref)
+    attempt = h._path(request['attempt_directory'])
+    need(root in attempt.parents and attempt.is_dir() and not any(attempt.iterdir()),
+         'source_lease_attempt_not_empty')
+    need(not any(os.path.lexists(path) for path in links.values())
+         and not any(os.path.lexists(root/name) for name in ('cycle-proof.json','closed.json','native-diagnostic.json')),
+         'source_lease_attempt_has_execution_or_health_evidence')
+
+
+def _source_lease_history(reference, root):
+    """Bounded exact retained13 + current14..48; no counter reinterpretation."""
+    h = health_owner(); value = h._document(reference)
+    h._keys(value, {'schema','proof_root','retained_spent_cycle_count','spent_cycle_count','cycles'}, 'source_lease_history_shape')
+    need(value['schema'] == 'agent-supervisor/scientific-source-lease-cycle-history@1'
+         and value['proof_root'] == str(root) and type(value['retained_spent_cycle_count']) is int
+         and value['retained_spent_cycle_count'] == 13 and type(value['spent_cycle_count']) is int
+         and value['spent_cycle_count'] == 48, 'source_lease_history_counters')
+    rows = value['cycles']; need(type(rows) is list and len(rows) == 35, 'source_lease_history_population')
+    numbers = []; paths = set()
+    for row in rows:
+        h._keys(row, {'cycle_number','root','intent_ref','closed_ref','cycle_proof_ref'}, 'source_lease_history_row')
+        number = row['cycle_number']; cycle = h._path(row['root'])
+        need(h._integer(number, 14, 48) and cycle.parent == root
+             and cycle.name.startswith('cycle-%08d-'%number) and str(cycle) not in paths,
+             'source_lease_history_duplicate_or_path')
+        paths.add(str(cycle)); numbers.append(number)
+        intent = h._document(row['intent_ref'])
+        need(row['intent_ref']['path'] == str(cycle/'intent.json') and intent.get('cycle_number') == number,
+             'source_lease_history_intent')
+        if number == 48:
+            need(row['closed_ref'] is None and row['cycle_proof_ref'] is None,
+                 'source_lease_failed_cycle_has_health_credit')
+        else:
+            need(row['closed_ref']['path'] == str(cycle/'closed.json')
+                 and row['cycle_proof_ref']['path'] == str(cycle/'cycle-proof.json')
+                 and h._document(row['closed_ref'])['cycle_proof_ref'] == row['cycle_proof_ref'],
+                 'source_lease_history_original_closure')
+            h._document(row['cycle_proof_ref'])
+    need(sorted(numbers) == list(range(14,49))
+         and {str(path) for path in root.glob('cycle-*')} == paths,
+         'source_lease_history_gap_extra_or_duplicate')
+    return value
+
+
+def _validate_source_lease_recovery(value, profile_ref, profile, config, *, check_absence):
+    """Exact administrative negative acknowledgment; no recreated old handle."""
+    h = health_owner(); h._keys(value, h.SOURCE_LEASE_RECOVERY_KEYS, 'source_recovery_shape')
+    need(value['schema'] == SOURCE_LEASE_SCHEMA and value['authorization'] == 'one_exact_same_generation_source_lease_resume'
+         and value['incident'] == SOURCE_LEASE_INCIDENT and value['successor_profile_ref'] == profile_ref,
+         'source_recovery_authority')
+    prior_ref = value['prior_profile_ref']; prior = h._profile(prior_ref)
+    need(prior_ref['sha256'] == SOURCE_LEASE_OLD_PROFILE_SHA and prior['main_entrypoint']['sha256'] == SOURCE_LEASE_OLD_MAIN_SHA
+         and prior['owner_source']['sha256'] == h.SOURCE_LEASE_OWNER_SHA, 'source_recovery_not_exact_old_sources')
+    old_config = h._document(value['prior_config_ref'])
+    need(h._document(value['successor_config_ref']) == config
+         and all(config[key] == old_config[key] for key in ('schema','catalogue','idle_template_ref',
+             'execution_templates','poll_seconds','max_cycles','max_proof_bytes'))
+         and config['max_cycles'] == 10000 and config['max_proof_bytes'] == 1073741824
+         and config['poll_seconds'] == 60 and profile['max_cycle_seconds'] == 300,
+         'source_recovery_original_limits_changed')
+    root = Path(profile['proof_root']); hold = h._document(value['hold_ref']); failed = Path(hold['cycle_root'])
+    need(failed.parent == root and failed.name == 'cycle-00000048-17f06a2523a24ab6adb29cb345824635'
+         and value['hold_ref']['path'] == str(root/'executor-held.json')
+         and hold['schema'] == 'agent-supervisor/scientific-executor-persistent-hold@1'
+         and hold['reason'] == 'original_owner_failed' and hold['automatic_retry_admitted'] is False,
+         'source_recovery_exact_old_hold')
+    cycle_hold = h._document(value['cycle_hold_ref'])
+    need(value['cycle_hold_ref']['path'] == str(failed/'cycle-held.json')
+         and cycle_hold['schema'] == 'agent-supervisor/scientific-cycle-held@1'
+         and cycle_hold['reason'] == 'original_owner_failed' and cycle_hold['automatic_retry_admitted'] is False,
+         'source_recovery_exact_cycle_hold')
+    intent = h._document(value['intent_ref']); request = h._document(value['request_ref'])
+    need(value['intent_ref']['path'] == str(failed/'intent.json') and value['request_ref']['path'] == str(failed/'request.json')
+         and value['request_ref']['sha256'] == SOURCE_LEASE_REQUEST_SHA
+         and intent == {'kind':'genuine_scoped_idle','sequence':35,'cycle_number':48,
+             'request_ref':value['request_ref'],'automatic_retry_admitted':False}, 'source_recovery_original_intent')
+    need(value['owner_stdout_ref']['path'] == str(failed/'owner.stdout')
+         and value['owner_stdout_ref']['bytes'] == 1005 and value['owner_stdout_ref']['sha256'] == SOURCE_LEASE_STDOUT_SHA
+         and value['owner_stderr_ref']['path'] == str(failed/'owner.stderr')
+         and h._bound(value['owner_stderr_ref']) == b'', 'source_recovery_original_streams')
+    terminal = original_terminal(h._bound(value['owner_stdout_ref']), value['request_ref'])
+    h.classify_original_source_lease_deferral(prior_ref, value['request_ref'], terminal, kind='genuine_scoped_idle')
+    links = {'execution_request':failed/'attempt/execution-request.json',
+             'result':failed/'attempt/exports/result.json','origins':failed/'attempt/exports/origins.json'}
+    _source_lease_attempt_empty(value['request_ref'], failed, links)
+    need(value['independent_audit_ref']['sha256'] == SOURCE_LEASE_AUDIT_SHA, 'source_recovery_independent_audit_changed')
+    h._bound(value['independent_audit_ref'])
+    ack = h._document(value['generation_ack_ref']); generation = h._document(value['generation_authorization_ref'])
+    need(value['generation_ack_ref']['sha256'] == SOURCE_LEASE_GENERATION_ACK_SHA
+         and value['generation_authorization_ref']['sha256'] == SOURCE_LEASE_GENERATION_AUTH_SHA
+         and ack['schema'] == 'agent-supervisor/scientific-bounded-generation-ack@1'
+         and ack['handover_ref'] == value['generation_authorization_ref'] and ack['generation_number'] == 2
+         and ack['max_generations'] == 2 and ack['spent_cycle_count'] == 13 and ack['next_cycle_number'] == 14
+         and generation['generation_number'] == 2 and generation['max_generations'] == 2,
+         'source_recovery_original_generation_changed')
+    need(ack['retained_census_ref'] == generation['retained_census_ref']
+         and generation['global_max_bytes'] == GLOBAL_RETAINED_BYTES, 'source_recovery_retained_global_bound')
+    _generation_census(generation['retained_census_ref'])
+    history = _source_lease_history(value['history_ref'], root)
+    previous = h._document(value['last_health_receipt_ref'])
+    need(value['last_health_receipt_ref']['path'] == profile['receipt_path']
+         and value['last_health_receipt_ref']['sha256'] == SOURCE_LEASE_LAST_HEALTH_SHA
+         and previous['profile_ref'] == prior_ref and previous['sequence'] == 34
+         and previous['cycle_proof_ref'] == value['last_closed_cycle_ref']
+         and previous['identity'] == value['prior_main_identity'] == ack['consuming_main_identity'],
+         'source_recovery_last_actual_receipt_changed')
+    manager = value['manager_before']
+    need(manager.get('Id') == profile['unit']['name'] and manager.get('MainPID') == '0'
+         and manager.get('ActiveState') in ('failed','inactive')
+         and manager.get('InvocationID') == value['prior_main_identity']['invocation_id']
+         and value['current_boot_id'] == terminal['owner_boot_id'] == value['prior_main_identity']['boot_id']
+         and value['owner_currently_absent'] is True, 'source_recovery_original_manager_or_boot_unknown')
+    if check_absence:
+        current = dict(boot_id=Path('/proc/sys/kernel/random/boot_id').read_text().strip())
+        need(current['boot_id'] == value['current_boot_id']
+             and h._definitely_dead_identity(value['prior_main_identity'],current), 'source_recovery_old_Main_not_dead')
+        try:h._stat_identity(terminal['owner_pid'])
+        except (FileNotFoundError,ProcessLookupError):pass
+        else:raise ExecutorHold('source_recovery_owner_PID_not_absent_birth_unknown')
+    need(not any(key in terminal for key in ('owner_birth','database_preimage_before_grants')),
+         'source_recovery_must_not_backfill_original_absent_fields')
+    return failed
+
+
+def authorize_source_lease_recovery(spec_ref, output):
+    """Original stopped-owner administrative path; never starts a service."""
+    h = health_owner(); spec = h._document(spec_ref)
+    h._keys(spec, h.SOURCE_LEASE_RECOVERY_KEYS - {'manager_before','current_boot_id','owner_currently_absent','recorded_at'},
+            'source_recovery_spec')
+    profile_ref = spec['successor_profile_ref']; profile = h._profile(profile_ref)
+    config, _, _ = load_configuration(spec['successor_config_ref'])
+    root = Path(profile['proof_root']); output = h._path(str(output))
+    need(root/'reconciliation-source-lease-v01' in output.parents, 'source_recovery_authorization_outside_root')
+    with os.fdopen(os.open(root/'scientific-executor.lock', os.O_RDWR|os.O_NOFOLLOW),'rb') as lock:
+        fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
+        manager = h._manager(profile['unit']['name'])
+        value = dict(spec, manager_before=manager,
+            current_boot_id=Path('/proc/sys/kernel/random/boot_id').read_text().strip(),
+            owner_currently_absent=True, recorded_at=time.time())
+        _validate_source_lease_recovery(value,profile_ref,profile,config,check_absence=True)
+        h.validate_source_profile_transition_value(value,profile_ref,profile)
+        return put(output,value)
+
+
+def reconcile_source_lease_recovery(reference, profile_ref, profile, config, opening_identity):
+    h = health_owner(); need(os.environ.get(SOURCE_LEASE_ENV) == reference['sha256'], 'source_recovery_not_unit_pinned')
+    argv = profile['unit']['argv']; flag = '--known-source-lease-recovery'
+    need(argv.count(flag) == 1 and argv[argv.index(flag)+1] == reference['path'], 'source_recovery_not_exact_unit_argv')
+    value = h._document(reference)
+    h.validate_source_profile_transition(reference,profile_ref,profile)
+    failed = _validate_source_lease_recovery(value,profile_ref,profile,config,check_absence=True)
+    ack = dict(schema='agent-supervisor/scientific-source-lease-reconciliation@1', recovery_ref=reference,
+        consuming_main_identity=opening_identity,retained_global_hold_ref=value['hold_ref'],
+        retained_cycle_hold_ref=value['cycle_hold_ref'],spent_cycle_count=48,next_cycle_number=49,
+        additional_retry_limit=2,cooldown_seconds=60,health_credit=False,completion_authority=False,
+        dispatch_authority=False,original_owner_birth=None,original_owner_returncode=None,
+        original_wait_receipt=None,database_preimage_before_grants=None,
+        original_reaping_basis='independently_admitted_pinned_control_path_inference',
+        original_control_path_sources={'Main':SOURCE_LEASE_OLD_MAIN_SHA,'owner':h.SOURCE_LEASE_OWNER_SHA,
+                                      'independent_audit':SOURCE_LEASE_AUDIT_SHA})
+    path = failed/'source-lease-reconciliation.json'
+    need(not os.path.lexists(path), 'source_recovery_grant_already_consumed')
+    ref = put(path,ack)
+    return 48, dict(anchor_ref=ref,additional_slots_spent=0,cooldown_seconds=60)
+
+
+def run_cycle(config, profile_ref, profile, template_ref, kind, sequence, stop, *, cycle_number=None, catalogue_parser=None, capacity_continuation_ref=None, source_retry=None, profile_transition_ref=None):
+    h = health_owner()
+    need(cycle_number is None or h._integer(cycle_number, 1), 'cycle_number')
+    root = Path(profile['proof_root']) / ('cycle-%08d-%s' % (sequence if cycle_number is None else cycle_number, uuid.uuid4().hex))
+    template=h._document(template_ref);selected_plan=h._document(template['plan_ref'])
+    if selected_plan.get('native_metadata_cli',{}).get('schema')=='native-embedded-scoped-observation-cli/v3':
+        original_request=h._document(template['request_ref'])
+        need(original_request.get('storage_bytes')==384*1024**2 and type(original_request.get('storage_bytes'))is int,'reuse_original_storage_grant_changed')
+        check_proof_budget(Path(profile['proof_root']),config['max_proof_bytes'],
+            reserve_bytes=REUSE_CYCLE_RESERVE_BYTES,reserve_files=REUSE_CYCLE_RESERVE_FILES)
+    if capacity_continuation_ref is not None:
+        need(CLOSED_CAPACITY_FLAG in profile['unit']['argv'] and cycle_number is not None,
+             'closed_capacity_cycle_requires_explicit_mode')
+        check_proof_budget(Path(profile['proof_root']), config['max_proof_bytes'],
+            reserve_bytes=REUSE_CYCLE_RESERVE_BYTES, reserve_files=REUSE_CYCLE_RESERVE_FILES)
+    root.mkdir(mode=0o700)
+    process = None
+    try:
+        request_ref, plan_ref, links = prepare_cycle(template_ref, kind, config, profile, root)
+        intent = {'kind': kind, 'sequence': sequence, 'request_ref': request_ref, 'automatic_retry_admitted': False}
+        if cycle_number is not None:intent['cycle_number']=cycle_number
+        if source_retry is not None:
+            h._keys(source_retry,{'anchor_ref','additional_slot'},'source_retry_slot_shape')
+            need(kind=='genuine_scoped_idle' and h._integer(source_retry['additional_slot'],1,2),
+                 'source_retry_not_finite_idle')
+            h._bound(source_retry['anchor_ref'])
+            intent['source_lease_retry']=source_retry
+        # This durable intent spends its cycle/slot BEFORE any original Popen.
+        put(root / 'intent.json', intent)
+        stdout_path, stderr_path = root / 'owner.stdout', root / 'owner.stderr'
+        with os.fdopen(os.open(stdout_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), 'wb') as out, \
+             os.fdopen(os.open(stderr_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), 'wb') as err:
+            argv = [profile['unit']['argv'][0], '-B', profile['owner_source']['path'],
+                '--request', request_ref['path'], '--expected-request-sha256', request_ref['sha256']]
+            if capacity_continuation_ref is not None and cycle_number == 201:
+                # Claim expiry bounds first launch as well as metadata writes;
+                # expiry never renews after claiming for the actual Main.
+                grant = h._document(capacity_continuation_ref)
+                _closed_capacity_final_freshness(grant, profile)
+                _, ack_path = _closed_capacity_paths(profile)
+                claimed = h._document(h.descriptor(ack_path))
+                need(claimed['continuation_ref'] == capacity_continuation_ref
+                     and claimed['consuming_main_identity'] == require_main_process(profile_ref, profile),
+                     'closed_capacity_first_launch_claim_changed')
+            environment = None
+            if profile_transition_ref is not None:
+                grant, _, _ = h.validate_source_profile_transition(profile_transition_ref, profile_ref, profile)
+                source = h._document(grant['source_successor_ref'])
+                environment = {**os.environ, **source['owner_environment']}
+                environment.pop(SOURCE_LEASE_ENV, None)
+            keywords = dict(cwd=profile['unit']['working_directory'], stdin=subprocess.DEVNULL,
+                            stdout=out, stderr=err, close_fds=True)
+            if environment is not None:
+                keywords['env'] = environment
+            process = subprocess.Popen(argv, **keywords)
+            handle = h.track_original_cycle(profile_ref, process, request_ref, sequence=sequence)
+            start_fields = h.cycle_start_fields(handle)
+            start_ref = put(root/'owner-start.json', dict(
+                schema='agent-supervisor/scientific-original-owner-start@1',
+                profile_ref=profile_ref, request_ref=request_ref, **start_fields,
+                source='genuine_current_original_cycle_handle', health_credit=False))
+            if capacity_continuation_ref is not None:
+                # Written only after genuine original launch/handle capture; an
+                # interrupted/unknown launch retains the consumed claim.
+                _, consumption_path = _closed_capacity_paths(profile)
+                put(root/'capacity-owner-started.json', dict(
+                    schema='agent-supervisor/scientific-capacity-original-owner-started@1',
+                    continuation_ref=capacity_continuation_ref,
+                    consumption_ref=h.descriptor(consumption_path), profile_ref=profile_ref,
+                    cycle_number=cycle_number, request_ref=request_ref,
+                    original_start_fields=h.cycle_start_fields(handle), health_credit=False))
+            deadline = time.monotonic() + profile['max_cycle_seconds']
+            while process.poll() is None:
+                need(not stop.is_set() and time.monotonic()<deadline,'original_cycle_interrupted_or_timeout')
+                need(stdout_path.stat().st_size<=h.MAX_JSON and stderr_path.stat().st_size<=h.MAX_JSON,
+                     'original_owner_output_bound')
+                stop.wait(0.1)
+            original_returncode=process.wait()
+            out.flush(); err.flush(); os.fsync(out.fileno()); os.fsync(err.fileno())
+            wait_ref = put(root/'owner-wait.json', dict(
+                schema='agent-supervisor/scientific-original-owner-wait@1',
+                owner_start_ref=start_ref, request_ref=request_ref, returncode=original_returncode,
+                actual_original_Popen_wait_completed=True,
+                finished_monotonic_ns=time.monotonic_ns(), health_credit=False))
+            if original_returncode != 0 and kind == 'genuine_scoped_idle' and not stop.is_set():
+                try:
+                    terminal = original_terminal(h._raw(stdout_path), request_ref)
+                    need(h._raw(stderr_path) == b'', 'nonstarted_owner_stderr_unknown')
+                    h.classify_original_source_lease_deferral(profile_ref, request_ref, terminal, kind=kind)
+                    _source_lease_attempt_empty(request_ref, root, links)
+                except Exception:
+                    # Optional exact negative recognition must not replace any
+                    # existing admission/capacity failure or unknown custody.
+                    pass
+                else:
+                    terminal_ref = put(root/'terminal.json', terminal)
+                    value = h.acknowledge_original_nonstarted_cycle(
+                        profile_ref, terminal_ref, request_ref, sequence=sequence, cycle_handle=handle)
+                    value.update(cycle_number=cycle_number, original_wait_ref=wait_ref,
+                                 source_lease_retry=source_retry,
+                                 cooldown_seconds=SOURCE_LEASE_COOLDOWN_SECONDS)
+                    reference = put(root/'prestart-deferral.json', value)
+                    return dict(deferred_source_lease=True, deferral_ref=reference,
+                                cycle_root=str(root), cycle_number=cycle_number, health_credit=False)
+            if original_returncode!=0 and kind=='genuine_scoped_idle' and not stop.is_set():
+                try:
+                    request=h._document(request_ref)
+                    witness=source_admission_deferral(profile,request_ref,request,root,kind,process,h.cycle_start_fields(handle),original_returncode)
+                except Exception:
+                    # ExecutorHold and any other unproved optional deferral preserve the original hold.
+                    pass
+                else:
+                    raise SourceAdmissionDeferred(witness['path'])
+                try:
+                    witness=resource_capacity_deferral(profile,request_ref,request,root,kind,process,
+                        h.cycle_start_fields(handle),original_returncode)
+                except Exception:
+                    # An optional capacity diagnostic cannot replace unknown custody.
+                    pass
+                else:
+                    raise ResourceCapacityDeferred(witness['path'])
+            if (original_returncode != 0 and kind == 'genuine_scoped_idle'
+                    and not stop.is_set() and capacity_continuation_ref is not None):
+                try:
+                    witness = closed_capacity_deferral(profile, request_ref, h._document(request_ref),
+                        root, kind, process, h.cycle_start_fields(handle), original_returncode,
+                        continuation_ref=capacity_continuation_ref)
+                except Exception:
+                    # Unknown/entered/non-capacity failures retain original hold.
+                    pass
+                else:
+                    raise CapacityAdmissionDeferred(witness['path'])
+            need(original_returncode == 0, 'original_owner_failed')
+        terminal_ref = put(root / 'terminal.json', original_terminal(h._raw(stdout_path), request_ref))
+        native = (observe_native(config) if catalogue_parser is None else
+                  observe_native(config,catalogue_parser=catalogue_parser))
+        native_ref = put(root / 'native-diagnostic.json', native)
+        proof = dict(h.cycle_start_fields(handle), schema=h.CYCLE_SCHEMA, kind=kind,
+            finished_at=time.time(), finished_monotonic_ns=time.monotonic_ns(),
+            request_ref=request_ref, plan_ref=plan_ref, terminal_ref=terminal_ref,
+            execution_request_ref=h.descriptor(links['execution_request']),
+            result_ref=h.descriptor(links['result']), origins_ref=h.descriptor(links['origins']),
+            native_diagnostic_ref=native_ref)
+        proof_ref = put(root / 'cycle-proof.json', proof)
+        try:
+            publish_arguments = dict(sequence=sequence, cycle_handle=handle)
+            if profile_transition_ref is not None:
+                publish_arguments['profile_transition_ref'] = profile_transition_ref
+            receipt_ref = h.publish_after_native_cycle(profile_ref, proof_ref, native, **publish_arguments)
+        except Exception as error:
+            if (kind=='genuine_scoped_idle' and not stop.is_set()
+                    and type(error)is getattr(h,'ExecutorHealthError',None)
+                    and str(error)in CATALOGUE_RACE_REJECTIONS):
+                try:
+                    witness=catalogue_race_deferral(profile_ref,profile,proof_ref,native,kind,process,stop,cycle_handle=handle)
+                except Exception:
+                    # Optional negative recognition never replaces the original
+                    # publication failure when closure or source is unknown.
+                    pass
+                else:
+                    raise CatalogueRaceDeferred(witness['path'])
+            raise
+        put(root / 'closed.json', {'cycle_proof_ref': proof_ref, 'receipt_ref': receipt_ref})
+        return receipt_ref
+    except (SourceAdmissionDeferred, CatalogueRaceDeferred, ResourceCapacityDeferred, CapacityAdmissionDeferred):
+        raise
+    except BaseException as exc:
+        if process is not None and process.poll() is None:
+            process.terminate()
+            try:process.wait(timeout=60)
+            except subprocess.TimeoutExpired:pass
+        persistent_hold(profile['proof_root'],root,str(exc))
+        if cycle_number is not None:_recovery_failure(Path(profile['proof_root']),cycle_number,sequence,exc)
+        raise
+
+
+
+def _generation_census(reference):
+    """Verify every retained byte/path; never remove, relocate or relabel it."""
+    h=health_owner(); value=h._document(reference)
+    h._keys(value,{'schema','root','manifests','file_count','source_bytes','directory_sha256'},'generation_census_shape')
+    need(value['schema']=='agent-supervisor/scientific-proof-generation-census@1','generation_census_schema')
+    root=h._path(value['root']); info=root.lstat()
+    need(any(parent in root.parents for parent in ORIGINAL_NAMED_ROOTS)
+         and stat.S_ISDIR(info.st_mode) and info.st_uid==os.geteuid() and not info.st_mode&0o022,
+         'retained_generation_directory_identity')
+    need(not Path(reference['path']).lstat().st_mode&0o222,'generation_census_not_immutable')
+    manifests=value['manifests']; need(type(manifests)is list and 1<=len(manifests)<=64,'generation_manifest_population')
+    expected={}; total=0
+    for reference in manifests:
+        node=h._document(reference)
+        need(not Path(reference['path']).lstat().st_mode&0o222,'generation_file_manifest_not_immutable')
+        h._keys(node,{'schema','root','files'},'generation_file_manifest_shape')
+        need(node['schema']=='agent-supervisor/scientific-proof-file-manifest@1' and node['root']==str(root)
+             and type(node['files'])is list and 0<len(node['files'])<=4096,'generation_file_manifest_population')
+        for row in node['files']:
+            h._keys(row,{'relative_path','bytes','sha256','mode'},'generation_retained_file_shape')
+            rel=row['relative_path']; need(type(rel)is str and rel and not Path(rel).is_absolute()
+                and '..'not in Path(rel).parts and str(Path(rel))==rel and rel not in expected,
+                'generation_retained_file_alias')
+            path=root/rel; pin={key:row[key] for key in ('bytes','sha256')};pin['path']=str(path)
+            h._bound(pin,128*1024**2)
+            need(type(row['mode'])is int and 0<=row['mode']<=0o777 and not row['mode']&0o022
+                 and stat.S_IMODE(path.lstat().st_mode)==row['mode'],'generation_retained_file_mode')
+            expected[rel]=pin;total+=row['bytes']
+            need(len(expected)<=22337 and total<=2*1024**3,'generation_retained_population_bound')
+    observed=set();directories=[('.',stat.S_IMODE(root.lstat().st_mode))]
+    for path in _bounded_proof_walk(root,max_entries=44674,max_directories=22337,max_pending=22337):
+        info=path.lstat();need(not stat.S_ISLNK(info.st_mode),'generation_retained_symlink')
+        if stat.S_ISDIR(info.st_mode):
+            need(info.st_uid==os.geteuid() and not info.st_mode&0o022,'generation_retained_directory_identity')
+            directories.append((path.relative_to(root).as_posix(),stat.S_IMODE(info.st_mode)))
+            continue
+        need(stat.S_ISREG(info.st_mode) and info.st_uid==os.geteuid() and info.st_nlink==1,'generation_retained_nonordinary')
+        observed.add(path.relative_to(root).as_posix())
+    directory_digest=hashlib.sha256(json.dumps(sorted(directories),separators=(',',':')).encode()).hexdigest()
+    need(value['directory_sha256']==directory_digest,'generation_retained_directory_modes_changed')
+    need(observed==set(expected) and type(value['file_count'])is int and value['file_count']==len(expected)
+         and type(value['source_bytes'])is int and value['source_bytes']==total,'generation_census_changed')
+    return value
+
+
+def _released_initialization_record(request,terminal):
+    """Read the original ledger; never acquire, renew, release or normalize it."""
+    h=health_owner();path=Path(request['resource_ledger'])
+    need(path==ORIGINAL_RESOURCE_LEDGER,'generation_original_ledger_path_changed')
+    ref=h.database_descriptor(path);raw=path.read_bytes()
+    need(len(raw)==ref['bytes'] and hashlib.sha256(raw).hexdigest()==ref['sha256']
+         and h.database_descriptor(path)==ref,'generation_original_ledger_changed')
+    value=h._decode(raw)
+    need(value.get('schema')=='daemon-resource-reservations-v1' and value.get('limit_bytes')==GLOBAL_RETAINED_BYTES
+         and [row['path'] for row in value.get('roots',[])]==[str(p) for p in ORIGINAL_NAMED_ROOTS],
+         'generation_original_ledger_policy_changed')
+    for row in value['roots']:
+        info=Path(row['path']).stat()
+        need((info.st_dev,info.st_ino)==(row['device'],row['inode']),'generation_original_root_identity_changed')
+    reservation=terminal['reservation'];record=value.get('reservations',{}).get(reservation['reservation_id'])
+    need(type(record)is dict and record.get('status')=='released' and record.get('artifacts_durable_asserted')is True
+         and record.get('owner_pid')==terminal['owner_pid']==reservation['record']['owner_pid']
+         and record.get('native_lease_id')==reservation['resource_lease']['lease_id']
+         and record.get('scheduler_policy_sha256')==request['expected_scheduler_policy_sha256']
+         and record.get('scheduler_state_path')==request['scheduler_state_path']
+         and record.get('workload')=='canonical_parented_phase' and record.get('scheduler_lane')=='orchestration'
+         and record.get('attempt_directory',{}).get('path')==request['attempt_directory']
+         and all(record.get(key)==request[key] for key in ('cpu_slots','memory_mb','child_process_slots','storage_bytes')),
+         'generation_cache_original_reservation_not_released')
+    return sum(row['storage_bytes'] for row in value['reservations'].values() if row.get('status')!='released')
+
+
+def _validate_generation_handover(value,profile_ref,profile,config):
+    h=health_owner();h._keys(value,GENERATION_KEYS,'generation_handover_shape')
+    need(value['schema']==GENERATION_SCHEMA and value['authorization']=='one_bounded_source_generation_handover'
+         and value['profile_ref']==profile_ref and h._profile(profile_ref)==profile,'generation_handover_authority')
+    need(type(value['max_generations'])is int and value['max_generations']==2
+         and type(value['retained_generations'])is list and len(value['retained_generations'])==1
+         and type(value['generation_number'])is int and value['generation_number']==2 and type(value['global_max_bytes'])is int
+         and value['global_max_bytes']==GLOBAL_RETAINED_BYTES,'generation_finite_population_or_global_budget')
+    prior=h._document(value['prior_profile_snapshot_ref']);oldconfig=h._document(value['prior_config_snapshot_ref'])
+    need(_same_payload(value['prior_profile_snapshot_ref'],value['prior_profile_ref'])
+         and _same_payload(value['prior_config_snapshot_ref'],value['prior_config_ref']), 'generation_prior_snapshot')
+    for key in ('catalogue','task_scope','max_age_seconds','max_cycle_seconds','cycle_contract'):
+        need(prior.get(key)==profile[key],'generation_prior_scope')
+    need(oldconfig['execution_templates']==config['execution_templates']==[]
+         and all(oldconfig[k]==config[k] for k in ('catalogue','max_cycles','max_proof_bytes','poll_seconds')),
+         'generation_original_limits_or_authority_changed')
+    need(prior['unit']['name']==profile['unit']['name']
+         and prior['unit']['working_directory']==profile['unit']['working_directory'], 'generation_unit_scope')
+    oldroot=Path(prior['proof_root']);root=Path(profile['proof_root'])
+    need(root!=oldroot and root.parent==oldroot.parent and root not in oldroot.parents and oldroot not in root.parents
+         and any(parent in root.parents for parent in ORIGINAL_NAMED_ROOTS),'generation_named_root_scope')
+    censuses=[];seen=set()
+    for ref in value['retained_generations']:
+        census=_generation_census(ref)
+        need(census['root']not in seen and Path(census['root']).parent==oldroot.parent,'generation_registry_duplicate_or_crossed_root')
+        seen.add(census['root']);censuses.append(census)
+    need(value['retained_census_ref'] in value['retained_generations']
+         and h._document(value['retained_census_ref'])['root']==str(oldroot),'generation_prior_census_missing')
+    need(all(row['source_bytes']<=oldconfig['max_proof_bytes'] for row in censuses),'generation_prior_byte_quota_changed')
+    need(sum(row['source_bytes'] for row in censuses)+check_proof_budget(root,config['max_proof_bytes'])['bytes']
+         +REUSE_CYCLE_RESERVE_BYTES<=value['global_max_bytes'],'generation_aggregate_storage_bound')
+    cycles=sorted(oldroot.glob('cycle-*'));spent=value['spent_cycle_count']
+    need(h._integer(spent,1,config['max_cycles']-1) and len(cycles)==spent,'generation_spent_history_changed')
+    numbers=[]
+    for cycle in cycles:
+        intent=h._document(h.descriptor(cycle/'intent.json'));number=intent.get('cycle_number',intent.get('sequence'))
+        need(h._integer(number,1,spent) and cycle.name.startswith('cycle-%08d-'%number),'generation_spent_number_changed')
+        numbers.append(number)
+        if number<spent:
+            need((cycle/'closed.json').is_file() or (cycle/'nonstarted-reconciliation.json').is_file()
+                 or (cycle/'closed-idle-reconciliation-v01.json').is_file(),'generation_other_unfinished_cycle')
+    need(sorted(numbers)==list(range(1,spent+1)),'generation_spent_gap_or_duplicate')
+    failed=Path(value['prior_cycle_hold_ref']['path']).parent
+    need(failed==cycles[-1] and value['prior_intent_ref']['path']==str(failed/'intent.json')
+         and not any((failed/name).exists() for name in ('request.json','owner.stdout','terminal.json','cycle-proof.json','closed.json')),
+         'generation_quota_failure_not_before_owner')
+    hold=h._document(value['prior_cycle_hold_ref']);intent=h._document(value['prior_intent_ref'])
+    need(hold.get('schema')=='agent-supervisor/scientific-cycle-held@1' and hold.get('reason')=='proof_storage_bound'
+         and hold.get('automatic_retry_admitted')is False and intent.get('cycle_number')==spent
+         and intent.get('kind')=='not_selected' and intent.get('automatic_retry_admitted')is False,'generation_quota_hold_changed')
+    need(value['prior_global_hold_ref']['path']==str(oldroot/'executor-held.json'),'generation_original_global_hold_path')
+    h._document(value['prior_global_hold_ref'])
+    proof_ref=value['prior_last_closed_cycle_ref'];proof=h._document(proof_ref);cycle=Path(proof_ref['path']).parent
+    need(len(cycles)>1 and cycle==cycles[-2] and proof_ref['path']==str(cycle/'cycle-proof.json')
+         and proof.get('kind')=='genuine_scoped_idle' and (cycle/'closed.json').is_file()
+         and h._document(h.descriptor(cycle/'closed.json'))['cycle_proof_ref']==proof_ref,'generation_last_closed_proof')
+    last_intent=h._document(h.descriptor(cycle/'intent.json'))
+    need(last_intent.get('kind')==proof['kind'] and last_intent.get('sequence')==proof['sequence']
+         and last_intent.get('request_ref')==proof['request_ref'],'generation_latest_intent_proof_join')
+    old_identity=value['prior_main_identity']
+    h._stored_identity(old_identity,value['prior_profile_ref'],prior)
+    native=h._document(proof['native_diagnostic_ref'])
+    h._cycle(proof_ref,prior,old_identity,h._native(native,prior,now=proof['finished_at']),
+             now=proof['finished_at'],monotonic_ns=proof['finished_monotonic_ns'])
+    template=h._document(config['idle_template_ref']);plan=h._document(template['plan_ref']);command=plan['native_metadata_cli']
+    need(command.get('schema')=='native-embedded-scoped-observation-cli/v3'
+         and command.get('source_capsule_ref')==value['source_capsule_ref'],'generation_source_cache_not_selected')
+    runtime=Path(command['runtime_root'])
+    for role,name in (('main_entrypoint','scientific_executor.py'),('health_module','native_executor_health.py'),('owner_source','original_embedded_observation_owner.py'),('driver_source','native_embedded_observation_driver.py')):
+        need(profile[role]['path']==str(runtime/'ipfs_accelerate_py/agent_supervisor/rescue'/name),'generation_source_role_root_changed')
+    cache=h._document(value['source_capsule_ref'])
+    need(value['source_capsule_ref'] in profile['source_descriptors'],'generation_cache_binding_not_source_pinned')
+    need(cache.get('schema')=='agent-supervisor/scientific-source-capsule-reuse@1','generation_cache_binding_schema')
+    request=h._document(value['cache_initialization_request_ref']);terminal=h._document(value['cache_initialization_terminal_ref'])
+    need(terminal.get('schema')=='legal-ir-original-native-control-terminal/v1'
+         and terminal.get('request_sha256')==value['cache_initialization_request_ref']['sha256']
+         and terminal.get('completed')is True and terminal.get('source_READ_closed')is True
+         and terminal.get('original_native_compute_closed')is True and terminal.get('child_reaped')is True
+         and type(terminal.get('child_returncode'))is int and terminal['child_returncode']==0
+         and terminal.get('storage_status')=='released' and terminal.get('cleanup_errors')==[]
+         and terminal.get('received_signals')==[] and terminal.get('partial_or_failed_control_must_be_reconciled')is False,
+         'generation_cache_initialization_not_original_closed')
+    reservation=terminal.get('reservation',{})
+    need(reservation.get('resource_lease',{}).get('released')is True
+         and reservation.get('record',{}).get('status')=='released'
+         and request.get('source_roots')==[str(ORIGINAL_NAMED_ROOTS[0].parents[1]),'/home/barberb/lift_coding/external/ipfs_accelerate']
+         and {key:request.get(key) for key in ('cpu_slots','memory_mb','child_process_slots','storage_bytes','timeout_seconds')}==
+             dict(cpu_slots=1,memory_mb=1536,child_process_slots=8,storage_bytes=384*1024**2,timeout_seconds=300),
+         'generation_original_native_grants_or_closure_changed')
+    cache_root=Path(cache['accepted_pin']['capsule_root'])
+    need(Path(request['attempt_directory']) in cache_root.parents
+         and root in Path(request['attempt_directory']).parents and root in cache_root.parents
+         and any(parent in cache_root.parents for parent in ORIGINAL_NAMED_ROOTS), 'generation_cache_not_original_owned_capture')
+    execution=h._document(terminal['execution_request'])
+    need(execution.get('request')==value['cache_initialization_request_ref']
+         and execution.get('owner_source')==profile['owner_source']
+         and execution.get('disk_reservation_id')==reservation.get('reservation_id')==reservation.get('record',{}).get('reservation_id')
+         and request.get('source_sha256',{}).get(profile['owner_source']['path'])==profile['owner_source']['sha256']
+         and request.get('source_sha256',{}).get(profile['driver_source']['path'])==profile['driver_source']['sha256'],
+         'generation_cache_original_source_or_reservation_join')
+    custody=terminal.get('sampled_process_custody_final',{})
+    need(custody.get('live_processes')==0 and type(custody.get('live_processes'))is int
+         and custody.get('live_identities')==[] and custody.get('rss_bytes')==0 and not custody.get('tracking_error')
+         and terminal.get('process_spawn_receipts',{}).get('all_recorded_original_births_stopped')is True,
+         'generation_cache_original_process_not_closed')
+    init_plan_ref=h.descriptor(Path(request['argv'][4]));init_plan=h._document(init_plan_ref)
+    need(request['source_sha256'].get(init_plan_ref['path'])==init_plan_ref['sha256'],'generation_cache_original_plan_not_pinned')
+    need(init_plan['native_metadata_cli']['schema']=='native-embedded-scoped-observation-cli/v2'
+         and init_plan['native_metadata_cli']['import_head_capsule_Git']['source_head']==cache['accepted_pin']['source_head']
+         and init_plan['accelerate_root']==command['runtime_root'],
+         'generation_cache_not_new_HEAD_initialization')
+    outstanding=_released_initialization_record(request,terminal)
+    need(outstanding+sum(row['source_bytes'] for row in censuses)
+         +check_proof_budget(root,config['max_proof_bytes'],reserve_bytes=REUSE_CYCLE_RESERVE_BYTES,reserve_files=REUSE_CYCLE_RESERVE_FILES)['bytes']
+         +REUSE_CYCLE_RESERVE_BYTES<=GLOBAL_RETAINED_BYTES,'generation_global_storage_with_outstanding_claims')
+    _recovery_scheduler(request,value['scheduler_snapshot_ref'])
+    return prior,proof,spent
+
+
+def _generation_processes_dead(value,proof,current):
+    """Reconcile every recorded original owner; UNKNOWN never grants activation."""
+    h=health_owner();prior=h._document(value['prior_profile_snapshot_ref']);root=Path(prior['proof_root'])
+    identities=[value['prior_main_identity']]
+    for cycle in sorted(root.glob('cycle-*')):
+        request_path=cycle/'request.json'
+        if request_path.is_file():
+            historical=h._document(h.descriptor(request_path))
+            _recovery_scheduler(historical,value['scheduler_snapshot_ref'])
+        proof_path=cycle/'cycle-proof.json'
+        if proof_path.is_file():
+            reference=h.descriptor(proof_path);record=h._document(reference)
+            identities.extend((record['process'],record['owner_observation']))
+            if (cycle/'closed.json').is_file():
+                need(h._document(h.descriptor(cycle/'closed.json')).get('cycle_proof_ref')==reference,
+                     'generation_historical_closed_proof_changed')
+                native=h._document(record['native_diagnostic_ref'])
+                h._cycle(reference,prior,value['prior_main_identity'],h._native(native,prior,now=record['finished_at']),
+                         now=record['finished_at'],monotonic_ns=record['finished_monotonic_ns'])
+            else:
+                ack=h._document(h.descriptor(cycle/'closed-idle-reconciliation-v01.json'))
+                need(ack.get('schema')=='agent-supervisor/scientific-closed-idle-reconciliation@1'
+                     and ack.get('rejected_cycle_proof_ref')==reference,'generation_unknown_historical_cycle')
+        elif request_path.is_file():
+            ack=h._document(h.descriptor(cycle/'nonstarted-reconciliation.json'))
+            need(ack.get('schema')=='agent-supervisor/scientific-nonstarted-reconciliation@1'
+                 and ack.get('failed_cycle_root')==str(cycle),'generation_unknown_nonstarted_history')
+            authorization=h._document(ack['recovery_ref']);capture=h._document(authorization['activation_capture_ref'])
+            old_profile=h._document(authorization['prior_profile_snapshot_ref'])
+            old_main=capture['opening_actual_main_identity']
+            h._stored_identity(old_main,authorization['prior_profile_ref'],old_profile)
+            terminal=original_terminal(h._raw(cycle/'owner.stdout'),h.descriptor(request_path))
+            need(terminal.get('control_effects')=='not_started' and terminal.get('storage_status')=='not_requested'
+                 and type(terminal.get('owner_birth'))is str and terminal['owner_birth'].isdecimal(),
+                 'generation_unknown_original_nonstarted_owner')
+            identities.extend((old_main,dict(pid=terminal['owner_pid'],birth_ticks=int(terminal['owner_birth']),boot_id=old_main['boot_id'])))
+        elif (cycle/'closed.json').is_file():
+            raise ExecutorHold('generation_historical_closed_proof_missing')
+    terminal=h._document(value['cache_initialization_terminal_ref'])
+    need(type(terminal.get('owner_birth'))is str and terminal['owner_birth'].isdecimal(),
+         'generation_cache_initializer_birth_unknown')
+    identities.append(dict(pid=terminal['owner_pid'],birth_ticks=int(terminal['owner_birth']),boot_id=terminal['owner_boot_id']))
+    for identity in identities:
+        need(h._integer(identity.get('pid'),2) and h._integer(identity.get('birth_ticks'),1)
+             and h._text(identity.get('boot_id')) and h._definitely_dead_identity(identity,current),
+             'generation_original_owner_not_definitely_dead')
+    return identities
+
+
+def authorize_bounded_generation_handover(spec_ref,output):
+    """One explicit metadata grant; never start, clear, delete or replay."""
+    h=health_owner();spec=h._document(spec_ref)
+    h._keys(spec,GENERATION_KEYS-{'recorded_at','manager_before'},'generation_handover_spec')
+    profile=h._profile(spec['profile_ref']);config_ref=next(pin for pin in profile['source_descriptors']
+        if pin['path']==profile['unit']['argv'][profile['unit']['argv'].index('--config')+1])
+    config,profile_ref,_=load_configuration(config_ref)
+    manager=h._manager(profile['unit']['name'])
+    need(manager.get('MainPID')=='0' and manager.get('ActiveState')in('failed','inactive'),'generation_admin_requires_no_main')
+    value=dict(spec,recorded_at=time.time(),manager_before=manager)
+    _,proof,_=_validate_generation_handover(value,profile_ref,profile,config)
+    _generation_processes_dead(value,proof,dict(boot_id=Path('/proc/sys/kernel/random/boot_id').read_text().strip()))
+    path=h._path(str(output));need(Path(profile['proof_root']) in path.parents,'generation_grant_outside_root')
+    reference=put(path,value);path.chmod(0o400);return reference
+
+
+def reconcile_bounded_generation_handover(reference,profile_ref,profile,config,opening_identity):
+    h=health_owner();value=h._document(reference)
+    need(os.environ.get(GENERATION_SHA_ENV)==reference['sha256'],'generation_grant_not_unit_pinned')
+    argv=profile['unit']['argv'];flag='--bounded-generation-handover'
+    need(argv.count(flag)==1 and argv[argv.index(flag)+1]==reference['path']
+         and not any(flag in argv for flag in ('--known-nonstarted-recovery','--known-closed-idle-recovery')),
+         'generation_grant_not_exact_unit_argv')
+    need(not h._path(reference['path']).lstat().st_mode&0o222,'generation_grant_not_immutable')
+    prior,proof,spent=_validate_generation_handover(value,profile_ref,profile,config)
+    _generation_processes_dead(value,proof,opening_identity)
+    ack=dict(schema='agent-supervisor/scientific-bounded-generation-ack@1',handover_ref=reference,
+        retained_census_ref=value['retained_census_ref'],retained_hold_ref=value['prior_cycle_hold_ref'],
+        consuming_main_identity=opening_identity,spent_cycle_count=spent,next_cycle_number=spent+1,
+        generation_number=value['generation_number'],max_generations=value['max_generations'])
+    path=Path(profile['proof_root'])/'bounded-generation-handover.json'
+    if path.exists():need(h._document(h.descriptor(path))==ack,'generation_grant_consumed_by_other_main')
+    else:put(path,ack)
+    return spent
+
+
+def serve(config_ref, stop, *, recovery_ref=None, generation_ref=None, catalogue_parser_ref=None, source_lease_ref=None):
+    h = health_owner(); config, profile_ref, profile = load_configuration(config_ref)
+    root = h._path(profile['proof_root']); info = root.lstat()
+    need(stat.S_ISDIR(info.st_mode) and info.st_uid == os.geteuid() and
+        stat.S_IMODE(info.st_mode) == 0o700, 'service_proof_root_not_private')
+    with os.fdopen(os.open(root / 'scientific-executor.lock', os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600), 'rb') as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        reconciled_count = 0
+        retry_state = None
+        consecutive_admission_failures = 0
+        consecutive_catalogue_races = 0
+        consecutive_closed_negatives = 0
+        capacity_continuation = False
+        retained_census_refs = []
+        catalogue_parser = None
+        need(catalogue_parser_ref is None or (recovery_ref is not None
+             and h._document(recovery_ref).get("schema") in (CATALOGUE_RACE_SCHEMA,CLOSED_CAPACITY_SCHEMA,CLOSED_CAPACITY_V2_SCHEMA)),
+             "catalogue_parser_requires_explicit_closed_race_mode")
+        need(sum(ref is not None for ref in (recovery_ref, generation_ref, source_lease_ref)) <= 1,
+             'generation_recovery_modes_crossed')
+        if source_lease_ref is not None:
+            opening_identity = require_main_process(profile_ref, profile)
+            reconciled_count, retry_state = reconcile_source_lease_recovery(
+                source_lease_ref, profile_ref, profile, config, opening_identity)
+            retained_generation = h._document(h._document(source_lease_ref)['generation_authorization_ref'])
+            retained_census_refs = [retained_generation['retained_census_ref']]
+        elif generation_ref is not None:
+            need(not os.path.lexists(root/'executor-held.json') and not any(root.glob('cycle-*')), 'generation_target_not_fresh')
+            opening_identity=require_main_process(profile_ref,profile)
+            reconciled_count=reconcile_bounded_generation_handover(generation_ref,profile_ref,profile,config,opening_identity)
+            retained_census_refs = [h._document(generation_ref)['retained_census_ref']]
+        elif recovery_ref is None:
+            need(not os.path.lexists(root/'executor-held.json'),'persistent_hold_requires_original_reconciliation')
+            need(not any(not(path/'closed.json').exists() for path in root.glob('cycle-*')),
+                 'unfinished_cycle_requires_original_reconciliation')
+            opening_identity=require_main_process(profile_ref,profile)
+        else:
+            opening_identity = require_main_process(profile_ref, profile)
+            kind = h._document(recovery_ref).get('schema')
+            if kind in (CLOSED_CAPACITY_SCHEMA, CLOSED_CAPACITY_V2_SCHEMA):
+                need(catalogue_parser_ref is not None and catalogue_parser_ref == catalogue_parser_reference(profile),
+                     'closed_capacity_explicit_catalogue_parser_required')
+                reconciled_count, retained_census_refs = reconcile_closed_capacity_continuation(
+                    recovery_ref, profile_ref, profile, config, opening_identity, executor_lock=lock)
+                catalogue_parser = load_explicit_catalogue_parser(catalogue_parser_ref)
+                capacity_continuation = True
+                consecutive_closed_negatives = 1  # Original physical 200 remains spent/negative.
+            elif kind == CATALOGUE_RACE_SCHEMA:
+                need(catalogue_parser_ref is not None
+                     and catalogue_parser_ref==catalogue_parser_reference(profile),
+                     "catalogue_parser_explicit_constructor_join")
+                _validate_closed_catalogue_race_recovery(h._document(recovery_ref),profile_ref,profile,config)
+                catalogue_parser=load_explicit_catalogue_parser(catalogue_parser_ref)
+                reconciled_count,retained_census_refs=reconcile_closed_catalogue_race_recovery(
+                    recovery_ref,profile_ref,profile,config,opening_identity)
+                consecutive_catalogue_races=1
+            elif kind == ADMISSION_SCHEMA:
+                reconciled_count,consecutive_admission_failures = reconcile_source_admission_recovery(recovery_ref,profile_ref,profile,config,opening_identity)
+                retained_generation = h._document(h._document(recovery_ref)['prior_generation_authorization_ref'])
+                retained_census_refs = list(retained_generation['retained_generations'])
+            elif kind == RECOVERY_SCHEMA:
+                reconciled_count = reconcile_known_nonstarted(recovery_ref, profile_ref, profile, config, opening_identity)
+            elif kind == CLOSED_IDLE_SCHEMA:
+                reconciled_count = reconcile_known_closed_idle(recovery_ref, profile_ref, profile, config, opening_identity)
+            else:
+                # Preserve current-main's distinct thirteen-spent, unselected
+                # proof-storage handover; it is not the closed200 SDK refusal.
+                need(kind == CAPACITY_SCHEMA, 'unknown_typed_recovery')
+                reconciled_count = reconcile_known_unselected_capacity_handover(recovery_ref, profile_ref, profile, config, opening_identity)
+        sequence = 1
+        if os.path.lexists(profile['receipt_path']):
+            previous=h._document(h.descriptor(profile['receipt_path']))
+            if previous.get('identity')==opening_identity:sequence=previous['sequence']+1
+        cycle_number=reconciled_count+1
+        for _ in range(config['max_cycles']-reconciled_count):
+            if stop.is_set():return 0
+            try:
+                need(h._document(config_ref) == config and h._profile(profile_ref) == profile,
+                    'service_binding_changed')
+                need(require_main_process(profile_ref, profile) == opening_identity, 'service_main_identity_changed')
+                for retained_census_ref in retained_census_refs:
+                    _generation_census(retained_census_ref)
+                usage = check_proof_budget(root, config['max_proof_bytes'])
+                if source_lease_ref is not None:
+                    for retained_census_ref in retained_census_refs:
+                        census = _generation_census(retained_census_ref)
+                        need(census['source_bytes'] + usage['bytes'] + REUSE_CYCLE_RESERVE_BYTES <= GLOBAL_RETAINED_BYTES,
+                             'source_recovery_global_retained_bound')
+                retry_context = None
+                if retry_state is not None:
+                    need(retry_state['additional_slots_spent'] < SOURCE_LEASE_MAX_ADDITIONAL,
+                         'source_lease_retry_exhausted')
+                    if stop.wait(SOURCE_LEASE_COOLDOWN_SECONDS):
+                        return 0
+                    need(h._document(config_ref) == config and h._profile(profile_ref) == profile,
+                         'service_binding_changed_during_source_cooldown')
+                    need(require_main_process(profile_ref, profile) == opening_identity, 'service_main_identity_changed')
+                    retry_context = dict(anchor_ref=retry_state['anchor_ref'],
+                                         additional_slot=retry_state['additional_slots_spent'] + 1)
+                native = (observe_native(config) if catalogue_parser is None else
+                          observe_native(config,catalogue_parser=catalogue_parser))
+                template_ref, kind = select_template(config, profile, native)
+                if retry_context is not None:
+                    need(kind == 'genuine_scoped_idle', 'source_retry_scope_not_idle')
+                if (recovery_ref is None and generation_ref is None and source_lease_ref is None
+                        and retry_context is None and cycle_number == sequence):
+                    result = run_cycle(config, profile_ref, profile, template_ref, kind, sequence, stop)
+                else:
+                    options={'cycle_number':cycle_number}
+                    if catalogue_parser is not None:options['catalogue_parser']=catalogue_parser
+                    if capacity_continuation:options['capacity_continuation_ref']=recovery_ref
+                    if retry_context is not None:options['source_retry']=retry_context
+                    if source_lease_ref is not None:options['profile_transition_ref']=source_lease_ref
+                    result = run_cycle(config, profile_ref, profile, template_ref, kind, sequence, stop, **options)
+                if type(result) is dict and result.get('deferred_source_lease') is True:
+                    cycle_number += 1
+                    if retry_state is None:
+                        retry_state = dict(anchor_ref=result['deferral_ref'], additional_slots_spent=0,
+                                           cooldown_seconds=SOURCE_LEASE_COOLDOWN_SECONDS)
+                    else:
+                        retry_state = dict(retry_state, additional_slots_spent=retry_context['additional_slot'])
+                    if retry_state['additional_slots_spent'] >= SOURCE_LEASE_MAX_ADDITIONAL:
+                        _recovery_failure(root, cycle_number - 1, sequence, 'source_lease_retry_exhausted')
+                        persistent_hold(root, Path(result['cycle_root']), 'source_lease_retry_exhausted')
+                        return HOLD_EXIT
+                    continue
+                retry_state = None
+                consecutive_admission_failures = 0
+                consecutive_catalogue_races = 0
+                consecutive_closed_negatives = 0
+                sequence += 1
+                cycle_number += 1
+                # An approved execution is one finite action. A fresh explicit
+                # owner activation is needed before another task dispatch.
+                if kind != 'genuine_scoped_idle':
+                    persistent_hold(root, root, 'approved_execution_closed_no_automatic_followup')
+                    return HOLD_EXIT
+            except CatalogueRaceDeferred as deferred:
+                if capacity_continuation:
+                    consecutive_closed_negatives += 1
+                    if consecutive_closed_negatives >= MAX_CONSECUTIVE_CLOSED_NEGATIVES:
+                        persistent_hold(root, Path(str(deferred)).parent, 'closed_negative_consecutive_defer_bound')
+                        _recovery_failure(root, cycle_number, sequence, 'closed_negative_consecutive_defer_bound')
+                        return HOLD_EXIT
+                consecutive_catalogue_races += 1
+                failed_cycle_number=cycle_number
+                cycle_number += 1
+                if consecutive_catalogue_races>=MAX_CONSECUTIVE_CATALOGUE_RACE_DEFERRALS:
+                    persistent_hold(root,Path(str(deferred)).parent,'catalogue_race_consecutive_defer_bound')
+                    _recovery_failure(root,failed_cycle_number,sequence,'catalogue_race_consecutive_defer_bound')
+                    return HOLD_EXIT
+                # A closed negative spends its physical position. The next
+                # original observation uses a fresh request; health stays put.
+            except (SourceAdmissionDeferred, ResourceCapacityDeferred) as deferred:
+                if capacity_continuation:
+                    consecutive_closed_negatives += 1
+                    if consecutive_closed_negatives >= MAX_CONSECUTIVE_CLOSED_NEGATIVES:
+                        persistent_hold(root, Path(str(deferred)).parent, 'closed_negative_consecutive_defer_bound')
+                        _recovery_failure(root, cycle_number, sequence, 'closed_negative_consecutive_defer_bound')
+                        return HOLD_EXIT
+                consecutive_admission_failures += 1
+                failed_cycle_number = cycle_number
+                cycle_number += 1
+                if consecutive_admission_failures >= MAX_CONSECUTIVE_SOURCE_ADMISSION_DEFERRALS:
+                    reason=('resource_capacity_consecutive_defer_bound'
+                        if isinstance(deferred,ResourceCapacityDeferred)else 'source_admission_consecutive_defer_bound')
+                    persistent_hold(root, Path(str(deferred)).parent, reason)
+                    _recovery_failure(root, failed_cycle_number, sequence, reason)
+                    return HOLD_EXIT
+                # Negative physical attempt consumed; no health sequence/publication.
+            except CapacityAdmissionDeferred as deferred:
+                need(capacity_continuation, 'capacity_defer_outside_explicit_mode')
+                consecutive_closed_negatives += 1
+                failed_cycle_number = cycle_number
+                cycle_number += 1  # Fresh request next time; original request is never replayed.
+                if consecutive_closed_negatives >= MAX_CONSECUTIVE_CLOSED_NEGATIVES:
+                    persistent_hold(root, Path(str(deferred)).parent, 'closed_negative_consecutive_defer_bound')
+                    _recovery_failure(root, failed_cycle_number, sequence, 'closed_negative_consecutive_defer_bound')
+                    return HOLD_EXIT
+            except Exception as exc:
+                persistent_hold(root,root,str(exc))
+                if (recovery_ref is not None or generation_ref is not None or source_lease_ref is not None or retry_state is not None) and str(exc)!='proof_projected_storage_bound':
+                    _recovery_failure(root,cycle_number,sequence,exc)
+                return HOLD_EXIT
+            if stop.wait(config['poll_seconds']):return 0
+        persistent_hold(root,root,'finite_cycle_budget_exhausted')
+        return HOLD_EXIT
+
+
+
+def _closed_capacity_terminal_metadata(terminal, request_ref, request, profile, intent, cycle_root, *, source_generation=None):
+    """Recognize one narrow pre-entry capacity refusal, granting no continuation.
+
+    Pure DATA consistency only. An original caller must additionally prove the
+    actual Popen/wait, dead owner/Main identities, source custody, absent claim
+    and missing positive cycle evidence. No existing recovery mode calls this
+    helper; the separate one-use counter-preserving protocol is still required.
+    """
+    limit = GLOBAL_RETAINED_BYTES if source_generation is None else _source_generation_record(source_generation)['policy']['limit_bytes']
+    root = Path(cycle_root)
+    parts = root.name.split('-')
+    integer = lambda value: type(value) is int and 0 <= value <= 2**63 - 1
+    need(len(parts) == 3 and parts[0] == 'cycle' and len(parts[1]) == 8
+         and parts[1].isascii() and parts[1].isdecimal() and int(parts[1]) > 0
+         and len(parts[2]) == 32 and set(parts[2]) <= set('0123456789abcdef')
+         and root.is_absolute() and '..' not in root.parts
+         and str(root.parent) == profile['proof_root'], 'capacity_negative_cycle_scope')
+    need(type(intent) is dict and intent.get('kind') == 'genuine_scoped_idle'
+         and intent.get('automatic_retry_admitted') is False
+         and intent.get('request_ref') == request_ref
+         and integer(intent.get('cycle_number')) and intent['cycle_number'] == int(parts[1])
+         and integer(intent.get('sequence')) and intent['sequence'] > 0,
+         'capacity_negative_original_idle_intent')
+    need(type(request_ref) is dict and set(request_ref) == {'path', 'bytes', 'sha256'}
+         and request_ref['path'] == str(root/'request.json')
+         and type(request_ref['sha256']) is str and len(request_ref['sha256']) == 64
+         and set(request_ref['sha256']) <= set('0123456789abcdef')
+         and type(request_ref['bytes']) is int and 0 < request_ref['bytes'] <= 4*1024**2,
+         'capacity_negative_request_descriptor')
+    need(type(request) is dict and request.get('schema') == 'legal-ir-original-native-control-request/v1'
+         and request.get('purpose') == 'native_control_metadata'
+         and request.get('request_id') == 'scientific-executor:'+root.name
+         and request.get('resource_ledger') == str(ORIGINAL_RESOURCE_LEDGER)
+         and Path(request.get('attempt_directory', '')) == root/'attempt'
+         and type(request.get('database_preimage')) is dict
+         and set(request['database_preimage']) == {'path', 'bytes', 'sha256'}
+         and all(type(request.get(key)) is int and request[key] == value for key, value in
+             dict(cpu_slots=1, memory_mb=1536, child_process_slots=8,
+                  storage_bytes=384*1024**2, timeout_seconds=300).items())
+         and type(request.get('source_sha256')) is dict
+         and all(request['source_sha256'].get(profile[role]['path']) == profile[role]['sha256']
+                 for role in ('owner_source', 'driver_source')),
+         'capacity_negative_original_request_envelope')
+    need(type(terminal) is dict
+         and terminal.get('schema') == 'legal-ir-original-native-control-terminal/v1'
+         and terminal.get('request_sha256') == request_ref['sha256']
+         and terminal.get('completed') is False
+         and terminal.get('error_type') == 'DaemonResourceError'
+         and terminal.get('error') == 'storage reservation capacity exceeded'
+         and terminal.get('storage_status') == 'not_entered'
+         and terminal.get('control_effects') == 'not_started'
+         and terminal.get('child_launch_attempted') is terminal.get('child_reaped') is False
+         and terminal.get('child_returncode') is None
+         and terminal.get('source_READ_closed') is True
+         and terminal.get('original_native_compute_closed') is True
+         and terminal.get('absolute_resource_operation_deadline_closed') is True
+         and terminal.get('task_completion_authority_granted_by_resource_owner') is False
+         and terminal.get('cleanup_errors') == [] and terminal.get('received_signals') == []
+         and type(terminal.get('owner_pid')) is int and terminal['owner_pid'] > 1
+         and type(terminal.get('owner_birth')) is str and terminal['owner_birth'].isascii()
+         and terminal['owner_birth'].isdecimal() and int(terminal['owner_birth']) > 0
+         and type(terminal.get('owner_boot_id')) is str
+         and str(uuid.UUID(terminal['owner_boot_id'])) == terminal['owner_boot_id'],
+         'capacity_negative_terminal_not_exact_closed_preentry')
+    need(not any(key in terminal for key in ('execution_request', 'process_spawn_receipts',
+         'sampled_process_custody', 'sampled_process_custody_final', 'external_precharge',
+         'external_before', 'external_after', 'external_output_parent_identities',
+         'parent_capacity_handoff', 'database_postimage', 'allowed_subprocess_events'))
+         and terminal.get('database_preimage_before_grants') == request.get('database_preimage'),
+         'capacity_negative_has_entered_or_process_effects')
+    reservation = terminal.get('reservation')
+    need(type(reservation) is dict and set(reservation) == {'authority', 'cleanup_error',
+         'enforcement', 'external_file_growth_monitored', 'last_local_usage', 'ledger_path',
+         'profile', 'record', 'reservation_id', 'resource_lease', 'roots', 'scheduler_lane',
+         'schema', 'status', 'storage_limit_bytes', 'workload'}
+         and reservation.get('status') == 'not_entered'
+         and reservation.get('record') is None and reservation.get('resource_lease') is None
+         and reservation.get('last_local_usage') is None and reservation.get('cleanup_error') is None
+         and reservation.get('profile') == 'parented-phase-sampled/v1'
+         and reservation.get('schema') == 'daemon-resource-reservations-v1'
+         and reservation.get('scheduler_lane') == 'orchestration'
+         and reservation.get('workload') == 'canonical_parented_phase'
+         and reservation.get('external_file_growth_monitored') is False
+         and reservation.get('authority') == 'one_actual_child_of_existing_phase_no_additional_host_root'
+         and reservation.get('ledger_path') == request['resource_ledger']
+         and type(reservation.get('storage_limit_bytes')) is int and reservation.get('storage_limit_bytes') == limit
+         and type(reservation.get('reservation_id')) is str
+         and len(reservation['reservation_id']) == 32
+         and set(reservation['reservation_id']) <= set('0123456789abcdef')
+         and type(reservation.get('roots')) is list
+         and len(reservation['roots']) == len(ORIGINAL_NAMED_ROOTS)
+         and all(type(row) is dict and set(row) == {'path', 'device', 'inode'}
+                 and row['path'] == str(expected)
+                 and integer(row['device']) and integer(row['inode']) and row['inode'] > 0
+                 for row, expected in zip(reservation['roots'], ORIGINAL_NAMED_ROOTS)),
+         'capacity_negative_parented_reservation_was_entered_or_scope_differs')
+    capacity = terminal.get('resource_capacity_observation')
+    numbers = ('observed_apparent_bytes', 'outstanding_full_reservations_bytes',
+        'additional_requested_bytes', 'charged_bytes', 'limit_bytes',
+        'minimum_filesystem_free_bytes', 'storage_capacity_deficit_bytes',
+        'filesystem_free_deficit_bytes')
+    need(type(capacity) is dict and all(integer(capacity.get(key)) for key in numbers)
+         and capacity.get('schema') == 'daemon-resource-capacity-observation/v1'
+         and capacity.get('scope') == 'named_roots_only_apparent_bytes'
+         and capacity['limit_bytes'] == limit
+         and capacity['additional_requested_bytes'] == request['storage_bytes']
+         and capacity['charged_bytes'] == capacity['observed_apparent_bytes']
+             + capacity['outstanding_full_reservations_bytes'] + capacity['additional_requested_bytes']
+         and capacity['charged_bytes'] > capacity['limit_bytes']
+         and capacity['storage_capacity_deficit_bytes'] == capacity['charged_bytes']-capacity['limit_bytes']
+         and capacity.get('storage_capacity_exceeded') is True
+         and capacity.get('filesystem_free_insufficient') is False
+         and capacity['filesystem_free_deficit_bytes'] == 0
+         and capacity['minimum_filesystem_free_bytes'] >= capacity['outstanding_full_reservations_bytes']
+             + capacity['additional_requested_bytes'], 'capacity_negative_arithmetic_or_refusal_class')
+    return dict(schema='agent-supervisor/scientific-closed-preentry-capacity-metadata@1',
+        cycle_number=int(parts[1]), attempted_health_sequence=intent['sequence'],
+        request_ref=request_ref, reservation_id=reservation['reservation_id'],
+        capacity_deficit_bytes=capacity['storage_capacity_deficit_bytes'],
+        health_credit=False, completion_authority=False, dispatch_authority=False,
+        automatic_retry_admitted=False, original_Popen_wait_source_and_no_claim_proof_still_required=True)
+
+
+# Additive, explicit-only continuation. Existing recovery grant schemas are not
+# aliases for this authorization and their consumed ACKs are never reopened.
+CLOSED_CAPACITY_SCHEMA = 'agent-supervisor/scientific-closed-capacity-continuation@1'
+CLOSED_CAPACITY_ACK_SCHEMA = 'agent-supervisor/scientific-closed-capacity-consumption@1'
+CLOSED_CAPACITY_SHA_ENV = 'IPFS_SCIENTIFIC_CLOSED_CAPACITY_CONTINUATION_SHA256'
+CLOSED_CAPACITY_FLAG = '--known-closed-capacity-recovery'
+MAX_CONSECUTIVE_CLOSED_NEGATIVES = 3
+# This first continuation is intentionally restricted to the actual closed
+# incident reviewed by the original owner. It is not an arbitrary failed-cycle
+# reauthorization interface. New in-process negatives use the same narrow
+# terminal predicate, but never fabricate a new administrative enrollment.
+CLOSED_CAPACITY_INCIDENT_EVIDENCE = {
+    'prior_profile_ref': (113869, 'ae9b653a537210b122f8f0065059d2ac8bbcbf88e4f6d51cfb233a88b790466a'),
+    'prior_config_snapshot_ref': (1999, '01368cb1f76ee7a81348f30315f5431c0b539319d8ed169d517261a4781f850a'),
+    'prior_recovery_ref': (82404, '19fcb1fbd4ae54fffa8b63f7500ef35f4dc02edc02a4c41b98c5f79aed651211'),
+    'prior_reconciliation_ref': (4828, 'd19c0900b89fa8edb657eab7bad449f95008577b54cc58758cb5e10e84716cbc'),
+    'prior_health_receipt_ref': (12498, '2d7591b0f4e3212791b88e958e0db2976d1a1366c4673e52b30c220f8d8482cf'),
+    'failed_intent_ref': (581, 'fe7f75c98aaa1b93e95b8a2ecbc0dafdd33300c19b064e02aa1395a7d0334122'),
+    'failed_request_ref': (91008, '46e81dbfbbf245ad6e67f0ad439826a3328550eca8a216b4556133deebb5d65e'),
+    'failed_stdout_ref': (3217, '0d7b1fe831f9b71a3ab2460fe068693830d4fa53d99b5cb6db077b7710e1cc9b'),
+    'failed_cycle_hold_ref': (152, '4f765bfe692dadbd4000b56786ee0d30b08ac58f082d3ec5ffaf03246cc52684'),
+    'cleanup_observation_ref': (10632, 'aeb4dfb49e6120842061a55db940359643792113437c54adf81a2462e66b152f'),
+    'cleanup_independent_review_ref': (3915, '1e45635b149de9c1c370e836b714074e962dff313c1e8f58301c15830c36a5a8'),
+}
+CLOSED_CAPACITY_KEYS = frozenset({'schema', 'authorization', 'profile_ref',
+    'prior_profile_ref', 'prior_profile_snapshot_ref', 'prior_config_snapshot_ref',
+    'prior_main_identity', 'prior_recovery_ref', 'prior_reconciliation_ref',
+    'prior_health_receipt_ref', 'global_hold_ref', 'failed_intent_ref',
+    'failed_request_ref', 'failed_stdout_ref', 'failed_cycle_hold_ref',
+    'negative_audit_ref', 'cleanup_observation_ref', 'cleanup_independent_review_ref',
+    'capacity_preflight_ref', 'scheduler_snapshot_ref', 'current_native_ref',
+    'source_commitment_ref', 'local_cycle_census_refs', 'spent_cycle_count',
+    'prior_last_health_sequence', 'generation_number', 'max_generations',
+    'max_cycles', 'max_proof_bytes', 'recorded_at', 'expires_at', 'manager_before'})
+
+
+class CapacityAdmissionDeferred(ExecutorHold):
+    """A reaped original pre-entry negative; no health or task credit."""
+
+
+def _closed_capacity_paths(profile):
+    root = Path(profile['proof_root'])
+    return root/'closed-capacity-authorization-cycle-00000200.json', root/'closed-capacity-consumption-cycle-00000200.json'
+
+
+def _closed_capacity_clock(value, profile, *, now=None):
+    """Finite startup window, never renewed by validation or consumption."""
+    h = health_owner(); now = time.time() if now is None else now
+    need(h._number(now) and h._number(value['recorded_at']) and h._number(value['expires_at'])
+         and value['recorded_at'] <= now < value['expires_at']
+         and 0 < value['expires_at']-value['recorded_at'] <= min(300, profile['max_age_seconds']),
+         'closed_capacity_authorization_expired_or_future')
+
+
+def _closed_capacity_unit_projection(profile):
+    argv = list(profile['unit']['argv'])
+    if CLOSED_CAPACITY_FLAG in argv:
+        need(argv.count(CLOSED_CAPACITY_FLAG) == 1, 'closed_capacity_duplicate_unit_flag')
+        argv[argv.index(CLOSED_CAPACITY_FLAG)] = '--known-closed-catalogue-race-recovery'
+    return _catalogue_race_unit_projection(argv, profile['main_entrypoint']['path'])
+
+
+def _closed_capacity_ledger(request, terminal, *, source_generation=None):
+    """Read-only absence proof; does not reserve space or assert fresh census."""
+    h = health_owner(); path = Path(request['resource_ledger'])
+    limit = GLOBAL_RETAINED_BYTES if source_generation is None else _source_generation_record(source_generation)['policy']['limit_bytes']
+    before = h.descriptor(path, maximum=16*1024**2); ledger = h._decode(h._bound(before, 16*1024**2))
+    h._keys(ledger, {'schema', 'roots', 'limit_bytes', 'reservations'}, 'closed_capacity_ledger_shape')
+    need(ledger['schema'] == 'daemon-resource-reservations-v1'
+         and type(ledger['limit_bytes']) is int and ledger['limit_bytes'] == limit
+         and ledger['roots'] == terminal['reservation']['roots']
+         and type(ledger['reservations']) is dict and len(ledger['reservations']) <= 4096
+         and all(type(row) is dict and row.get('reservation_id') == key
+             and row.get('status') in ('reserved', 'active', 'retained', 'released')
+             and h._integer(row.get('storage_bytes'), 0, limit)
+             for key, row in ledger['reservations'].items())
+         and terminal['reservation']['reservation_id'] not in ledger['reservations']
+         and h.descriptor(path, maximum=16*1024**2) == before, 'closed_capacity_unknown_or_present_parented_record')
+    for row in ledger['roots']:
+        h._keys(row, {'path', 'device', 'inode'}, 'closed_capacity_root_identity_shape')
+        need(type(row['path']) is str and h._integer(row['device'], 0) and h._integer(row['inode'], 1),
+             'closed_capacity_root_identity_type')
+        info = h._path(row['path']).lstat()
+        need(stat.S_ISDIR(info.st_mode) and (info.st_dev, info.st_ino) == (row['device'], row['inode']),
+             'closed_capacity_original_root_identity_changed')
+    return before, ledger
+
+
+def _closed_capacity_negative(value, prior, *, startup=True, source_generation=None):
+    h = health_owner(); intent = h._document(value['failed_intent_ref'])
+    request_ref = value['failed_request_ref']; request = h._document(request_ref)
+    cycle = Path(request_ref['path']).parent
+    need(value['failed_intent_ref'] == h.descriptor(cycle/'intent.json')
+         and value['failed_stdout_ref'] == h.descriptor(cycle/'owner.stdout')
+         and value['failed_cycle_hold_ref'] == h.descriptor(cycle/'cycle-held.json'),
+         'closed_capacity_negative_artifact_join')
+    terminal = original_terminal(h._bound(value['failed_stdout_ref']), request_ref)
+    recognition = _closed_capacity_terminal_metadata(terminal, request_ref, request, prior, intent, cycle)
+    need(recognition['cycle_number'] == value['spent_cycle_count'] == 200
+         and recognition['attempted_health_sequence'] == value['prior_last_health_sequence']+1 == 38,
+         'closed_capacity_wrong_failed_counter')
+    hold = h._document(value['failed_cycle_hold_ref'])
+    need(hold.get('schema') == 'agent-supervisor/scientific-cycle-held@1'
+         and hold.get('reason') == 'original_owner_failed'
+         and hold.get('automatic_retry_admitted') is False,
+         'closed_capacity_not_original_failed_hold')
+    need(not any(os.path.lexists(cycle/name) for name in
+         ('terminal.json', 'cycle-proof.json', 'closed.json', 'native-diagnostic.json',
+          'admission-deferred.json', 'catalogue-race-deferred.json')),
+         'closed_capacity_has_positive_or_other_negative_evidence')
+    boot = Path('/proc/sys/kernel/random/boot_id').read_text().strip()
+    owner = dict(pid=terminal['owner_pid'], birth_ticks=int(terminal['owner_birth']),
+                 boot_id=terminal['owner_boot_id'])
+    need(owner['boot_id'] == value['prior_main_identity']['boot_id'] == boot
+         and h._definitely_dead_identity(owner, dict(boot_id=boot)),
+         'closed_capacity_owner_live_or_unknown')
+    # The audit is bound DATA consistency, not a signature or live capability.
+    # Original source review and independent Native qualification remain release
+    # prerequisites; accepted=True alone cannot satisfy any predicate here.
+    audit = h._document(value['negative_audit_ref'])
+    need(audit.get('schema') == 'scientific-closed-capacity-independent-negative/v1'
+         and audit.get('request_ref') == request_ref
+         and audit.get('intent_ref') == value['failed_intent_ref']
+         and audit.get('owner_stdout_ref') == value['failed_stdout_ref']
+         and audit.get('cycle_hold_ref') == value['failed_cycle_hold_ref']
+         and audit.get('original_terminal') == terminal
+         and audit.get('recognition') == recognition
+         and audit.get('owner_source') == prior['owner_source']
+         and audit.get('driver_source') == prior['driver_source']
+         and audit.get('prior_main_identity') == value['prior_main_identity']
+         and audit.get('accepted_as_runtime_health') is False
+         and audit.get('recovery_or_retry_authority') is False,
+         'closed_capacity_independent_negative_join')
+    _recovery_scheduler(request, value['scheduler_snapshot_ref'])
+    if startup:
+        need(h.database_descriptor(request['database_preimage']['path']) == request['database_preimage'],
+             'closed_capacity_original_database_preimage_changed')
+    ledger_ref, ledger = _closed_capacity_ledger(request, terminal, source_generation=source_generation)
+    return cycle, request, terminal, recognition, ledger_ref, ledger
+
+
+def _closed_capacity_cleanup(value, terminal):
+    """Bind the original one-claim cleanup; never treat it as fresh admission."""
+    h = health_owner(); observation = h._document(value['cleanup_observation_ref'])
+    peer = h._document(value['cleanup_independent_review_ref'])
+    recovery_ref = observation.get('original_reconciliation')
+    recovery = h._document(recovery_ref)
+    need(observation.get('schema') == 'own-scope13-failed-retained128-singleclaim-observation/v1'
+         and observation.get('recovery_API_calls') == 1
+         and observation.get('recovery_API_returned') is True
+         and observation.get('storage_release_established') is True
+         and observation.get('postwrite_verification_pending') is False
+         and observation.get('actual_released_promise_bytes') == 128*1024**2
+         and observation.get('source_READ_closed') is True
+         and observation.get('source_READ_close_flags') == {
+             '/home/barberb/lift_coding/external/ipfs_accelerate': True,
+             '/home/barberb/lift_coding/external/ipfs_datasets': True}
+         and observation.get('outputs_deleted') is False
+         and observation.get('automatic_replay_allowed') is False
+         and observation.get('engineering_epoch_renewed') is False
+         and observation.get('failed_v01_v02_preserved') is True
+         and observation.get('post_other_records_match_API_internal_snapshot') is True,
+         'closed_capacity_cleanup_not_exact_closed_oneclaim')
+    need(recovery_ref.get('bytes') == 1908
+         and recovery_ref.get('sha256') == 'd341678f27d3dd8af0f0f978f2fe81e83d5ab7a604c5618b73cbb0484208d1e8'
+         and observation.get('reservation_id') == '5f3191e0ef8e402f96ed58a5fbd9e14b'
+         and recovery.get('schema') == 'explicit-retained-reservation-reconciliation/v1'
+         and recovery.get('reservation_id') == observation.get('reservation_id')
+         and recovery.get('admitted') is False and recovery.get('automatic_expiry') is False
+         and recovery.get('outputs_deleted') is False
+         and recovery['full_claim_accounting']['outstanding_full_reservations_bytes']
+             - recovery['final_accounting']['outstanding_full_reservations_bytes'] == 128*1024**2
+         and recovery['full_claim_accounting']['charged_bytes']
+             - recovery['final_accounting']['charged_bytes'] == 128*1024**2,
+         'closed_capacity_cleanup_original_API_join')
+    quiet = observation['immediate_pre_SCI_quiet']
+    need(quiet.get('mode') == 'original_failed_SCI_no_entry_capacity_refusal'
+         and quiet.get('failed_cycle_held') == value['failed_cycle_hold_ref']
+         and quiet.get('failed_owner') == value['failed_stdout_ref']
+         and quiet.get('health') == value['prior_health_receipt_ref'],
+         'closed_capacity_cleanup_failed_owner_lineage')
+    # Exact literal peer field names are a reviewed adapter contract. Missing or
+    # renamed fields fail closed; no loose boolean approval is sufficient.
+    need(peer.get('accepted') is True and peer.get('observation') == value['cleanup_observation_ref']
+         and peer.get('original_API_return') == recovery_ref
+         and peer.get('source_READ_closed') is True,
+         'closed_capacity_cleanup_independent_peer_join')
+    accounting = observation['actual_postwrite_accounting']
+    need(accounting['limit_bytes'] == GLOBAL_RETAINED_BYTES
+         and accounting['additional_requested_bytes'] == 0
+         and accounting['charged_bytes'] == accounting['observed_apparent_bytes']
+             + accounting['outstanding_full_reservations_bytes'],
+         'closed_capacity_cleanup_historical_accounting')
+    return observation
+
+
+def _closed_capacity_preflight(value, profile, request, ledger_ref, ledger, *, source_generation=None):
+    """Check a fresh original-owner observation; this is never a storage grant.
+
+    No standalone issuer is supplied here. The original owner adapter must emit
+    this snapshot under its real bounded source/ledger lifecycle, then close it.
+    The observation projects the unchanged432MiB full proof/attempt reserve;
+    the next original Popen still admits its unchanged384MiB attempt at220GB.
+    """
+    record = None if source_generation is None else _source_generation_record(source_generation)
+    if record is not None: request = record['request']
+    limit = GLOBAL_RETAINED_BYTES if record is None else record['policy']['limit_bytes']
+    h = health_owner(); pre = h._document(value['capacity_preflight_ref'])
+    h._keys(pre, {'schema', 'checked_at', 'max_age_seconds', 'ledger_ref', 'accounting',
+        'roots', 'resource_source_ref', 'source_READ_closed', 'ledger_lock_closed',
+        'reservation_created', 'native_grant_created', 'admission_authority'}, 'closed_capacity_preflight_shape')
+    now = time.time(); accounting = pre['accounting']
+    need(pre['schema'] == 'original-owner-closed-capacity-preflight/v1'
+         and h._number(pre['checked_at']) and h._integer(pre['max_age_seconds'], 1, 60)
+         and 0 <= now-pre['checked_at'] <= pre['max_age_seconds']
+         and pre['ledger_ref'] == ledger_ref and pre['roots'] == ledger['roots']
+         and pre['source_READ_closed'] is pre['ledger_lock_closed'] is True
+         and pre['reservation_created'] is pre['native_grant_created'] is pre['admission_authority'] is False
+         and pre['resource_source_ref'] in profile['source_descriptors']
+         and request['source_sha256'].get(pre['resource_source_ref']['path']) == pre['resource_source_ref']['sha256'],
+         'closed_capacity_preflight_not_fresh_original_closed_observation')
+    h._bound(pre['resource_source_ref'])
+    # Pin the host-resource dependency already selected by the original request;
+    # a newly invented helper cannot stand in for that original owner SDK.
+    need(Path(pre['resource_source_ref']['path']).name == 'autoencoder_daemon_resources.py',
+         'closed_capacity_preflight_wrong_resource_source')
+    integer = lambda n: type(n) is int and 0 <= n <= 2**63-1
+    need(type(accounting) is dict and all(integer(accounting.get(k)) for k in
+         ('observed_apparent_bytes', 'outstanding_full_reservations_bytes', 'additional_requested_bytes',
+          'charged_bytes', 'limit_bytes', 'minimum_filesystem_free_bytes'))
+         and accounting.get('scope') == 'named_roots_only_apparent_bytes'
+         and accounting['limit_bytes'] == limit
+         and accounting['additional_requested_bytes'] == REUSE_CYCLE_RESERVE_BYTES
+         and accounting['charged_bytes'] == accounting['observed_apparent_bytes']
+             + accounting['outstanding_full_reservations_bytes'] + accounting['additional_requested_bytes']
+         and accounting['outstanding_full_reservations_bytes'] == sum(
+             row['storage_bytes'] for row in ledger['reservations'].values() if row['status'] != 'released')
+         and accounting['charged_bytes'] <= limit
+         and accounting['minimum_filesystem_free_bytes'] >= accounting['outstanding_full_reservations_bytes']
+             + accounting['additional_requested_bytes'], 'closed_capacity_preflight_cap_not_restored')
+    return pre
+
+
+CLOSED_CAPACITY_HISTORY_KEYS = CLOSED_CAPACITY_KEYS-{
+    'recorded_at', 'expires_at', 'manager_before', 'capacity_preflight_ref', 'current_native_ref'}
+
+
+
+# Explicit source-only successor approval. This is a technical source epoch,
+# not a third execution generation or a reset of the consumed catalogue grant.
+CLOSED_CAPACITY_V2_SCHEMA = 'agent-supervisor/scientific-closed-capacity-continuation@2'
+CLOSED_CAPACITY_V2_ACK_SCHEMA = 'agent-supervisor/scientific-closed-capacity-consumption@2'
+SOURCE_GENERATION_SCHEMA = 'agent-supervisor/scientific-source-generation-approval@1'
+SOURCE_GENERATION_SPEC_SCHEMA = 'agent-supervisor/scientific-source-generation-spec@1'
+SOURCE_GENERATION_SPEC_KEYS = frozenset({'schema', 'authorization', 'profile_ref',
+    'prior_profile_ref', 'prior_profile_snapshot_ref', 'preparation_spec_ref',
+    'historical_source_witness_ref', 'source_commitment_ref',
+    'template_transition_ref', 'storage_policy_approval_ref'})
+SOURCE_GENERATION_KEYS = frozenset({'schema', 'authorization', 'spec_ref', 'profile_ref',
+    'recorded_at', 'expires_at', 'manager_before', 'spent_cycle_count',
+    'next_cycle_number', 'generation_number', 'max_generations', 'max_cycles',
+    'remaining_cycles', 'max_proof_bytes', 'dispatch_authority',
+    'execution_budget_created', 'hold_removal_authorized'})
+CLOSED_CAPACITY_V2_KEYS = CLOSED_CAPACITY_KEYS | {'source_generation_authorization_ref'}
+CURRENT_RETAINED_POLICY_BYTES = 250_000_000_000
+_SOURCE_GENERATION_CONTEXTS = {}
+
+
+def _source_generation_canonical(value):
+    return (json.dumps(value, sort_keys=True, separators=(',', ':'), allow_nan=False)+'\n').encode()
+
+
+def _source_generation_same(left, right):
+    # Python equality alone accepts True==1 and 1.0==1 in metadata joins.
+    return _source_generation_canonical(left) == _source_generation_canonical(right)
+
+
+def _source_generation_frozen(reference):
+    h = health_owner(); h._keys(reference, {'path', 'bytes', 'sha256'}, 'source_generation_descriptor_shape')
+    need(type(reference['path']) is str and h._integer(reference['bytes'], 1, h.MAX_JSON)
+         and type(reference['sha256']) is str and len(reference['sha256']) == 64
+         and set(reference['sha256']) <= set('0123456789abcdef'), 'source_generation_descriptor_type')
+    path = Path(reference['path']); before = path.lstat()
+    raw = h._bound(reference); info = path.lstat()
+    fields = ('st_dev', 'st_ino', 'st_mode', 'st_uid', 'st_gid', 'st_nlink', 'st_size', 'st_mtime_ns', 'st_ctime_ns')
+    need(tuple(getattr(before, key) for key in fields) == tuple(getattr(info, key) for key in fields),
+         'source_generation_control_changed_during_read')
+    need(stat.S_ISREG(info.st_mode) and info.st_uid == os.geteuid() and info.st_nlink == 1
+         and stat.S_IMODE(info.st_mode) == 0o400, 'source_generation_control_not_frozen_private')
+    return raw
+
+
+def _source_generation_source_inventory(reference, profile):
+    """The explicit @3 contract includes the actual new Main AND health role.
+
+    All files in its declared frozen package closure are selected, qualified and
+    counted. This does not loosen the existing exact-five @2 contract.
+    """
+    h = health_owner(); source = h._decode(_source_generation_frozen(reference))
+    h._keys(source, {'schema', 'source_root', 'source_commit', 'source_tree', 'source_inventory',
+        'source_operation_plan', 'source_qualification', 'catalogue_parser', 'main_entrypoint',
+        'health_module', 'runtime_activation_or_task_authority'}, 'source_generation_commitment_shape')
+    root = Path(source['source_root']); main = profile['main_entrypoint']; health = profile['health_module']
+    parser = catalogue_parser_reference(profile)
+    need(source['schema'] == 'agent-supervisor/scientific-producer-source-commitment@3'
+         and source['runtime_activation_or_task_authority'] is False
+         and root == Path(main['path']).parents[3]
+         and main['path'] == str(root/'ipfs_accelerate_py/agent_supervisor/rescue/scientific_executor.py')
+         and health['path'] == str(root/'ipfs_accelerate_py/agent_supervisor/rescue/native_executor_health.py')
+         and all(_source_generation_same(source[key], selected) for key, selected in
+                 (('main_entrypoint', main), ('health_module', health), ('catalogue_parser', parser)))
+         and all(type(source[k]) is str and len(source[k]) == 40
+                 and set(source[k]) <= set('0123456789abcdef') for k in ('source_commit', 'source_tree')),
+         'source_generation_actual_Main_health_package_required')
+    inventory = h._decode(_source_generation_frozen(source['source_inventory']))
+    h._keys(inventory, {'schema', 'source_root', 'source_commit', 'source_tree', 'file_count', 'files'},
+            'source_generation_inventory_shape')
+    rows = inventory['files']; selected = {pin['path']: pin for pin in profile['source_descriptors']
+                                            if root in Path(pin['path']).parents}
+    required = {str(root/name) for name in ('ipfs_accelerate_py/__init__.py',
+        'ipfs_accelerate_py/agent_supervisor/__init__.py',
+        'ipfs_accelerate_py/agent_supervisor/rescue/__init__.py')}
+    required.update((main['path'], health['path'], parser['path']))
+    need(inventory['schema'] == 'legal-ir-scientific-source-inventory/v1'
+         and all(inventory[k] == source[k] for k in ('source_root', 'source_commit', 'source_tree'))
+         and type(rows) is list and h._integer(inventory['file_count'], 6, 512)
+         and inventory['file_count'] == len(rows) == len(selected)
+         and required <= set(selected), 'source_generation_complete_package_population')
+    seen = set()
+    for row in rows:
+        h._keys(row, {'path', 'bytes', 'sha256', 'mode'}, 'source_generation_inventory_row')
+        pin = {key: row[key] for key in ('path', 'bytes', 'sha256')}
+        need(type(pin['path']) is str and pin['path'] in selected and pin['path'] not in seen
+             and _source_generation_same(pin, selected[pin['path']])
+             and type(row['mode']) is int and row['mode'] == 0o400
+             and Path(pin['path']).suffix == '.py', 'source_generation_inventory_unknown_or_duplicate_source')
+        _source_generation_frozen(pin); seen.add(pin['path'])
+    need(seen == set(selected), 'source_generation_inventory_missing_source')
+    _source_generation_frozen(source['source_operation_plan'])
+    _source_generation_qualification(source['source_qualification'], profile, selected)
+    return source, selected
+
+
+
+def _source_generation_current_qualification_profile(value, *, policy=None):
+    """Select one explicit metadata contract; never upgrade an old receipt."""
+    pairs = {
+        ('agent-supervisor/scientific-source-generation-current-v5-qualification@1',
+         'closed_v5_current_Source'): None,
+        ('agent-supervisor/scientific-source-generation-current-v5-qualification@1',
+         'closed_v5_current_immutable_Source'): 'agent-supervisor/immutable-source-qualification@1',
+        ('agent-supervisor/scientific-source-generation-current-v5-qualification@2',
+         'closed_v5_current_immutable_parent_Source'): 'agent-supervisor/immutable-source-qualification@2',
+    }
+    need(type(value.get('schema')) is str and type(value.get('qualification_profile')) is str,
+         'source_generation_current_v5_profile_required')
+    pair = (value['schema'], value['qualification_profile'])
+    need(pair in pairs, 'source_generation_current_v5_profile_required')
+    expected = pairs[pair]
+    if policy is not None:
+        validation = policy['validation']
+        if expected is None:
+            matches = 'source_qualification' not in validation
+        else:
+            actual = validation.get('source_qualification')
+            matches = type(actual) is dict and actual.get('schema') == expected
+        need(matches, 'source_generation_v5_qualification_profile_policy_mismatch')
+    return expected
+
+
+def _source_generation_delegated_source_binding(policy, plan, summary, custody, report,
+        request_ref, invocation, profile):
+    """Join archived parent delegation DATA; acquire no lock or process.
+
+    The existing SDK verifier owns the original Source42 derivation, actual
+    held FD/nonce/ancestry checks and later genuine closure. This reader binds
+    its saved attestation to physical source identities and the same report;
+    it does not claim an independently current Git or kernel observation.
+    """
+    h = health_owner()
+    mode = 'delegated-original-parent-read/v1'
+    source_profile = policy['validation']['source_qualification']
+    h._keys(source_profile, {'schema', 'snapshot', 'required_source_bodies', 'source_custody_mode'},
+            'source_generation_delegated_policy_shape')
+    need(source_profile['schema'] == 'agent-supervisor/immutable-source-qualification@2'
+         and source_profile['source_custody_mode'] == mode,
+         'source_generation_delegated_policy_required')
+    bindings = plan.get('source_root_bindings')
+    physical = [str(h._path(policy['datasets_root'])), str(h._path(plan['candidate_root']))]
+    need(physical[1] == str(Path(profile['main_entrypoint']['path']).parents[3])
+         and type(bindings) is list and len(bindings) == 2,
+         'source_generation_delegated_physical_roots_changed')
+    canonical = []
+    for binding, physical_root in zip(bindings, physical, strict=True):
+        h._keys(binding, {'physical_root', 'canonical_root'}, 'source_generation_delegated_root_binding_shape')
+        need(binding['physical_root'] == physical_root
+             and type(binding['canonical_root']) is str,
+             'source_generation_delegated_root_binding_changed')
+        canonical.append(str(h._path(binding['canonical_root'])))
+    need(canonical[0] == str(ORIGINAL_NAMED_ROOTS[0].parents[1])
+         and len(set(canonical)) == len(set(physical)) == 2,
+         'source_generation_delegated_canonical_roots_changed')
+    identity = plan.get('parent_identity')
+    h._keys(identity, {'pid', 'birth'}, 'source_generation_delegated_parent_identity_shape')
+    nonce = plan.get('parent_nonce_sha256')
+    need(h._integer(identity['pid'], 1, 2**63-1)
+         and type(identity['birth']) is str and identity['birth'].isascii()
+         and identity['birth'].isdecimal() and 0 < len(identity['birth']) <= 32
+         and int(identity['birth']) > 0
+         and type(nonce) is str and len(nonce) == 64 and set(nonce) <= set('0123456789abcdef'),
+         'source_generation_delegated_parent_identity_or_nonce_changed')
+    observation = report.get('parent_source_observation')
+    h._bound(observation)
+    need(observation['path'] == plan.get('parent_source_observation_path')
+         and h._path(observation['path']).parent == invocation
+         and plan.get('execution_request_path') == request_ref['path'],
+         'source_generation_delegated_original_observation_or_request_changed')
+    joined = dict(source_custody_mode=mode, parent_source_observation=observation,
+        parent_nonce_sha256=nonce, parent_identity=identity, source_root_bindings=bindings)
+    need(all(_source_generation_same(frame.get(key), expected)
+             for frame in (report, summary, custody) for key, expected in joined.items())
+         and report.get('schema') == 'immutable-source-parent-delegated-validation@1'
+         and report.get('source_READ_closed') is False
+         and report.get('source_READ_admission_complete') is False,
+         'source_generation_delegated_original_parent_report_binding_changed')
+    return physical, canonical
+
+
+def _source_generation_qualification(reference, profile, selected):
+    """The new technical epoch requires the CURRENT canonical owned-v5 SDK.
+
+    The old v1 reader remains a separately named archival reader. This is not a
+    coercion of v5 receipts into its old17/focused-observer schema. Qualification
+    must have been produced by the existing canonical validation owner and its
+    original genuine-wait/Source@2 path; this function only rechecks that DATA.
+    """
+    import xml.etree.ElementTree as ET
+    from collections import Counter
+    from ipfs_accelerate_py.agent_supervisor.rescue import repair_candidate_owners as owner
+    h = health_owner(); value = h._decode(_source_generation_frozen(reference))
+    h._keys(value, {'schema', 'qualification_profile', 'qualification_owner_source_ref',
+        'policy_ref', 'plan_ref', 'request_ref', 'terminal_ref', 'parent_source_closeout_ref',
+        'invocation_root', 'owning_test_root', 'required_raw_subjects', 'source_inventory_subjects', 'owning_test_sources',
+        'expected_function_case_counts', 'runtime_activation_or_task_authority'},
+        'source_generation_current_v5_qualification_shape')
+    source_qualification_schema = _source_generation_current_qualification_profile(value)
+    delegated_source = source_qualification_schema == 'agent-supervisor/immutable-source-qualification@2'
+    need(value['runtime_activation_or_task_authority'] is False,
+         'source_generation_current_v5_profile_required')
+    owner_ref = value['qualification_owner_source_ref']; h._bound(owner_ref)
+    actual_reader_ref = owner.descriptor(Path(owner.__file__).absolute())
+    need(all(function.__globals__ is vars(owner) and function.__code__.co_filename == actual_reader_ref['path']
+                 for function in (owner.verify_validation_evidence, owner.verify_v5_parent_source_closeout)),
+         'source_generation_existing_v5_SDK_source_required')
+    h._bound(value['policy_ref'])  # Exact descriptor shape/type/byte identity before SDK path/SHA use.
+    sdk_witness = owner.authenticate_archived_v5_sdk_source(value['policy_ref'])
+    try:
+        source_data = owner.archived_v5_sdk_source_data(sdk_witness)
+        need(_source_generation_same(owner_ref, source_data['producer_ref'])
+             and source_data['same_source_generation_bytes_authenticated'] is True
+             and source_data['current_producer_verified'] is source_data['current_engine_verified'] is False,
+             'source_generation_original_incoming_SDK_or_source_generation_changed')
+        policy = source_data['policy']
+        immutable_source = 'source_qualification' in policy['validation']
+        _source_generation_current_qualification_profile(value, policy=policy)
+        plan = h._document(value['plan_ref'])
+        request = h._document(value['request_ref']); terminal = h._document(value['terminal_ref'])
+        invocation = h._path(value['invocation_root'])
+        control = owner.checked_control_release(policy, current_owner=False)  # DATA, bound by sdk_witness above.
+        immutable_scope = owner.checked_source_qualification(policy, control) if immutable_source else None
+        maintained = control['root']
+        need(value['owning_test_root'] == str(maintained), 'source_generation_actual_immutable_owning_test_root_required')
+        validation = owner.checked_validation_profile(policy, control)
+        need(_source_generation_same(value['request_ref'], owner.original_execution_request(invocation))
+             and _source_generation_same(request, owner.validation_execution_request(policy, plan, value['plan_ref'])),
+             'source_generation_original_v5_worker_request_publication_differs')
+        h._keys(request, {'schema', 'argv', 'cwd', 'selected_checks', 'source_sha256',
+            'timeout_seconds', 'storage_bytes', 'memory_mb', 'cpu_slots', 'child_process_slots',
+            'attempt_directory', 'outputs', 'declared_external_writable_paths', 'process_scope',
+            'scheduler_state_path', 'expected_scheduler_policy_sha256', 'roots', 'ordinary_scratch_profile'},
+            'source_generation_current_v5_original_request_shape')
+        need(request['selected_checks'] == plan['selected_checks'] == validation['selected_checks']
+             and request['cwd'] == plan['candidate_root']
+             and request['attempt_directory'] == plan['attempt_directory']
+             and all(type(request[key]) is int and request[key] == validation[key] for key in
+                     ('cpu_slots', 'memory_mb', 'storage_bytes', 'timeout_seconds', 'child_process_slots'))
+             and request['scheduler_state_path'] == validation['scheduler_state_path']
+             and request['expected_scheduler_policy_sha256'] == validation['expected_scheduler_policy_sha256']
+             and request['outputs'] == {name: str(Path(request['attempt_directory'])/name)
+                                        for name in ('pytest', 'tmp', 'cache', 'db', 'exports', 'logs')}
+             and type(request['source_sha256']) is dict and 0 < len(request['source_sha256']) <= 256,
+             'source_generation_current_v5_original_request_projection')
+        need(owner._v5_ordinary_validation(policy)
+             and request['schema'] == 'owned-validation-request/v5' and len(request) == 18
+             and request['ordinary_scratch_profile'] == {'schema':'owned-validation-ordinary-scratch-live/v1'}
+             and request['declared_external_writable_paths'] == []
+             and request['process_scope'] == 'sampled_birth_bound_descendants'
+             and request['roots'] == [str(root) for root in ORIGINAL_NAMED_ROOTS]
+             and _source_generation_same(owner_ref, next(pin for pin in policy['source_descriptors']
+                                                          if pin['path'] == owner_ref['path']))
+             and value['plan_ref']['path'] == str(invocation/'validation-plan.json'),
+             'source_generation_original_current_v5_request_or_SDK_policy_changed')
+        # These existing validators own genuine Popen/wait, native/storage/process
+        # closure, original typed deadline/Source@2 custody, full source guard, raw
+        # candidate execution, all natural phases, JUnit and the original seal.
+        summary = owner.verify_validation_evidence(policy, plan, value['request_ref'], terminal, invocation)
+        archived = owner.verify_archived_v5_parent_source_closeout(sdk_witness, value['request_ref'], invocation,
+                                                                  value['parent_source_closeout_ref'], summary)
+        need(archived['historical_evidence_verified'] is True
+             and archived['current_producer_verified'] is archived['current_engine_verified'] is False
+             and archived['new_original_process_or_native_execution_performed'] is False,
+             'source_generation_incoming_parent_not_archived_DATA_only')
+        parent = archived['original_parent_source_closeout']
+        custody = parent['parent_source_custody']
+        if delegated_source:
+            delegated_report = h._document(h.descriptor(Path(request['attempt_directory'])/'exports/trusted-validation.json'))
+            physical_roots, source_roots = _source_generation_delegated_source_binding(
+                policy, plan, summary, custody, delegated_report, value['request_ref'], invocation, profile)
+        else:
+            source_roots = [str(h._path(policy['datasets_root'])), str(h._path(plan['candidate_root']))]
+            need(source_roots[0] == str(ORIGINAL_NAMED_ROOTS[0].parents[1])
+                 and source_roots[1] == str(Path(profile['main_entrypoint']['path']).parents[3]),
+                 'source_generation_original_current_v5_not_closed')
+            physical_roots = source_roots
+        need(custody['source_closed'] is True and custody['native_closed'] is True,
+             'source_generation_original_current_v5_not_closed')
+        for receipt, root in zip(custody['source_receipts'], source_roots):
+            h._keys(receipt, {'schema_version', 'canonical_root', 'cooperative', 'lock_path', 'mode', 'waited_seconds'},
+                    'source_generation_current_v5_Source_receipt_shape')
+            need(receipt['schema_version'] == 'autoencoder-source-lease/v1'
+                 and receipt['canonical_root'] == root and receipt['cooperative'] is True and receipt['mode'] == 'read'
+                 and receipt['lock_path'] == str(Path(root)/'workspace/control-plane/source-leases/source.lock')
+                 and h._number(receipt['waited_seconds']) and receipt['waited_seconds'] >= 0,
+                 'source_generation_current_v5_two_original_Source_roots_required')
+        subjects = value['required_raw_subjects']; package = value['source_inventory_subjects']
+        tests = value['owning_test_sources']
+        datasets = Path(physical_roots[0]) if delegated_source else ORIGINAL_NAMED_ROOTS[0].parents[1]
+        paths = [str(datasets/relative) for relative in (
+            'ipfs_datasets_py/logic/backends/process.py',
+            'ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_daemon_resources.py',
+            'ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_resource_recovery.py',
+            'ipfs_datasets_py/optimizers/logic_theorem_optimizer/parented_phase_resources.py',
+            'scripts/ops/legal_ir/run_owned_validation.py')]
+        selected_profile = {pin['path']:pin for pin in profile['source_descriptors']}
+        need(all(path in selected_profile for path in paths), 'source_generation_v5_missing_canonical_R_role')
+        expected_roles = [profile['main_entrypoint'], profile['health_module']]+[selected_profile[path] for path in paths]
+        need(type(subjects) is list and len(subjects) == 7 and len({pin['path'] for pin in subjects}) == 7
+             and sorted(_source_generation_canonical(pin) for pin in subjects)
+                  == sorted(_source_generation_canonical(pin) for pin in expected_roles)
+             and type(package) is list and len(package) == len(selected)
+             and {pin['path'] for pin in package} == set(selected)
+             and type(tests) is list and 1 <= len(tests) <= 16
+             and len({pin['path'] for pin in tests}) == len(tests),
+             'source_generation_v5_exact_roles_package_and_owning_tests_required')
+        attempt = h._path(request['attempt_directory'])
+        report_ref = h.descriptor(attempt/'exports/trusted-validation.json'); report = h._document(report_ref)
+        for pin in subjects + package + tests:
+            h._bound(pin)
+            need(plan['source_pins'].get(pin['path']) == pin['sha256']
+                 and (pin['path'] not in request['source_sha256'] or request['source_sha256'][pin['path']] == pin['sha256']),
+                 'source_generation_v5_qualified_source_generation_differs')
+            if pin['path'] in selected:
+                need(_source_generation_same(selected[pin['path']], pin),
+                     'source_generation_v5_other_package_source')
+        # The seventh role is the ORIGINAL R CLI parent, not a child import. Its
+        # genuine PID/birth/argv/wait + Source@2 custody are owned by the existing
+        # SDK. That SDK checks classifier globals/co_filename under Source READ;
+        # this is parent-source provenance, NOT a persisted child compile trace.
+        parent_cli = selected_profile[paths[-1]]
+        child_subjects = [pin for pin in subjects if pin['path'] != parent_cli['path']]
+        wait = h._document(h.descriptor(invocation/'runner-wait.json'))
+        expected_argv = [policy['python'], '-I', '-B', parent_cli['path'], '--request', value['request_ref']['path'],
+            '--expected-request-sha256', value['request_ref']['sha256'], '--resource-ledger', validation['resource_ledger']]
+        required_bodies = plan['required_candidate_bodies']
+        if immutable_source:
+            need(immutable_scope is not None and plan['required_candidate_bodies'] == []
+                 and plan.get('source_qualification') == immutable_scope['profile']
+                 and plan.get('required_source_bodies') == immutable_scope['required_source_bodies']
+                 and immutable_scope['root'] == Path(profile['main_entrypoint']['path']).parents[3],
+                 'source_generation_v5_immutable_source_body_scope_changed')
+            required_bodies = plan['required_source_bodies']
+        need(len(child_subjects) == 6 and wait['argv'] == expected_argv
+             and request['source_sha256'].get(parent_cli['path']) == parent_cli['sha256']
+             and _source_generation_same(parent_cli, next(pin for pin in policy['source_descriptors']
+                                                           if pin['path'] == parent_cli['path']))
+             and terminal['reservation']['ledger_path'] == validation['resource_ledger'] == str(ORIGINAL_RESOURCE_LEDGER)
+             and all(report['executed_source_buffers'].get(pin['path']) == pin['sha256'] for pin in child_subjects + tests)
+             and all(profile[role]['path'] in required_bodies for role in ('main_entrypoint', 'health_module'))
+             and report['collected_cases'] == owner.expected_natural_nodes(plan),
+             'source_generation_v5_six_child_bodies_or_original_parent_provenance_missing')
+        # Bind exact current owning test functions and counts, not a pooled suite
+        # count from CLI68, health242 or the old Owner128 source generation.
+        counts = value['expected_function_case_counts']; index = {pin['path']: pin for pin in tests}
+        need(type(counts) is dict and 1 <= len(counts) <= 256
+             and all(type(node) is str and node.count('::') == 1 and node.partition('::')[0] in index
+                     and node.partition('::')[2].isidentifier() and h._integer(number, 1, 1024)
+                     for node, number in counts.items()), 'source_generation_v5_owning_function_contract')
+        import ast
+        declared = set()
+        for pin in tests:
+            source = ast.parse(h._bound(pin))
+            declared.update(pin['path']+'::'+node.name for node in source.body
+                            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name.startswith('test_'))
+        need(set(counts) == declared and {pin['path'] for pin in validation['trusted_tests']} == set(index),
+             'source_generation_v5_every_declared_owning_function_required')
+        nodes = owner.expected_natural_nodes(plan)
+        actual = Counter(node.split('[',1)[0] for node in nodes)
+        need(dict(actual) == counts, 'source_generation_v5_actual_function_population_differs')
+        xml_ref = h.descriptor(attempt/'exports/test-results.xml'); tree = ET.fromstring(h._bound(xml_ref))
+        junit_functions = Counter()
+        for case in tree.findall('.//testcase'):
+            stem = case.get('classname', '').rsplit('.', 1)[-1]; name = case.get('name', '').split('[',1)[0]
+            matching = [path+'::'+name for path in index if Path(path).stem == stem and path+'::'+name in counts]
+            need(len(matching) == 1 and len(list(case)) == 0,
+                 'source_generation_v5_JUnit_function_or_nonpassing_case')
+            junit_functions[matching[0]] += 1
+        need(dict(junit_functions) == counts, 'source_generation_v5_JUnit_function_population_differs')
+        owned = h._document(h.descriptor(attempt/'logs/result.json'))
+        execution = h._document(h.descriptor(attempt/'logs/execution.json'))
+        need(type(owned['returncode']) is int and type(execution['returncode']) is int
+             and owned['returncode'] == execution['returncode'] == 0,
+             'source_generation_v5_owned_returncode_type')
+        reservation = terminal['reservation']; record = reservation['record']
+        need(type(reservation['storage_limit_bytes']) is int
+             and reservation['storage_limit_bytes'] == CURRENT_RETAINED_POLICY_BYTES
+             and record['final_accounting']['limit_bytes'] == CURRENT_RETAINED_POLICY_BYTES,
+             'source_generation_v5_original_source_250GB_not_qualified')
+        # The SDK checks each seal row. Also require the complete actual file
+        # population, original FD/inode reads, and released ordinary byte total.
+        durability_ref = h.descriptor(attempt/'logs/validation-durability.json')
+        durability = h._document(durability_ref); rows = durability['files']
+        need(type(rows) is list and 0 < len(rows) <= 20000
+             and len({row['path'] for row in rows}) == len(rows)
+             and record['attempt_directory']['path'] == str(attempt), 'source_generation_v5_seal_population')
+        observed = {str(path.relative_to(attempt)) for path in _bounded_proof_walk(attempt,
+            max_entries=40002, max_directories=20001, max_pending=20001) if path.is_file()}
+        need(observed == {row['path'] for row in rows}|{'logs/validation-durability.json'},
+             'source_generation_v5_unsealed_ordinary_file')
+        for row in rows: _catalogue_race_owned_artifact(record['attempt_directory'], row)
+        need(sum(row['bytes'] for row in rows) + durability_ref['bytes']
+             == record['final_attempt_bytes'] == record['final_total_charged_bytes']
+             and h._integer(record['final_attempt_bytes'], 1, record['storage_bytes']),
+             'source_generation_v5_released_ordinary_byte_count')
+        return value
+    finally:
+        owner.close_archived_v5_sdk_source(sdk_witness)
+
+
+def _source_generation_v1_qualification(reference, profile, selected):
+    """Bind actual original OWNED closure, raw source execution and durability.
+
+    A passed boolean or a previous source generation's cases are insufficient.
+    This reader does not run tests and supplies no current execution authority.
+    """
+    import xml.etree.ElementTree as ET
+    h = health_owner(); accepted = h._decode(_source_generation_frozen(reference))
+    h._keys(accepted, {'schema', 'original_root_closeout', 'plan', 'request', 'scope', 'observation',
+        'required_raw_subjects', 'source_inventory_subjects', 'runtime_activation_or_task_authority'},
+        'source_generation_qualification_shape')
+    need(accepted['schema'] == 'scientific-source-generation-original-qualification/v1'
+         and accepted['runtime_activation_or_task_authority'] is False,
+         'source_generation_qualification_not_source_only')
+    for field in ('original_root_closeout', 'plan', 'request', 'scope', 'observation'):
+        h._bound(accepted[field])
+    root = h._document(accepted['original_root_closeout']); plan = h._document(accepted['plan'])
+    request = h._document(accepted['request']); scope = h._document(accepted['scope'])
+    observation = h._document(accepted['observation'])
+    need(_source_generation_same(root['plan'], accepted['plan'])
+         and _source_generation_same(root['request'], accepted['request'])
+         and _source_generation_same(plan['request'], accepted['request'])
+         and _source_generation_same(plan['scope'], accepted['scope'])
+         and type(root['returncode']) is int and root['returncode'] == 0 and root.get('failure') is None
+         and root['cleanup_errors'] == root['received_signals'] == []
+         and all(root[key] is True for key in ('completed', 'child_reaped', 'source_READ_closed',
+             'source_custody_closed', 'original_native_compute_closed', 'original_CLI_exit_observed',
+             'source_pins_unchanged', 'installed_tools_unchanged')),
+         'source_generation_original_closed_root_required')
+    need(type(request) is dict and len(request) == 17 and request['schema'] == 'owned-validation-request/v1'
+         and request['declared_external_writable_paths'] == []
+         and h._integer(scope['expected_cases'], 1, 10000)
+         and type(scope['expected_phases']) is int
+         and scope['expected_phases'] == 3*scope['expected_cases']
+         and type(scope['selected_checks']) is list
+         and len(scope['selected_checks']) == len(set(scope['selected_checks'])) == scope['expected_cases']
+         and observation['schema'] == 'scientific-executor-focused-observation/v1'
+         and observation['passed'] is True and observation['error'] is None and observation['guard_denials'] == []
+         and type(observation['case_count']) is int and observation['case_count'] == scope['expected_cases']
+         and type(observation['phase_count']) is int and observation['phase_count'] == scope['expected_phases']
+         and observation['selected_checks'] == scope['selected_checks']
+         and observation['pytest_selected_checks'] == scope['selector_contract']['pytest_selectors']
+         and type(observation['JUnit']) is dict and set(observation['JUnit']) == {'tests', 'failures', 'errors', 'skipped'}
+         and all(type(number) is int and number >= 0 for number in observation['JUnit'].values())
+         and observation['JUnit'] == dict(tests=scope['expected_cases'], failures=0, errors=0, skipped=0)
+         and [(row['nodeid'], row['when'], row['outcome']) for row in observation['phases']] == [
+             (node, when, 'passed') for node in scope['selected_checks'] for when in ('setup', 'call', 'teardown')],
+         'source_generation_exact_natural_qualification_required')
+    subjects = accepted['required_raw_subjects']
+    need(type(subjects) is list and len(subjects) == 7
+         and len({pin['path'] for pin in subjects}) == 7
+         and all(any(_source_generation_same(role, pin) for pin in subjects)
+                 for role in (profile['main_entrypoint'], profile['health_module']))
+         and type(accepted['source_inventory_subjects']) is list
+         and len(accepted['source_inventory_subjects']) == len(selected)
+         and {pin['path'] for pin in accepted['source_inventory_subjects']} == set(selected),
+         'source_generation_seven_role_and_package_qualification_required')
+    # Exact logical source refs bind ALL package dependencies. The seven raw
+    # roles additionally require genuine compile and execution observations.
+    for pin in accepted['source_inventory_subjects'] + subjects:
+        h._bound(pin)
+        need(_source_generation_same(scope['sources'].get(pin['path']), pin)
+             and request['source_sha256'].get(pin['path']) == pin['sha256'],
+             'source_generation_qualification_source_bytes_changed')
+        if pin['path'] in selected:
+            need(_source_generation_same(selected[pin['path']], pin),
+                 'source_generation_qualification_other_package_bytes')
+    for pin in subjects:
+        need(observation['raw_compiled_sources'].get(pin['path']) == pin['sha256']
+             and pin['path'] in observation['executed_raw_paths'],
+             'source_generation_raw_role_not_compiled_and_executed')
+    terminal = root['owner_terminal']; reservation = terminal['reservation']; record = reservation['record']
+    need(reservation['status'] == record['status'] == 'released'
+         and record['artifacts_durable_asserted'] is True and record['attempt_exceeded_reservation'] is False
+         and record['validation_request_sha256'] == accepted['request']['sha256']
+         and record['external_charges'] == {} and record['final_external_charged_bytes'] == 0
+         and reservation['resource_lease']['released'] is True
+         and reservation['process_observation']['live_processes'] == 0
+         and reservation['process_observation']['tracking_error'] == ''
+         and reservation['process_observation']['out_of_group_live_identities'] == [],
+         'source_generation_original_native_storage_process_not_closed')
+    attempt = Path(request['attempt_directory']); owned = h._decode(h._raw(attempt/'logs/result.json'))
+    execution = h._decode(h._raw(attempt/'logs/execution.json'))
+    need(h.descriptor(attempt/'exports/focused-qualification-result.json') == accepted['observation']
+         and terminal['result'] == str(attempt/'logs/result.json')
+         and h._document(root['stdout']) == terminal
+         and owned['schema'] == execution['schema'] == 'owned-validation-result/v1'
+         and owned['completed'] is execution['completed'] is True
+         and type(owned['returncode']) is int and type(execution['returncode']) is int
+         and owned['returncode'] == execution['returncode'] == 0
+         and owned['request_sha256'] == execution['request_sha256'] == accepted['request']['sha256']
+         and owned['executed_checks'] == execution['executed_checks'] == request['selected_checks'],
+         'source_generation_actual_owned_result_join')
+    durability_raw = h._raw(attempt/'logs/validation-durability.json'); durability = h._decode(durability_raw)
+    need(durability['schema'] == 'owned-validation-durability/v1'
+         and durability['request_sha256'] == accepted['request']['sha256']
+         and durability['reservation_id'] == record['reservation_id']
+         and record['attempt_directory']['path'] == str(attempt)
+         and type(durability['files']) is list and 0 < len(durability['files']) <= 20000
+         and len({row['path'] for row in durability['files']}) == len(durability['files']),
+         'source_generation_original_OWNED_manifest_required')
+    observed = {str(path.relative_to(attempt)) for path in _bounded_proof_walk(attempt,
+        max_entries=40002, max_directories=20001, max_pending=20001) if path.is_file()}
+    need(observed == {row['path'] for row in durability['files']} | {'logs/validation-durability.json'},
+         'source_generation_complete_durable_population')
+    junit_raw = None; bound_artifacts = {}
+    for row in durability['files']:
+        raw = _catalogue_race_owned_artifact(record['attempt_directory'], row)
+        bound_artifacts[row['path']] = raw
+        if row['path'] == 'exports/test-results.xml': junit_raw = raw
+    need(bound_artifacts.get('exports/focused-qualification-result.json') == h._bound(accepted['observation'])
+         and bound_artifacts.get('logs/result.json') == h._raw(attempt/'logs/result.json')
+         and bound_artifacts.get('logs/execution.json') == h._raw(attempt/'logs/execution.json')
+         and sum(row['bytes'] for row in durability['files']) + len(durability_raw)
+             == record['final_attempt_bytes'] == record['final_total_charged_bytes']
+         and h._integer(record['final_attempt_bytes'], 1, record['storage_bytes']) and junit_raw is not None,
+         'source_generation_manifest_original_byte_count_join')
+    junit = ET.fromstring(junit_raw)
+    need({key: sum(int(suite.get(key, '0')) for suite in junit.findall('.//testsuite'))
+          for key in ('tests', 'failures', 'errors', 'skipped')} == observation['JUnit'],
+         'source_generation_actual_JUnit_join')
+    return accepted
+
+
+_SOURCE_GENERATION_R_ROLES = (
+    'ipfs_datasets_py/logic/backends/process.py',
+    'ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_daemon_resources.py',
+    'ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_resource_recovery.py',
+    'ipfs_datasets_py/optimizers/logic_theorem_optimizer/parented_phase_resources.py',
+    'scripts/ops/legal_ir/run_owned_validation.py')
+
+
+def _source_generation_physical_R_binding(binding, replacements=None):
+    """Explicit archived mapping DATA, never an independent Git/Source check."""
+    h = health_owner()
+    h._keys(binding, {'physical_root', 'canonical_root'}, 'source_generation_preparation_root_binding_shape')
+    physical = h._path(binding['physical_root']); canonical = h._path(binding['canonical_root'])
+    need(str(physical) == binding['physical_root'] and str(canonical) == binding['canonical_root']
+         and canonical == ORIGINAL_NAMED_ROOTS[0].parents[1]
+         and physical != canonical and physical not in canonical.parents and canonical not in physical.parents,
+         'source_generation_preparation_root_binding_changed')
+    if replacements is not None:
+        expected = {str(canonical/relative): str(physical/relative) for relative in _SOURCE_GENERATION_R_ROLES}
+        need(type(replacements) is list and len(replacements) == len(expected),
+             'source_generation_preparation_mapping_exact_five')
+        seen = set(); slots = []
+        for row in replacements:
+            h._keys(row, {'slot', 'before_ref', 'after_ref'}, 'source_generation_preparation_mapping_row')
+            for key in ('before_ref', 'after_ref'):
+                h._keys(row[key], {'path', 'bytes', 'sha256'}, 'source_generation_preparation_mapping_descriptor')
+                ref = row[key]
+                need(type(ref['path']) is str and h._integer(ref['bytes'], 1, h.MAX_SOURCE)
+                     and type(ref['sha256']) is str and len(ref['sha256']) == 64
+                     and set(ref['sha256']) <= set('0123456789abcdef'),
+                     'source_generation_preparation_mapping_descriptor_bounds')
+            old, new = row['before_ref']['path'], row['after_ref']['path']
+            need(old in expected and expected[old] == new and old not in seen
+                 and type(row['slot']) is int and row['slot'] >= 0 and row['slot'] not in slots,
+                 'source_generation_preparation_mapping_role_or_alias')
+            seen.add(old); slots.append(row['slot'])
+        need(seen == set(expected) and slots == sorted(slots), 'source_generation_preparation_mapping_population')
+    return dict(binding)
+
+
+def _source_generation_preparation_qualification_binding(comparison, qualification_ref):
+    """Join an already verified archived @2 attestation to preparation DATA."""
+    h = health_owner()
+    binding = _source_generation_physical_R_binding(comparison['source_root_binding'], comparison['replacements'])
+    qualification = h._decode(_source_generation_frozen(qualification_ref))
+    need(_source_generation_current_qualification_profile(qualification)
+         == 'agent-supervisor/immutable-source-qualification@2',
+         'source_generation_preparation_requires_parent_qualification')
+    plan = h._document(qualification['plan_ref']); policy = h._document(qualification['policy_ref'])
+    bindings = plan.get('source_root_bindings')
+    need(type(bindings) is list and len(bindings) == 2
+         and _source_generation_same(bindings[0], binding)
+         and policy['datasets_root'] == binding['physical_root']
+         and all(row['after_ref'] in qualification['required_raw_subjects'] for row in comparison['replacements']),
+         'source_generation_preparation_qualification_root_binding_changed')
+    return binding
+
+
+def _source_generation_template_transition(reference, replacements, prior, profile, oldconfig, config, *, source_root_binding=None):
+    """Normalize only the five explicit source slots in unissued template DATA."""
+    h = health_owner(); certificate = h._decode(_source_generation_frozen(reference))
+    mapped = certificate.get('schema') == 'agent-supervisor/scientific-idle-source-template-transition@2'
+    h._keys(certificate, {'schema', 'prior_template_ref', 'template_ref', 'replacements',
+        'runtime_activation_or_task_authority'} | ({'source_root_binding'} if mapped else set()),
+        'source_generation_template_transition_shape')
+    if mapped:
+        binding = _source_generation_physical_R_binding(certificate['source_root_binding'], replacements)
+        need(_source_generation_same(binding, source_root_binding), 'source_generation_template_root_binding_changed')
+    else:
+        need(source_root_binding is None, 'source_generation_template_unlisted_root_binding')
+    need(certificate['schema'] == ('agent-supervisor/scientific-idle-source-template-transition@2' if mapped
+                                  else 'agent-supervisor/scientific-idle-source-template-transition@1')
+         and certificate['runtime_activation_or_task_authority'] is False
+         and _source_generation_same(certificate['replacements'], replacements)
+         and _source_generation_same(certificate['prior_template_ref'], oldconfig['idle_template_ref'])
+         and _source_generation_same(certificate['template_ref'], config['idle_template_ref']),
+         'source_generation_template_transition_join')
+    old = h._document(certificate['prior_template_ref']); new = h._document(certificate['template_ref'])
+    validate_template(old, prior, 'genuine_scoped_idle'); validate_template(new, profile, 'genuine_scoped_idle')
+    oldroot, newroot = Path(old['seed_root']), Path(new['seed_root'])
+    need(oldroot != newroot and oldroot not in newroot.parents and newroot not in oldroot.parents
+         and not any(newroot.glob('cycle-*')), 'source_generation_template_not_distinct_unissued_DATA')
+    projected = relocate(new, newroot, oldroot)
+    for key in ('request_ref', 'plan_ref'): projected[key] = old[key]
+    need(_source_generation_same(projected, old), 'source_generation_template_shape_changed')
+    oldplan = h._document(old['plan_ref']); newplan = h._document(new['plan_ref'])
+    oldrequest = h._document(old['request_ref']); newrequest = h._document(new['request_ref'])
+    inverse = {row['after_ref']['path']: row for row in replacements}
+    def restore_map(mapping):
+        need(type(mapping) is dict, 'source_generation_template_source_map_shape')
+        result = dict(mapping)
+        for path, row in inverse.items():
+            previous = row['before_ref']['path'] if mapped else path
+            need(result.get(path) == row['after_ref']['sha256'], 'source_generation_template_missing_current_source')
+            if mapped:
+                need(previous not in result, 'source_generation_template_source_key_collision')
+                del result[path]
+            result[previous] = row['before_ref']['sha256']
+        return result
+    projected_plan = relocate(newplan, newroot, oldroot)
+    metadata = projected_plan['native_metadata_cli']
+    metadata['source_sha256'] = restore_map(metadata['source_sha256'])
+    pins = metadata['project_import_plan']['source_pins']; seen = set()
+    for index, pin in enumerate(pins):
+        row = inverse.get(pin['path'])
+        if row:
+            need(pin['path'] not in seen and _source_generation_same(pin, row['after_ref']),
+                 'source_generation_template_source_descriptor_changed')
+            pins[index] = row['before_ref']; seen.add(pin['path'])
+    need(seen == set(inverse) and _source_generation_same(projected_plan, oldplan),
+         'source_generation_template_native_plan_changed')
+    projected_request = relocate(newrequest, newroot, oldroot)
+    projected_request['source_sha256'] = restore_map(projected_request['source_sha256'])
+    need(projected_request['source_sha256'].pop(old['plan_ref']['path'], None) == new['plan_ref']['sha256'],
+         'source_generation_template_selected_plan_join')
+    projected_request['source_sha256'][old['plan_ref']['path']] = old['plan_ref']['sha256']
+    need(projected_request['argv'][projected_request['argv'].index('--plan-sha256')+1] == new['plan_ref']['sha256'],
+         'source_generation_template_plan_argv_join')
+    projected_request['argv'][projected_request['argv'].index('--plan-sha256')+1] = old['plan_ref']['sha256']
+    if mapped:
+        # Only exact selected source-path tokens. Opaque IDs, prefixes, roots,
+        # cwd, environment and every unlisted plan/request field stay exact.
+        projected_request['argv'] = [inverse[token]['before_ref']['path'] if token in inverse else token
+                                     for token in projected_request['argv']]
+    need(_source_generation_same(projected_request, oldrequest), 'source_generation_template_native_request_changed')
+    for ref in (certificate['template_ref'], new['request_ref'], new['plan_ref']): _source_generation_frozen(ref)
+    return newrequest
+
+
+def _source_generation_storage_policy(reference, profile, replacements):
+    """Require explicit current policy approval DATA, never infer it from 220GB."""
+    import ast
+    h = health_owner(); value = h._decode(_source_generation_frozen(reference))
+    h._keys(value, {'schema', 'authorization', 'limit_bytes', 'prior_limit_bytes', 'ledger_path',
+        'named_roots', 'resource_source_ref', 'authorization_evidence_ref',
+        'execution_budget_created', 'hold_removal_authorized'}, 'source_generation_storage_policy_shape')
+    resource = next(row['after_ref'] for row in replacements
+                    if Path(row['after_ref']['path']).name == 'autoencoder_daemon_resources.py')
+    need(value['schema'] == 'agent-supervisor/scientific-current-storage-policy-approval@1'
+         and value['authorization'] == 'explicit_existing_user_250GB_policy_source_generation_only'
+         and type(value['limit_bytes']) is int and value['limit_bytes'] == CURRENT_RETAINED_POLICY_BYTES
+         and type(value['prior_limit_bytes']) is int and value['prior_limit_bytes'] == GLOBAL_RETAINED_BYTES
+         and value['ledger_path'] == str(ORIGINAL_RESOURCE_LEDGER)
+         and value['named_roots'] == [str(root) for root in ORIGINAL_NAMED_ROOTS]
+         and _source_generation_same(value['resource_source_ref'], resource)
+         and resource in profile['source_descriptors']
+         and value['execution_budget_created'] is value['hold_removal_authorized'] is False,
+         'source_generation_current_policy_not_explicit_bound_250GB')
+    # This evidence ref must be supplied by the genuine authorized operator.
+    # No issuer is fabricated from a current constant, a ledger, or peer prose.
+    _source_generation_frozen(value['authorization_evidence_ref'])
+    body = ast.parse(h._bound(resource))
+    limits = [node.value.value for node in body.body if isinstance(node, ast.Assign)
+        and any(isinstance(target, ast.Name) and target.id == 'MAX_STORAGE_BYTES' for target in node.targets)
+        and isinstance(node.value, ast.Constant) and type(node.value.value) is int]
+    need(limits == [CURRENT_RETAINED_POLICY_BYTES], 'source_generation_resource_policy_source_not_250GB')
+    return value
+
+
+def _source_generation_review(spec_ref, profile_ref, profile, config):
+    """Check coherent current source/config/template and old witness DATA only."""
+    h = health_owner(); spec = h._decode(_source_generation_frozen(spec_ref))
+    h._keys(spec, SOURCE_GENERATION_SPEC_KEYS, 'source_generation_spec_shape')
+    need(spec['schema'] == SOURCE_GENERATION_SPEC_SCHEMA
+         and spec['authorization'] == 'approve_technical_source_generation_without_execution_budget'
+         and _source_generation_same(spec['profile_ref'], profile_ref)
+         and _source_generation_same(h._profile(profile_ref), profile), 'source_generation_spec_authority')
+    comparison = prepare_idle_source_replacement(spec['preparation_spec_ref'])
+    need(_source_generation_same(comparison['prior_profile_ref'], spec['prior_profile_ref'])
+         and _source_generation_same(comparison['prior_profile_snapshot_ref'], spec['prior_profile_snapshot_ref'])
+         and comparison['changed_source_count'] == 5 and comparison['raw_inverse_verified'] is True,
+         'source_generation_prior_comparison_join')
+    prior = h._decode(_source_generation_frozen(spec['prior_profile_snapshot_ref']))
+    stage = h._profile(comparison['profile_ref']); replacements = comparison['replacements']
+    source, selected = _source_generation_source_inventory(spec['source_commitment_ref'], profile)
+    preparation_binding = None
+    if comparison['schema'] == 'agent-supervisor/scientific-idle-source-comparison@2':
+        preparation_binding = _source_generation_preparation_qualification_binding(
+            comparison, source['source_qualification'])
+    for key in prior:
+        if key not in ('unit', 'main_entrypoint', 'health_module', 'receipt_path', 'source_descriptors'):
+            need(_source_generation_same(stage[key], profile[key]), 'source_generation_non_source_scope_changed')
+    need(profile['main_entrypoint'] != prior['main_entrypoint'] and profile['health_module'] != prior['health_module']
+         and profile['receipt_path'] != prior['receipt_path']
+         and Path(profile['proof_root']) in Path(profile['receipt_path']).parents,
+         'source_generation_new_Main_health_and_receipt_required')
+    argv = profile['unit']['argv']; oldargv = prior['unit']['argv']
+    need(all(argv.count(flag) == oldargv.count(flag) == 1 and argv.index(flag)+1 < len(argv)
+             for flag in ('--config', '--config-sha256')), 'source_generation_unit_config_pair')
+    config_ref = next(pin for pin in profile['source_descriptors'] if pin['path'] == argv[argv.index('--config')+1])
+    # The old config is selected by the original unit, not an extra authority field.
+    oldconfig_ref = next(pin for pin in prior['source_descriptors'] if pin['path'] == oldargv[oldargv.index('--config')+1])
+    oldconfig = h._document(oldconfig_ref)
+    _source_generation_frozen(config_ref)
+    need(argv[argv.index('--config-sha256')+1] == config_ref['sha256']
+         and oldargv[oldargv.index('--config-sha256')+1] == oldconfig_ref['sha256']
+         and oldconfig['profile_path'] == spec['prior_profile_ref']['path']
+         and _source_generation_same(h._document(config_ref), config)
+         and config['profile_path'] == profile_ref['path']
+         and oldconfig['execution_templates'] == config['execution_templates'] == []
+         and all(_source_generation_same(oldconfig[key], config[key]) for key in
+                 ('catalogue', 'poll_seconds', 'max_cycles', 'max_proof_bytes'))
+         and config['max_cycles'] == 10000 and config['max_proof_bytes'] == 1024**3,
+         'source_generation_dispatch_or_remaining_budget_changed')
+    for key in ('name', 'interpreter', 'working_directory'):
+        need(_source_generation_same(prior['unit'][key], profile['unit'][key]), 'source_generation_unit_scope_changed')
+    expected_env = dict(prior['unit']['environment'])
+    expected_env['PYTHONPATH'] = source['source_root']+os.pathsep+expected_env['PYTHONPATH']
+    need(_source_generation_same(expected_env, profile['unit']['environment']),
+         'source_generation_current_package_not_explicit_first_PYTHONPATH')
+    def project_argv(selected_profile):
+        items = list(selected_profile['unit']['argv'])
+        for flag in ('--catalogue-parser-source', '--catalogue-parser-sha256'):
+            need(items.count(flag) == 1, 'source_generation_unit_parser_slot')
+            items[items.index(flag)+1] = '<explicit-current-parser>'
+        return _closed_capacity_unit_projection(dict(selected_profile, unit=dict(selected_profile['unit'], argv=items)))
+    need(project_argv(prior) == project_argv(profile), 'source_generation_unit_non_source_argument_changed')
+    # Preserve the stage's complete 423-slot ordering. Only append the explicit
+    # new package closure and new config; no existing source may disappear.
+    stagepins = stage['source_descriptors']; current = profile['source_descriptors']
+    need(_source_generation_same(current[:len(stagepins)], stagepins)
+         and len(current) == len(stagepins)+len(selected)+1
+         and {pin['path'] for pin in current[len(stagepins):]} == set(selected)|{config_ref['path']},
+         'source_generation_unlisted_source_added_removed_or_reordered')
+    request = _source_generation_template_transition(spec['template_transition_ref'], replacements,
+                                                    prior, profile, oldconfig, config,
+                                                    source_root_binding=preparation_binding)
+    policy = _source_generation_storage_policy(spec['storage_policy_approval_ref'], profile, replacements)
+    # All seven named raw roles are exact current Main/health plus these five R
+    # replacement bodies; arbitrary extra raw subjects cannot qualify them.
+    qualification = h._document(source['source_qualification'])
+    expected_roles = [profile['main_entrypoint'], profile['health_module']]+[row['after_ref'] for row in replacements]
+    need(sorted(_source_generation_canonical(pin) for pin in qualification['required_raw_subjects'])
+         == sorted(_source_generation_canonical(pin) for pin in expected_roles),
+         'source_generation_qualification_not_exact_seven_current_roles')
+    witness_value = h._decode(_source_generation_frozen(spec['historical_source_witness_ref']))
+    need(_source_generation_same(witness_value['profile_ref'], spec['prior_profile_ref'])
+         and _source_generation_same(witness_value['profile_snapshot_ref'], spec['prior_profile_snapshot_ref']),
+         'source_generation_historical_witness_other_profile')
+    witness = h.authenticate_historical_source_witness(spec['historical_source_witness_ref'])
+    try:
+        need(_source_generation_same(h._document(spec_ref), spec)
+             and _source_generation_same(h._profile(profile_ref), profile),
+             'source_generation_source_or_profile_changed_during_review')
+        return dict(spec=spec, prior=prior, oldconfig=oldconfig, replacements=replacements,
+                    request=request, policy=policy, source=source, witness=witness)
+    except BaseException:
+        h.close_historical_source_witness(witness); raise
+
+
+def _source_generation_path(profile):
+    return Path(profile['proof_root'])/'closed-capacity-source-generation-approval-cycle-00000200.json'
+
+
+class _SourceGenerationContext:
+    __slots__ = ('_token',)
+
+
+def _source_generation_context(reference, profile_ref, profile, config, *, live_clock=True):
+    h = health_owner(); approval = h._decode(_source_generation_frozen(reference))
+    h._keys(approval, SOURCE_GENERATION_KEYS, 'source_generation_approval_shape')
+    need(approval['schema'] == SOURCE_GENERATION_SCHEMA
+         and approval['authorization'] == 'one_technical_source_generation_for_same_closed200_continuation'
+         and reference['path'] == str(_source_generation_path(profile))
+         and _source_generation_same(approval['profile_ref'], profile_ref)
+         and type(approval['spent_cycle_count']) is int and approval['spent_cycle_count'] == 200
+         and type(approval['next_cycle_number']) is int and approval['next_cycle_number'] == 201
+         and type(approval['generation_number']) is int and approval['generation_number'] == 2
+         and type(approval['max_generations']) is int and approval['max_generations'] == 2
+         and type(approval['max_cycles']) is int and approval['max_cycles'] == config['max_cycles'] == 10000
+         and type(approval['remaining_cycles']) is int and approval['remaining_cycles'] == 9800
+         and type(approval['max_proof_bytes']) is int and approval['max_proof_bytes'] == config['max_proof_bytes'] == 1024**3
+         and approval['dispatch_authority'] is approval['execution_budget_created'] is approval['hold_removal_authorized'] is False,
+         'source_generation_approval_not_same_budget_once_only')
+    if live_clock: _closed_capacity_clock(approval, profile)
+    else:
+        need(h._number(approval['recorded_at']) and h._number(approval['expires_at'])
+             and 0 < approval['expires_at']-approval['recorded_at'] <= min(300, profile['max_age_seconds']),
+             'source_generation_original_clock_malformed')
+    manager = approval['manager_before']
+    need(manager.get('Id') == profile['unit']['name'] and manager.get('MainPID') == '0'
+         and manager.get('ActiveState') in ('inactive', 'failed'), 'source_generation_approval_not_issued_without_Main')
+    record = _source_generation_review(approval['spec_ref'], profile_ref, profile, config)
+    handle = _SourceGenerationContext(); handle._token = object()
+    _SOURCE_GENERATION_CONTEXTS[handle._token] = dict(record, approval=approval, reference=dict(reference))
+    return handle
+
+
+def _source_generation_record(context):
+    need(type(context) is _SourceGenerationContext and getattr(context, '_token', None) in _SOURCE_GENERATION_CONTEXTS,
+         'source_generation_context_not_authenticated')
+    return _SOURCE_GENERATION_CONTEXTS[context._token]
+
+
+def _close_source_generation_context(context):
+    record = _SOURCE_GENERATION_CONTEXTS.pop(context._token, None)
+    if record is not None: health_owner().close_historical_source_witness(record['witness'])
+
+
+def authorize_closed_capacity_source_generation(spec_ref, output):
+    """Explicit operator Source-version approval only; never dispatch or rearm.
+
+    Required authorization_evidence_ref must be supplied by the genuine operator.
+    This function neither constructs that approval input nor claims it exists.
+    A partial approval occupies its O_EXCL slot permanently; no expiry renewal.
+    """
+    h = health_owner(); spec = h._decode(_source_generation_frozen(spec_ref))
+    h._keys(spec, SOURCE_GENERATION_SPEC_KEYS, 'source_generation_spec_shape')
+    profile_ref = spec['profile_ref']; profile = h._profile(profile_ref); argv = profile['unit']['argv']
+    config_ref = next(pin for pin in profile['source_descriptors'] if pin['path'] == argv[argv.index('--config')+1])
+    config, selected_ref, selected_profile = load_configuration(config_ref)
+    need(_source_generation_same(selected_ref, profile_ref) and _source_generation_same(selected_profile, profile)
+         and argv.count(CLOSED_CAPACITY_FLAG) == 1
+         and argv[argv.index(CLOSED_CAPACITY_FLAG)+1] == str(_closed_capacity_paths(profile)[0])
+         and h._path(str(output)) == _source_generation_path(profile), 'source_generation_issue_path_or_mode')
+    root = Path(profile['proof_root']); info = root.lstat()
+    need(stat.S_ISDIR(info.st_mode) and info.st_uid == os.geteuid() and stat.S_IMODE(info.st_mode) == 0o700,
+         'source_generation_proof_root_not_private')
+    with os.fdopen(os.open(root/'scientific-executor.lock', os.O_RDWR|os.O_NOFOLLOW), 'rb') as lock:
+        info = os.fstat(lock.fileno())
+        need(stat.S_ISREG(info.st_mode) and info.st_uid == os.geteuid() and info.st_nlink == 1
+             and stat.S_IMODE(info.st_mode) == 0o600, 'source_generation_executor_lock_unsafe')
+        fcntl.flock(lock, fcntl.LOCK_EX|fcntl.LOCK_NB)
+        need(not any(os.path.lexists(path) for path in (_source_generation_path(profile), *_closed_capacity_paths(profile))),
+             'source_generation_or_capacity_issue_slot_spent')
+        manager = h._manager(profile['unit']['name'])
+        need(manager.get('Id') == profile['unit']['name'] and manager.get('MainPID') == '0'
+             and manager.get('ActiveState') in ('inactive', 'failed'), 'source_generation_issue_requires_no_Main')
+        record = _source_generation_review(spec_ref, profile_ref, profile, config)
+        try:
+            now = time.time(); value = dict(schema=SOURCE_GENERATION_SCHEMA,
+                authorization='one_technical_source_generation_for_same_closed200_continuation',
+                spec_ref=spec_ref, profile_ref=profile_ref, recorded_at=now,
+                expires_at=now+min(300, profile['max_age_seconds']), manager_before=manager,
+                spent_cycle_count=200, next_cycle_number=201, generation_number=2, max_generations=2,
+                max_cycles=10000, remaining_cycles=9800, max_proof_bytes=1024**3,
+                dispatch_authority=False, execution_budget_created=False, hold_removal_authorized=False)
+            need(h._manager(profile['unit']['name']) == manager, 'source_generation_manager_changed_during_issue')
+            reference = put(Path(output), value); Path(output).chmod(0o400)
+            return reference
+        finally:
+            h.close_historical_source_witness(record['witness'])
+
+
+def _closed_capacity_schema_keys(value, *, history=False):
+    schema = value.get('schema') if type(value) is dict else None
+    if schema == CLOSED_CAPACITY_V2_SCHEMA:
+        keys = CLOSED_CAPACITY_V2_KEYS
+    else:
+        keys = CLOSED_CAPACITY_KEYS
+    return keys-{'recorded_at', 'expires_at', 'manager_before', 'capacity_preflight_ref', 'current_native_ref'} if history else keys
+
+
+def _closed_capacity_source_context(value, profile, config=None, *, live_clock=True):
+    if value.get('schema') != CLOSED_CAPACITY_V2_SCHEMA: return None
+    h = health_owner(); profile_ref = value['profile_ref']
+    if config is None:
+        argv = profile['unit']['argv']
+        config = h._document(next(pin for pin in profile['source_descriptors'] if pin['path'] == argv[argv.index('--config')+1]))
+    context = _source_generation_context(value['source_generation_authorization_ref'], profile_ref, profile,
+                                         config, live_clock=live_clock)
+    record = _source_generation_record(context)
+    try:
+        need(_source_generation_same(value['prior_profile_ref'], record['spec']['prior_profile_ref'])
+             and _source_generation_same(value['prior_profile_snapshot_ref'], record['spec']['prior_profile_snapshot_ref'])
+             and _source_generation_same(value['source_commitment_ref'], record['spec']['source_commitment_ref'])
+             and (not live_clock or (_source_generation_same(value['recorded_at'], record['approval']['recorded_at'])
+                  and _source_generation_same(value['expires_at'], record['approval']['expires_at']))),
+             'closed_capacity_source_generation_approval_other_history_or_clock')
+        return context
+    except BaseException:
+        _close_source_generation_context(context); raise
+
+
+def _closed_capacity_history(value, profile_ref, profile, config, *, startup=True, source_generation=None):
+    """Validate pinned historical DATA, granting no issuance or current health.
+
+    Explicit consumer mode permits distinct later physical positions and a new
+    receipt, while retaining exactly the original1..200 evidence. Startup mode
+    additionally requires no later positions, absent new receipt and the same
+    original200 DB preimage. Only the full startup validator issues/claims.
+    """
+    h = health_owner(); h._keys(value, _closed_capacity_schema_keys(value, history=True), 'closed_capacity_history_shape')
+    source_record = None if source_generation is None else _source_generation_record(source_generation)
+    need((value['schema'] == CLOSED_CAPACITY_SCHEMA and source_record is None
+          or value['schema'] == CLOSED_CAPACITY_V2_SCHEMA and source_record is not None)
+         and value['authorization'] == 'continue_distinct_physical_cycle_after_closed_preentry_capacity_refusal'
+         and value['profile_ref'] == profile_ref and h._profile(profile_ref) == profile,
+         'closed_capacity_grant_authority')
+    for field, (size, digest) in CLOSED_CAPACITY_INCIDENT_EVIDENCE.items():
+        need(value[field].get('bytes') == size and value[field].get('sha256') == digest,
+             'closed_capacity_actual_incident_evidence_changed')
+        h._bound(value[field])
+    prior = h._document(value['prior_profile_snapshot_ref']); oldconfig = h._document(value['prior_config_snapshot_ref'])
+    need(_same_payload(value['prior_profile_ref'], value['prior_profile_snapshot_ref'])
+         and value['spent_cycle_count'] == 200 and type(value['spent_cycle_count']) is int
+         and value['prior_last_health_sequence'] == 37 and type(value['prior_last_health_sequence']) is int
+         and value['generation_number'] == value['max_generations'] == 2
+         and profile['proof_root'] == prior['proof_root']
+         and profile['receipt_path'] != prior['receipt_path']
+         and Path(profile['proof_root']) in Path(profile['receipt_path']).parents
+         and (not startup or not os.path.lexists(profile['receipt_path'])),
+         'closed_capacity_counter_or_health_epoch_reset')
+    for key in ('task_scope', 'max_age_seconds', 'max_cycle_seconds', 'cycle_contract',
+                'driver_source', 'owner_source', 'catalogue'):
+        need(prior[key] == profile[key], 'closed_capacity_original_backend_or_scope_changed')
+    need(source_record is not None or prior['health_module'] == profile['health_module'],
+         'closed_capacity_original_backend_or_scope_changed')
+    if source_record is None:
+        need(all(pin in profile['source_descriptors'] for pin in prior['source_descriptors'])
+             and all(prior['unit'][k] == profile['unit'][k] for k in
+                 ('name', 'interpreter', 'working_directory', 'environment'))
+             and _closed_capacity_unit_projection(prior) == _closed_capacity_unit_projection(profile),
+             'closed_capacity_source_removed_or_unit_authority_changed')
+        need(oldconfig['execution_templates'] == config['execution_templates'] == []
+             and all(oldconfig[k] == config[k] for k in ('catalogue', 'idle_template_ref', 'poll_seconds', 'max_cycles', 'max_proof_bytes'))
+             and value['max_cycles'] == config['max_cycles'] > 200
+             and value['max_proof_bytes'] == config['max_proof_bytes'], 'closed_capacity_dispatch_or_budget_changed')
+    else:
+        need(_source_generation_same(source_record['prior'], prior)
+             and _source_generation_same(source_record['oldconfig'], oldconfig)
+             and value['max_cycles'] == config['max_cycles'] == 10000
+             and value['max_proof_bytes'] == config['max_proof_bytes'] == 1024**3
+             and type(value['generation_number']) is int and type(value['max_generations']) is int,
+             'closed_capacity_source_generation_original_scope_or_budget_changed')
+    identity = value['prior_main_identity']; h._stored_identity(identity, value['prior_profile_ref'], prior)
+    boot = Path('/proc/sys/kernel/random/boot_id').read_text().strip()
+    need(h._definitely_dead_identity(identity, dict(boot_id=boot)), 'closed_capacity_prior_Main_live_or_unknown')
+    previous = h._document(value['prior_recovery_ref']); ack = h._document(value['prior_reconciliation_ref'])
+    root = Path(profile['proof_root'])
+    need(previous['schema'] == CATALOGUE_RACE_SCHEMA and ack['schema'] == CATALOGUE_RACE_ACK_SCHEMA
+         and value['prior_reconciliation_ref']['path'] == str(root/'catalogue-race-reconciliation-v01.json')
+         and ack['recovery_ref'] == value['prior_recovery_ref'] and previous['profile_ref'] == value['prior_profile_ref']
+         and ack['consuming_main_identity'] == identity
+         and previous['spent_cycle_count'] == ack['spent_cycle_count'] == 162
+         and ack['next_cycle_number'] == 163
+         and previous['generation_number'] == previous['max_generations'] == ack['generation_number'] == ack['max_generations'] == 2
+         and value['global_hold_ref'] == ack['retained_global_hold_ref'] == previous['global_hold_ref'],
+         'closed_capacity_prior_consumed_catalogue_authority_changed')
+    h._bound(value['global_hold_ref'])
+    generation = h._document(previous['prior_generation_authorization_ref'])
+    generation_ack = h._document(previous['prior_generation_ack_ref'])
+    admission = h._document(previous['prior_source_admission_authorization_ref'])
+    admission_ack = h._document(previous['prior_source_admission_ack_ref'])
+    need(generation['schema'] == GENERATION_SCHEMA and generation['generation_number'] == generation['max_generations'] == 2
+         and generation_ack['handover_ref'] == previous['prior_generation_authorization_ref']
+         and admission['schema'] == ADMISSION_SCHEMA
+         and admission_ack['recovery_ref'] == previous['prior_source_admission_authorization_ref']
+         and previous['prior_generation_ack_ref']['path'] == str(root/'bounded-generation-handover.json')
+         and previous['prior_source_admission_ack_ref']['path'] == str(root/'source-admission-reconciliation.json'),
+         'closed_capacity_earlier_generation_or_source_ACK_changed')
+    retained = list(generation['retained_generations'])
+    for reference in retained + previous['local_cycle_census_refs']:
+        _generation_census(reference)
+    refs = value['local_cycle_census_refs']
+    need(type(refs) is list and len(refs) == 38, 'closed_capacity_complete_163_through_200_census_required')
+    local = [_generation_census(ref) for ref in refs]
+    roots = {row['root'] for row in local}
+    need(len(roots) == len(refs), 'closed_capacity_duplicate_local_census')
+    oldroots = {h._document(ref)['root'] for ref in previous['local_cycle_census_refs']}
+    cycles = {}
+    for cycle in root.glob('cycle-*'):
+        intent = h._document(h.descriptor(cycle/'intent.json')); number = intent.get('cycle_number', intent.get('sequence'))
+        need(h._integer(number, generation_ack['spent_cycle_count']+1, config['max_cycles'])
+             and cycle.name.startswith('cycle-%08d-'%number), 'closed_capacity_physical_counter_gap_or_alias')
+        if number > 200:
+            need(not startup, 'closed_capacity_startup_has_later_physical_position')
+            # The independent current consumer validates every later position;
+            # this helper cannot assign them healthy/current status.
+            continue
+        need(number not in cycles, 'closed_capacity_duplicate_historical_physical_position')
+        cycles[number] = (cycle, intent)
+    need(set(cycles) == set(range(generation_ack['spent_cycle_count']+1, 201))
+         and oldroots == {str(cycles[n][0]) for n in range(generation_ack['spent_cycle_count']+1, 163)}
+         and roots == {str(cycles[n][0]) for n in range(163, 201)}, 'closed_capacity_history_not_exactly_retained')
+    for number in range(163, 200):
+        cycle, intent = cycles[number]; closed = h._document(h.descriptor(cycle/'closed.json'))
+        proof_ref = closed['cycle_proof_ref']; proof = h._document(proof_ref)
+        need(intent.get('kind') == 'genuine_scoped_idle' and intent.get('automatic_retry_admitted') is False
+             and proof_ref['path'] == str(cycle/'cycle-proof.json')
+             and proof['sequence'] == intent['sequence'] == number-162
+             and proof['request_ref'] == intent['request_ref'], 'closed_capacity_historical_positive_join')
+        native = h._document(proof['native_diagnostic_ref'])
+        if source_record is None:
+            h._cycle(proof_ref, prior, identity, h._native(native, prior, now=proof['finished_at']),
+                     now=proof['finished_at'], monotonic_ns=proof['finished_monotonic_ns'])
+        else:
+            archived = h.verify_historical_cycle(value['prior_profile_ref'], proof_ref, identity,
+                                                  source_witness=source_record['witness'])
+            need(archived['historical_evidence_verified'] is True
+                 and archived['verified'] is archived['current_executor_verified'] is False,
+                 'closed_capacity_historical_cycle_not_data_only')
+    receipt = h._document(value['prior_health_receipt_ref'])
+    need(value['prior_health_receipt_ref']['path'] == prior['receipt_path']
+         and receipt['sequence'] == 37 and receipt['cycle_proof_ref']['path'] == str(cycles[199][0]/'cycle-proof.json'),
+         'closed_capacity_old37_canonical_health_changed')
+    proof = h._document(receipt['cycle_proof_ref']); native = h._document(proof['native_diagnostic_ref'])
+    if source_record is None:
+        h._receipt(value['prior_health_receipt_ref'], value['prior_profile_ref'], prior,
+            h._native(native, prior, now=receipt['observed_at']), identity,
+            now=receipt['observed_at'], monotonic_ns=receipt['observed_monotonic_ns'])
+    else:
+        archived = h.verify_historical_receipt(value['prior_profile_ref'], value['prior_health_receipt_ref'],
+                                               identity, source_witness=source_record['witness'])
+        need(archived['historical_evidence_verified'] is True
+             and archived['verified'] is archived['current_executor_verified'] is False,
+             'closed_capacity_historical_receipt_not_data_only')
+    cycle, request, terminal, recognition, ledger_ref, ledger = _closed_capacity_negative(value, prior, startup=startup, source_generation=source_generation)
+    need(str(cycle) == str(cycles[200][0]), 'closed_capacity_failed_cycle_outside_census')
+    _closed_capacity_cleanup(value, terminal)
+    if source_record is None:
+        catalogue_race_source_inventory(value['source_commitment_ref'], profile, catalogue_parser_reference(profile))
+    else:
+        _source_generation_source_inventory(value['source_commitment_ref'], profile)
+    check_proof_budget(root, config['max_proof_bytes'], reserve_bytes=REUSE_CYCLE_RESERVE_BYTES,
+                       reserve_files=REUSE_CYCLE_RESERVE_FILES)
+    # Preserve historical producer artifacts at their original private 0600
+    # modes. Their exact bytes are pinned and their retained census is checked.
+    # Freeze newly authored control DATA and historical snapshots instead. In
+    # particular the actual cleanup peer is 0664: use a byte-identical frozen
+    # snapshot, never chmod or rewrite the preserved original peer artifact.
+    for field in ('prior_profile_snapshot_ref', 'prior_config_snapshot_ref',
+                  'negative_audit_ref', 'cleanup_independent_review_ref',
+                  'scheduler_snapshot_ref', 'source_commitment_ref'):
+        need(not Path(value[field]['path']).lstat().st_mode & 0o222,
+             'closed_capacity_control_ref_not_frozen')
+    return dict(spent_cycle_count=200, retained_census_refs=retained, request=request, terminal=terminal,
+                recognition=recognition, ledger_ref=ledger_ref, ledger=ledger)
+
+
+
+def _validate_closed_capacity_continuation(value, profile_ref, profile, config):
+    h = health_owner(); h._keys(value, _closed_capacity_schema_keys(value), 'closed_capacity_grant_shape')
+    _closed_capacity_clock(value, profile)
+    _, ack_path = _closed_capacity_paths(profile)
+    need(not os.path.lexists(ack_path), 'closed_capacity_authorization_already_claimed')
+    manager = value['manager_before']
+    need(manager.get('Id') == profile['unit']['name'] and manager.get('MainPID') == '0'
+         and manager.get('ActiveState') in ('failed', 'inactive'), 'closed_capacity_not_issued_without_Main')
+    context = _closed_capacity_source_context(value, profile, config)
+    try:
+        history = _closed_capacity_history({key:value[key] for key in _closed_capacity_schema_keys(value, history=True)},
+                                          profile_ref, profile, config, startup=True, source_generation=context)
+        _closed_capacity_preflight(value, profile, history['request'], history['ledger_ref'], history['ledger'],
+                                   source_generation=context)
+        fresh = h._document(value['current_native_ref']); h._native(fresh, profile)
+        need(select_template(config, profile, fresh)[1] == 'genuine_scoped_idle', 'closed_capacity_current_scope_not_quiet')
+        for field in ('capacity_preflight_ref', 'current_native_ref'):
+            need(not Path(value[field]['path']).lstat().st_mode & 0o222, 'closed_capacity_fresh_control_not_frozen')
+        return history['spent_cycle_count'], history['retained_census_refs']
+    finally:
+        if context is not None: _close_source_generation_context(context)
+
+
+def _closed_capacity_final_freshness(value, profile):
+    h = health_owner(); _closed_capacity_clock(value, profile)
+    context = _closed_capacity_source_context(value, profile)
+    try:
+        request = h._document(value['failed_request_ref'])
+        terminal = original_terminal(h._bound(value['failed_stdout_ref']), value['failed_request_ref'])
+        ledger_ref, ledger = _closed_capacity_ledger(request, terminal, source_generation=context)
+        _closed_capacity_preflight(value, profile, request, ledger_ref, ledger, source_generation=context)
+        h._native(h._document(value['current_native_ref']), profile)
+        _closed_capacity_clock(value, profile)
+    finally:
+        if context is not None: _close_source_generation_context(context)
+
+
+def authorize_closed_capacity_continuation(spec_ref, output):
+    """Issue exactly once under the original executor lock, without a Main.
+
+    This writes authorization only. It performs no service, scheduler, storage,
+    Native or task action. Crash after output creation consumes the issue slot;
+    no expiry renewal, replacement, same-path retry or automatic reissue exists.
+    """
+    h = health_owner(); spec = h._document(spec_ref)
+    h._keys(spec, _closed_capacity_schema_keys(spec)-{'recorded_at', 'expires_at', 'manager_before'}, 'closed_capacity_spec_shape')
+    profile = h._profile(spec['profile_ref']); argv = profile['unit']['argv']
+    need(argv.count(CLOSED_CAPACITY_FLAG) == 1, 'closed_capacity_explicit_unit_mode_required')
+    grant_path, ack_path = _closed_capacity_paths(profile)
+    need(h._path(str(output)) == grant_path and argv[argv.index(CLOSED_CAPACITY_FLAG)+1] == str(grant_path)
+         and not os.path.lexists(grant_path) and not os.path.lexists(ack_path), 'closed_capacity_issue_slot_spent_or_wrong')
+    config_pin = next(p for p in profile['source_descriptors'] if p['path'] == argv[argv.index('--config')+1])
+    config, profile_ref, _ = load_configuration(config_pin)
+    root_info = Path(profile['proof_root']).lstat()
+    need(stat.S_ISDIR(root_info.st_mode) and root_info.st_uid == os.geteuid()
+         and stat.S_IMODE(root_info.st_mode) == 0o700, 'closed_capacity_proof_root_not_private')
+    lock_path = Path(profile['proof_root'])/'scientific-executor.lock'
+    with os.fdopen(os.open(lock_path, os.O_RDWR | os.O_NOFOLLOW), 'rb') as lock:
+        info = os.fstat(lock.fileno())
+        need(stat.S_ISREG(info.st_mode) and info.st_uid == os.geteuid() and info.st_nlink == 1
+             and stat.S_IMODE(info.st_mode) == 0o600, 'closed_capacity_executor_lock_unsafe')
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        manager = h._manager(profile['unit']['name'])
+        need(manager.get('MainPID') == '0' and manager.get('ActiveState') in ('failed', 'inactive'),
+             'closed_capacity_issue_requires_no_Main')
+        now = time.time()
+        if spec['schema'] == CLOSED_CAPACITY_V2_SCHEMA:
+            approval = h._decode(_source_generation_frozen(spec['source_generation_authorization_ref']))
+            need(_source_generation_same(manager, approval['manager_before']),
+                 'closed_capacity_manager_changed_since_source_approval')
+            # This is the source approval's ORIGINAL finite window, not a newly
+            # issued execution budget or renewed expiry for any previous grant.
+            value = dict(spec, recorded_at=approval['recorded_at'], expires_at=approval['expires_at'], manager_before=manager)
+        else:
+            value = dict(spec, recorded_at=now, expires_at=now+min(300, profile['max_age_seconds']), manager_before=manager)
+        _validate_closed_capacity_continuation(value, profile_ref, profile, config)
+        _closed_capacity_final_freshness(value, profile)
+        need(h._manager(profile['unit']['name']) == manager, 'closed_capacity_manager_changed_during_issue')
+        reference = put(grant_path, value); grant_path.chmod(0o400)
+        return reference
+
+
+def reconcile_closed_capacity_continuation(reference, profile_ref, profile, config, opening_identity, *, executor_lock):
+    """Claim once for this actual new Main. A partial claim is never replayed.
+
+    Caller is serve() while holding its original executor flock. An O_EXCL
+    claim survives every subsequent failure. No claim→new-Main reassignment,
+    rollback, fabricated healthy bridge or equivalence to old grants exists.
+    """
+    h = health_owner(); value = h._document(reference); argv = profile['unit']['argv']
+    fd = executor_lock.fileno(); info = os.fstat(fd)
+    lock_info = (Path(profile['proof_root'])/'scientific-executor.lock').lstat()
+    need(stat.S_ISREG(info.st_mode) and info.st_uid == os.geteuid() and info.st_nlink == 1
+         and stat.S_IMODE(info.st_mode) == 0o600
+         and (info.st_dev, info.st_ino) == (lock_info.st_dev, lock_info.st_ino),
+         'closed_capacity_original_executor_lock_not_retained')
+    fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    grant_path, ack_path = _closed_capacity_paths(profile)
+    need(reference['path'] == str(grant_path) and not grant_path.lstat().st_mode & 0o222
+         and os.environ.get(CLOSED_CAPACITY_SHA_ENV) == reference['sha256']
+         and argv.count(CLOSED_CAPACITY_FLAG) == 1 and argv[argv.index(CLOSED_CAPACITY_FLAG)+1] == reference['path']
+         and not any(flag in argv for flag in ('--known-nonstarted-recovery', '--known-closed-idle-recovery',
+             '--bounded-generation-handover', '--known-source-admission-recovery', '--known-closed-catalogue-race-recovery')),
+         'closed_capacity_not_exact_explicit_unit_grant')
+    need(require_main_process(profile_ref, profile) == opening_identity
+         and opening_identity != value['prior_main_identity'], 'closed_capacity_not_real_distinct_Main')
+    spent, retained = _validate_closed_capacity_continuation(value, profile_ref, profile, config)
+    _closed_capacity_final_freshness(value, profile)
+    need(require_main_process(profile_ref, profile) == opening_identity, 'closed_capacity_Main_changed_before_claim')
+    ack = dict(schema=(CLOSED_CAPACITY_V2_ACK_SCHEMA if value.get('schema') == CLOSED_CAPACITY_V2_SCHEMA
+                       else CLOSED_CAPACITY_ACK_SCHEMA), state='claimed_before_first_original_owner',
+        continuation_ref=reference, consuming_main_identity=opening_identity,
+        profile_ref=profile_ref, new_receipt_path=profile['receipt_path'],
+        prior_main_identity=value['prior_main_identity'], prior_health_receipt_ref=value['prior_health_receipt_ref'],
+        retained_global_hold_ref=value['global_hold_ref'], retained_failed_cycle_hold_ref=value['failed_cycle_hold_ref'],
+        retained_catalogue_reconciliation_ref=value['prior_reconciliation_ref'],
+        cleanup_observation_ref=value['cleanup_observation_ref'], capacity_preflight_ref=value['capacity_preflight_ref'],
+        spent_cycle_count=spent, next_cycle_number=spent+1, next_health_sequence=1,
+        generation_number=2, max_generations=2, initial_consecutive_closed_negatives=1,
+        max_consecutive_closed_negatives=MAX_CONSECUTIVE_CLOSED_NEGATIVES,
+        issued_at=value['recorded_at'], expires_at=value['expires_at'], claimed_at=time.time(),
+        health_credit_for_failed_cycle=False, old_health_republished=False, original_request_replayed=False)
+    if value.get('schema') == CLOSED_CAPACITY_V2_SCHEMA:
+        ack['source_generation_authorization_ref'] = value['source_generation_authorization_ref']
+        ack['remaining_cycle_budget_before_first_owner'] = 9800
+        ack['execution_budget_created'] = False
+    put(ack_path, ack); ack_path.chmod(0o400)
+    return spent, retained
+
+
+def closed_capacity_deferral(profile, request_ref, request, root, kind, process, cycle_fields, returncode, *, continuation_ref=None):
+    """Future transient deferral only after this live original Popen was reaped."""
+    h = health_owner()
+    need(kind == 'genuine_scoped_idle' and type(returncode) is int and returncode != 0
+         and type(process) is subprocess.Popen and process.returncode == returncode and process.poll() is not None,
+         'closed_capacity_deferral_requires_real_reaped_idle_owner')
+    intent = h._document(h.descriptor(root/'intent.json'))
+    terminal = original_terminal(h._raw(root/'owner.stdout'), request_ref)
+    context = None
+    if continuation_ref is not None:
+        grant = h._document(continuation_ref)
+        if grant.get('schema') == CLOSED_CAPACITY_V2_SCHEMA:
+            grant_path, ack_path = _closed_capacity_paths(profile)
+            claim = h._document(h.descriptor(ack_path))
+            need(continuation_ref['path'] == str(grant_path)
+                 and claim['schema'] == CLOSED_CAPACITY_V2_ACK_SCHEMA
+                 and _source_generation_same(claim['continuation_ref'], continuation_ref)
+                 and _source_generation_same(claim['consuming_main_identity'], require_main_process(grant['profile_ref'], profile))
+                 and type(intent['cycle_number']) is int and intent['cycle_number'] >= 201
+                 and _source_generation_same(claim['source_generation_authorization_ref'],
+                                             grant['source_generation_authorization_ref']), 'closed_capacity_future_source_policy_not_claimed_by_actual_Main')
+            context = _closed_capacity_source_context(grant, profile, live_clock=False)
+    try:
+        recognition = _closed_capacity_terminal_metadata(terminal, request_ref, request, profile, intent, root,
+                                                         source_generation=context)
+    except BaseException:
+        if context is not None: _close_source_generation_context(context)
+        raise
+    try:
+        captured = cycle_fields['owner_observation']; boot = Path('/proc/sys/kernel/random/boot_id').read_text().strip()
+        need(captured['pid'] == process.pid == terminal['owner_pid']
+             and str(captured['birth_ticks']) == terminal['owner_birth'] and captured['boot_id'] == terminal['owner_boot_id'] == boot
+             and h._definitely_dead_identity(captured, dict(boot_id=boot))
+             and captured['argv'] == [profile['unit']['argv'][0], '-B', profile['owner_source']['path'],
+                 '--request', request_ref['path'], '--expected-request-sha256', request_ref['sha256']]
+             and not any(os.path.lexists(root/name) for name in ('terminal.json', 'cycle-proof.json', 'closed.json', 'native-diagnostic.json')),
+             'closed_capacity_deferral_owner_or_positive_evidence_unknown')
+        need(h.database_descriptor(request['database_preimage']['path']) == request['database_preimage'],
+             'closed_capacity_deferral_database_changed')
+        _closed_capacity_ledger(request, terminal, source_generation=context)
+        negative_ref = put(root/'capacity-terminal-negative.json', terminal)
+        return put(root/'capacity-deferred.json', dict(schema='agent-supervisor/scientific-closed-capacity-deferred@1',
+            request_ref=request_ref, terminal_ref=negative_ref, recognition=recognition,
+            original_wait_returncode=returncode, captured_owner=captured, process=cycle_fields['process'],
+            attempted_health_sequence=cycle_fields['sequence'], recorded_at=time.time(),
+            health_sequence_advanced=False, health_or_task_completion_authority=False,
+            automatic_retry_of_original_request=False))
+    finally:
+        if context is not None: _close_source_generation_context(context)
+
+
+def prepare_idle_source_replacement(spec_ref):
+    """Compare five current R sources; issue no handover or runtime authority.
+
+    Historical profile bytes are DATA: their former canonical sources need not
+    still be current. Only the proposed profile passes the actual current-source
+    reader. Config/template/history joins and original runtime qualification
+    remain unresolved; this function never consumes a hold or authorization.
+    """
+    h = health_owner()
+    value = h._document(spec_ref)
+    mapped = value.get('schema') == 'agent-supervisor/scientific-idle-source-preparation@2'
+    h._keys(value, {'schema', 'prior_profile_ref', 'prior_profile_snapshot_ref',
+                   'profile_ref', 'replacements'} | ({'source_root_binding'} if mapped else set()),
+                   'idle_source_preparation_spec_shape')
+    need(value['schema'] in ('agent-supervisor/scientific-idle-source-preparation@1',
+                             'agent-supervisor/scientific-idle-source-preparation@2'),
+         'idle_source_preparation_schema')
+    binding = (_source_generation_physical_R_binding(value['source_root_binding'], value['replacements'])
+               if mapped else None)
+    frozen = {}
+    for reference in (spec_ref, value['prior_profile_snapshot_ref'], value['profile_ref']):
+        h._bound(reference)
+        info = Path(reference['path']).lstat()
+        need(stat.S_ISREG(info.st_mode) and info.st_nlink == 1 and
+             info.st_uid == os.geteuid() and not info.st_mode & 0o222,
+             'idle_source_preparation_control_not_frozen')
+        frozen[reference['path']] = tuple(getattr(info, key) for key in
+            ('st_dev', 'st_ino', 'st_mode', 'st_uid', 'st_gid', 'st_nlink',
+             'st_size', 'st_mtime_ns', 'st_ctime_ns'))
+    prior_raw = h._bound(value['prior_profile_snapshot_ref'])
+    need(value['prior_profile_snapshot_ref']['path'] != value['prior_profile_ref']['path']
+         and _same_payload(value['prior_profile_snapshot_ref'], value['prior_profile_ref'])
+         and h._bound(value['prior_profile_ref']) == prior_raw,
+         'idle_source_preparation_original_snapshot_join')
+    prior = h._decode(prior_raw)
+    profile = h._profile(value['profile_ref'])
+    h._keys(prior, set(profile), 'idle_source_preparation_prior_profile_shape')
+    canonical = lambda item: (json.dumps(item, sort_keys=True, separators=(',', ':'),
+                                         allow_nan=False) + '\n').encode()
+    need(all(canonical(prior[key]) == canonical(profile[key])
+             for key in profile if key != 'source_descriptors'),
+         'idle_source_preparation_non_source_field_changed')
+    before = prior['source_descriptors']; after = profile['source_descriptors']
+    need(type(before) is list and len(before) == len(after),
+         'idle_source_preparation_source_population_changed')
+    source_root = ORIGINAL_NAMED_ROOTS[0].parents[1]
+    expected = {str(source_root / relative) for relative in (
+        'ipfs_datasets_py/logic/backends/process.py',
+        'ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_daemon_resources.py',
+        'ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_resource_recovery.py',
+        'ipfs_datasets_py/optimizers/logic_theorem_optimizer/parented_phase_resources.py',
+        'scripts/ops/legal_ir/run_owned_validation.py')}
+    rows = value['replacements']
+    need(type(rows) is list and len(rows) == 5, 'idle_source_preparation_exact_five_required')
+    slots = []; paths = set()
+    inverse = dict(profile); inverse['source_descriptors'] = list(after)
+    for row in rows:
+        h._keys(row, {'slot', 'before_ref', 'after_ref'}, 'idle_source_preparation_row_shape')
+        h._keys(row['before_ref'], {'path', 'bytes', 'sha256'},
+                'idle_source_preparation_before_descriptor_shape')
+        previous = row['before_ref']
+        need(type(previous['path']) is str and type(previous['bytes']) is int
+             and 0 < previous['bytes'] <= h.MAX_SOURCE
+             and type(previous['sha256']) is str and len(previous['sha256']) == 64
+             and set(previous['sha256']) <= set('0123456789abcdef'),
+             'idle_source_preparation_before_descriptor_bounds')
+        slot = row['slot']
+        need(type(slot) is int and 0 <= slot < len(before) and slot not in slots,
+             'idle_source_preparation_slot')
+        need(canonical(row['before_ref']) == canonical(before[slot]) and
+             canonical(row['after_ref']) == canonical(after[slot]),
+             'idle_source_preparation_source_row_join')
+        path = row['before_ref']['path']
+        need((row['after_ref']['path'] == str(Path(binding['physical_root'])/Path(path).relative_to(source_root))
+              if mapped and path in expected else path == row['after_ref']['path'])
+             and path in expected and path not in paths
+             and row['before_ref']['sha256'] != row['after_ref']['sha256'],
+             'idle_source_preparation_exact_canonical_paths')
+        slots.append(slot); paths.add(path); inverse['source_descriptors'][slot] = before[slot]
+    need(slots == sorted(slots) and paths == expected and
+         all(canonical(left) == canonical(right) for index, (left, right) in
+             enumerate(zip(before, after)) if index not in slots),
+         'idle_source_preparation_unlisted_source_or_order_changed')
+    need(canonical(inverse) == prior_raw, 'idle_source_preparation_raw_inverse_changed')
+    need(h._document(spec_ref) == value and
+         h._bound(value['prior_profile_snapshot_ref']) == prior_raw and
+         h._bound(value['prior_profile_ref']) == prior_raw and
+         h._profile(value['profile_ref']) == profile,
+         'idle_source_preparation_changed_during_read')
+    for path, stamp in frozen.items():
+        info = Path(path).lstat()
+        need(tuple(getattr(info, key) for key in
+             ('st_dev', 'st_ino', 'st_mode', 'st_uid', 'st_gid', 'st_nlink',
+              'st_size', 'st_mtime_ns', 'st_ctime_ns')) == stamp,
+             'idle_source_preparation_control_changed')
+    return dict(schema=('agent-supervisor/scientific-idle-source-comparison@2' if mapped else
+                        'agent-supervisor/scientific-idle-source-comparison@1'),
+        **({'source_root_binding': binding} if mapped else {}),
+        spec_ref=dict(spec_ref), prior_profile_ref=dict(value['prior_profile_ref']),
+        prior_profile_snapshot_ref=dict(value['prior_profile_snapshot_ref']),
+        profile_ref=dict(value['profile_ref']), replacements=rows,
+        source_count=len(after), changed_source_count=5, raw_inverse_verified=True,
+        current_source_profile_validated=True, coherent_handover_validated=False,
+        config_template_history_unresolved=True, runtime_qualified=False,
+        activation_ready=False, dispatch_ready=False, hold_removal_authorized=False,
+        authority_granted=False)
+
+
+def _prepare_idle_source_main(argv=None):
+    """Print a bounded comparison; do not enter a service or issue authority."""
+    parser = argparse.ArgumentParser(description='Prepare an idle source comparison only.')
+    parser.add_argument('operation', choices=['prepare-idle-source-replacement'])
+    parser.add_argument('--spec', required=True)
+    parser.add_argument('--spec-sha256', required=True)
+    args = parser.parse_args(argv)
+    try:
+        need(sys.dont_write_bytecode and __debug__, 'preparation_requires_B_and_assertions')
+        os.environ['IPFS_ACCEL_SKIP_CORE'] = '1'
+        if __package__ in (None, ''):
+            producer_root = str(Path(__file__).resolve().parents[3])
+            if producer_root in os.environ.get('PYTHONPATH', '').split(os.pathsep):
+                sys.path.insert(0, producer_root)
+        h = health_owner()
+        reference = h.descriptor(args.spec)
+        need(reference['sha256'] == args.spec_sha256, 'idle_source_preparation_cli_digest')
+        result = prepare_idle_source_replacement(reference)
+        need(type(result) is dict and all(result.get(key) is False for key in (
+            'coherent_handover_validated', 'runtime_qualified', 'activation_ready',
+            'dispatch_ready', 'hold_removal_authorized', 'authority_granted')),
+            'idle_source_preparation_cli_authority')
+        raw = json.dumps(result, sort_keys=True, separators=(',', ':'), allow_nan=False).encode()
+        need(len(raw) <= h.MAX_JSON, 'idle_source_preparation_cli_output_bound')
+        print(raw.decode())
+        return 0
+    except Exception as exc:
+        print(json.dumps({'schema': 'agent-supervisor/scientific-executor-held@1',
+            'reason': str(exc)[:4096], 'automatic_retry_admitted': False}), file=sys.stderr)
+        return HOLD_EXIT
+
+
+
+def _source_generation_authorize_main(argv=None):
+    parser = argparse.ArgumentParser(description='Issue explicit one-shot source-only approval, without a service action.')
+    parser.add_argument('operation', choices=['authorize-closed-capacity-source-generation'])
+    parser.add_argument('--spec', required=True); parser.add_argument('--spec-sha256', required=True)
+    parser.add_argument('--output', required=True)
+    args = parser.parse_args(argv)
+    try:
+        need(sys.dont_write_bytecode and __debug__, 'source_generation_authorizer_requires_B_and_assertions')
+        os.environ['IPFS_ACCEL_SKIP_CORE'] = '1'
+        if __package__ in (None, ''):
+            producer_root = str(Path(__file__).resolve().parents[3])
+            if producer_root in os.environ.get('PYTHONPATH', '').split(os.pathsep): sys.path.insert(0, producer_root)
+        h = health_owner(); reference = h.descriptor(args.spec)
+        need(reference['sha256'] == args.spec_sha256, 'source_generation_authorizer_cli_digest')
+        result = authorize_closed_capacity_source_generation(reference, args.output)
+        print(json.dumps(dict(schema='agent-supervisor/scientific-source-generation-issued@1',
+            source_generation_authorization_ref=result, dispatch_authority=False,
+            execution_budget_created=False, hold_removal_authorized=False), sort_keys=True))
+        return 0
+    except Exception as exc:
+        print(json.dumps(dict(schema='agent-supervisor/scientific-executor-held@1',
+            reason=str(exc)[:4096], automatic_retry_admitted=False)), file=sys.stderr)
+        return HOLD_EXIT
+
+
+def main(argv=None):
+    selected = sys.argv[1:] if argv is None else argv
+    if selected and selected[0] == 'authorize-closed-capacity-source-generation':
+        return _source_generation_authorize_main(selected)
+    if (selected := sys.argv[1:] if argv is None else argv) and selected[0] == 'prepare-idle-source-replacement':
+        return _prepare_idle_source_main(selected)
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('operation', choices=['serve'])
+    parser.add_argument('--config', required=True)
+    parser.add_argument('--config-sha256', required=True)
+    recovery_flags = parser.add_mutually_exclusive_group()
+    recovery_flags.add_argument('--known-nonstarted-recovery')
+    recovery_flags.add_argument('--known-closed-idle-recovery')
+    recovery_flags.add_argument('--bounded-generation-handover')
+    recovery_flags.add_argument('--known-source-admission-recovery')
+    recovery_flags.add_argument('--known-closed-catalogue-race-recovery')
+    recovery_flags.add_argument('--known-closed-capacity-recovery')
+    parser.add_argument('--catalogue-parser-source')
+    parser.add_argument('--catalogue-parser-sha256')
+    recovery_flags.add_argument('--known-source-lease-recovery')
+    args = parser.parse_args(argv)
+    # This is set before any project import, including file-path invocation.
+    os.environ['IPFS_ACCEL_SKIP_CORE'] = '1'
+    if __package__ in (None, ''):
+        producer_root = str(Path(__file__).resolve().parents[3])
+        if producer_root in os.environ.get('PYTHONPATH','').split(os.pathsep):
+            sys.path.insert(0, producer_root)
+    stop = threading.Event()
+    for signum in (signal.SIGINT, signal.SIGTERM):
+        signal.signal(signum, lambda *_: stop.set())
+    try:
+        need(sys.dont_write_bytecode and __debug__, 'service_requires_B_and_assertions')
+        config_ref = health_owner().descriptor(args.config)
+        need(config_ref['sha256'] == args.config_sha256, 'service_config_digest')
+        recovery_ref = None
+        recovery_path = (args.known_nonstarted_recovery or args.known_closed_idle_recovery
+                         or args.known_source_admission_recovery or args.known_closed_catalogue_race_recovery
+                         or args.known_closed_capacity_recovery)
+        if recovery_path:
+            recovery_ref = health_owner().descriptor(recovery_path)
+        generation_ref = health_owner().descriptor(args.bounded_generation_handover) if args.bounded_generation_handover else None
+        source_lease_ref = health_owner().descriptor(args.known_source_lease_recovery) if args.known_source_lease_recovery else None
+        need((args.catalogue_parser_source is None)==(args.catalogue_parser_sha256 is None),
+             'catalogue_parser_cli_pair_required')
+        if args.catalogue_parser_source is None:
+            return serve(config_ref, stop, recovery_ref=recovery_ref, generation_ref=generation_ref, source_lease_ref=source_lease_ref)
+        parser_ref=health_owner().descriptor(args.catalogue_parser_source)
+        need(parser_ref['sha256']==args.catalogue_parser_sha256,'catalogue_parser_cli_digest')
+        return serve(config_ref,stop,recovery_ref=recovery_ref,generation_ref=generation_ref,
+                     catalogue_parser_ref=parser_ref, source_lease_ref=source_lease_ref)
+    except Exception as exc:
+        print(json.dumps({'schema': 'agent-supervisor/scientific-executor-held@1',
+            'reason': str(exc), 'automatic_retry_admitted': False}), file=sys.stderr)
+        return HOLD_EXIT
+
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())
