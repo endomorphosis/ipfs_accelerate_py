@@ -1286,7 +1286,8 @@ def immutable_source_generation_A_qualification_DATA(tmp_path_factory):
     assert snapshot() == original  # Verify retained files; never delete them.
 
 
-def _source_generation_immutable_qualification_v5_DATA(case, immutable_source_generation_A_qualification_DATA):
+def _source_generation_immutable_qualification_v5_DATA(case, immutable_source_generation_A_qualification_DATA,
+        *, delegated_parent=False):
     """Fictional original current-v5 SDK records; genuine SDK readers, no mocks.
 
     Every execution/Source/Native statement in these files is unit DATA only.
@@ -1347,17 +1348,32 @@ def _source_generation_immutable_qualification_v5_DATA(case, immutable_source_ge
     freeze_ref=put(root/'immutable-source-snapshot.json',frozen)
     validation['source_qualification']=dict(schema='agent-supervisor/immutable-source-qualification@1',
         snapshot=freeze_ref,required_source_bodies=sorted(subjects[:2],key=lambda pin:pin['path']))
+    if delegated_parent:
+        validation['source_qualification'].update(schema='agent-supervisor/immutable-source-qualification@2',
+            source_custody_mode='delegated-original-parent-read/v1')
     policy_ref=put(root/'policy.json',policy)
     # Existing metadata parser is used only within the real explicit archived
     # SDK source capability. The default current-owner reader remains strict.
     sdk_source=owner.authenticate_archived_v5_sdk_source(policy_ref)
     try:assert owner.archived_v5_sdk_source_data(sdk_source)['producer_ref']==incoming_owner
     finally:owner.close_archived_v5_sdk_source(sdk_source)
-    plan=owner.validation_plan(policy,policy_ref,frozen,freeze_ref,candidate_root,invocation)
+    source_parent_context = None
+    if delegated_parent:
+        # Authored original-parent DATA. No process, FD, Git or Source owner is
+        # queried or instantiated to manufacture a live qualification here.
+        nonce = 'ab'*32
+        source_parent_context = dict(parent_identity=dict(pid=987654320,birth='12344'),
+            parent_nonce_sha256=hashlib.sha256(bytes.fromhex(nonce)).hexdigest(),
+            parent_source_observation_path=str(invocation/'parent-source-observation.json'),
+            execution_request_path=str(owner.validation_control_directory(policy,frozen,invocation)/'execution-request.json'),
+            source_root_bindings=[dict(physical_root=str(datasets),canonical_root=str(datasets)),
+                dict(physical_root=str(candidate_root),canonical_root=str(candidate_root))])
+    plan=owner.validation_plan(policy,policy_ref,frozen,freeze_ref,candidate_root,invocation,
+        **({'source_parent_context':source_parent_context} if delegated_parent else {}))
     plan_ref=put(invocation/'validation-plan.json',plan)
     request=owner.validation_execution_request(policy,plan,plan_ref)
     local_request=put(invocation/'execution-request.json',request)
-    original_path=owner.validation_control_directory(policy,frozen)/'execution-request.json'
+    original_path=owner.validation_control_directory(policy,frozen,invocation if delegated_parent else None)/'execution-request.json'
     request_ref=put(original_path,Path(local_request['path']).read_bytes())
     put(invocation/'execution-request-publication.json',dict(schema=owner.CONTROL_PUBLICATION_SCHEMA,
         request=request_ref,invocation_copy=local_request,plan=plan_ref,freeze=freeze_ref,owner_policy=policy_ref,
@@ -1374,6 +1390,24 @@ def _source_generation_immutable_qualification_v5_DATA(case, immutable_source_ge
         source_qualification=validation['source_qualification'], required_source_bodies=plan['required_source_bodies'],
         freeze=freeze_ref,source_commitment=frozen['source_commitment'],semantic_negative=False,negative_profile=None,
         raw_compiled_sources={pin['path']:pin['sha256'] for pin in child_subjects+[owning]})
+    if delegated_parent:
+        parent_receipts = [dict(schema_version='autoencoder-source-lease/v1',canonical_root=row['canonical_root'],
+            cooperative=True,lock_path=str(Path(row['canonical_root'])/'workspace/control-plane/source-leases/source.lock'),
+            mode='read',waited_seconds=0.0) for row in source_parent_context['source_root_bindings']]
+        source_argv = [policy['python'],'-I','-B',parent_cli['path'],'--request',request_ref['path'],
+            '--expected-request-sha256',request_ref['sha256'],'--resource-ledger',validation['resource_ledger']]
+        observation = put(invocation/'parent-source-observation.json', dict(
+            schema='agent-supervisor/immutable-source-parent-observation@1',request=request_ref,
+            parent_identity=source_parent_context['parent_identity'],nonce=nonce,source_receipts=parent_receipts,
+            source_fds=[dict(root=row['canonical_root'],lock_path=receipt['lock_path'],fd=3+index,
+                device=123,inode=456+index) for index,(row,receipt) in enumerate(zip(
+                    source_parent_context['source_root_bindings'],parent_receipts,strict=True))],
+            sdk_argv=source_argv,source_root_bindings=source_parent_context['source_root_bindings']))
+        delegation = dict(source_custody_mode='delegated-original-parent-read/v1',
+            parent_source_observation=observation,parent_nonce_sha256=source_parent_context['parent_nonce_sha256'],
+            parent_identity=source_parent_context['parent_identity'],source_root_bindings=source_parent_context['source_root_bindings'])
+        report.update(delegation,schema='immutable-source-parent-delegated-validation@1',
+            source_READ_closed=False,source_READ_admission_complete=False)
     put(attempt/'exports/trusted-validation.json',report)
     put(attempt/'exports/test-results.xml',b'<testsuites><testsuite tests="1" failures="0" errors="0" skipped="0"><testcase classname="fictional_owning_tests" name="test_source_generation_seven_roles"/></testsuite></testsuites>')
     result=dict(schema='owned-validation-result/v1',completed=True,returncode=0,
@@ -1426,10 +1460,14 @@ def _source_generation_immutable_qualification_v5_DATA(case, immutable_source_ge
             for source_root in (policy['datasets_root'],str(candidate_root))],
         authority_deadline_monotonic=deadline,execution_observation=execution_ref,
         source_exit_finished_at_monotonic=730.0,work_deadline_monotonic=970.0,cleanup_deadline_monotonic=980.0)
+    if delegated_parent:
+        custody.update(delegation)
     parent=put(invocation/'parent-source-closeout.json',dict(schema='agent-supervisor/v5-validation-parent-source-closeout@2',
         request=request_ref,original_wait=wait_ref,producer=incoming_owner,parent_source_custody=custody))
     qualification=put(root/'current-v5-source-qualification.json',dict(
-        schema='agent-supervisor/scientific-source-generation-current-v5-qualification@1',qualification_profile='closed_v5_current_immutable_Source',
+        schema=('agent-supervisor/scientific-source-generation-current-v5-qualification@2' if delegated_parent else
+                'agent-supervisor/scientific-source-generation-current-v5-qualification@1'),
+        qualification_profile=('closed_v5_current_immutable_parent_Source' if delegated_parent else 'closed_v5_current_immutable_Source'),
         qualification_owner_source_ref=incoming_owner,policy_ref=policy_ref,plan_ref=plan_ref,request_ref=request_ref,
         terminal_ref=terminal_ref,parent_source_closeout_ref=parent,invocation_root=str(invocation),owning_test_root=str(control),
         required_raw_subjects=subjects,source_inventory_subjects=package,owning_test_sources=[owning],
@@ -1774,3 +1812,425 @@ def test_source_generation_fifteen_preparation_keeps_schema_routes_closed_DATA(
     reference = _source_generation_canonical_DATA(case['root']/('schema-refusal-'+fault+'.json'), value)
     with pytest.raises(ValueError): executor.prepare_idle_source_replacement(reference)
     assert not executor._source_generation_path(_source_generation_health._profile(case['value']['profile_ref'])).exists()
+
+
+def _source_generation_copy_package_v2(root, pins, *, population, qualification_schema):
+    """Explicit current-source DATA packaging within the original run budget.
+
+    Old nine/twelve-file 768KiB captures remain historical. This current epoch
+    keeps every raw body/path and original snapshot rule, with two declared
+    banks plus a bounded sidecar outside the sealed control population. Copy
+    fit alone grants no Source, Native or actual 16MiB run qualification.
+    """
+    assert qualification_schema == 'agent-supervisor/immutable-source-qualification@2'
+    common = {
+        'ipfs_accelerate_py/__init__.py',
+        'ipfs_accelerate_py/agent_supervisor/__init__.py',
+        'ipfs_accelerate_py/agent_supervisor/rescue/__init__.py',
+        'ipfs_accelerate_py/agent_supervisor/rescue/repair_authorization.py',
+        'ipfs_accelerate_py/agent_supervisor/rescue/repair_candidate_owners.py',
+        'ipfs_accelerate_py/agent_supervisor/rescue/repair_validation_worker.py',
+        'ipfs_accelerate_py/agent_supervisor/todo_daemon/engine.py',
+        'tests/fictional_owning_tests.py', 'source-manifest.json',
+    }
+    assert population in ('sdk-control9', 'immutable-qualification12')
+    expected = set(common)
+    if population == 'immutable-qualification12':
+        expected.update('ipfs_accelerate_py/agent_supervisor/rescue/'+name for name in
+            ('scientific_executor.py', 'native_executor_health.py', 'native_catalogue_probe.py'))
+    relative = {str(Path(pin['path']).relative_to(root)): pin for pin in pins}
+    assert len(relative) == len(pins) == len(expected) and set(relative) == expected
+    bank_one_names = {
+        'ipfs_accelerate_py/agent_supervisor/rescue/repair_candidate_owners.py',
+        'ipfs_accelerate_py/agent_supervisor/rescue/repair_authorization.py',
+        'ipfs_accelerate_py/agent_supervisor/todo_daemon/engine.py',
+    }
+    banks = [[relative[name] for name in sorted(names)] for names in
+             (bank_one_names, expected-bank_one_names)]
+    totals = [sum(pin['bytes'] for pin in bank) for bank in banks]
+    assert len(banks[0]) == 3 and len(banks[1]) == len(expected)-3
+    assert all(total <= 512*1024 for total in totals) and sum(totals) <= 1024*1024
+    reference = _source_generation_canonical_DATA(root.parent/(root.name+'-source-copy-package-v2.json'), dict(
+        schema='legal-ir-owning-source-copy-package/v2', population=population, fixture_only=True,
+        qualification_schema=qualification_schema,
+        source_qualification_or_runtime_authority=False, original_run_storage_bytes=16*1024**2,
+        per_bank_limit_bytes=512*1024, aggregate_limit_bytes=1024*1024,
+        aggregate_bytes=sum(totals), banks=[dict(files=bank, bytes=total)
+            for bank,total in zip(banks,totals,strict=True)]))
+    assert reference['bytes'] <= 16384
+    return reference
+
+
+@pytest.fixture(scope='module')
+def immutable_parent_source_generation_SDK_control_package_v2_DATA(tmp_path_factory):
+    """Explicit @2-only copy package; historical @1 fixture is unchanged.
+
+    Only ordinary byte copies are shared. Policies, SDK witnesses and every
+    fictional invocation stay private to their function-scoped case.
+    """
+    import stat
+    from ipfs_accelerate_py.agent_supervisor.rescue import repair_candidate_owners as owner
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon import engine
+    put = _source_generation_canonical_DATA
+    base = Path(tmp_path_factory.getbasetemp())
+    root = tmp_path_factory.mktemp('source-generation-immutable-parent-SDK-v2', numbered=False)
+    assert root.parent == base and root.resolve(strict=True) == root
+    assert not any(path.is_symlink() for path in (root, *root.parents))
+    source_root = Path(owner.__file__).parents[3]
+    sources = []
+    for relative in ('ipfs_accelerate_py/__init__.py', 'ipfs_accelerate_py/agent_supervisor/__init__.py',
+        'ipfs_accelerate_py/agent_supervisor/rescue/__init__.py',
+        'ipfs_accelerate_py/agent_supervisor/rescue/repair_authorization.py',
+        'ipfs_accelerate_py/agent_supervisor/rescue/repair_candidate_owners.py',
+        'ipfs_accelerate_py/agent_supervisor/rescue/repair_validation_worker.py'):
+        sources.append(put(root / relative, (source_root / relative).read_bytes()))
+    sources.append(put(root / 'ipfs_accelerate_py/agent_supervisor/todo_daemon/engine.py',
+                       Path(engine.__file__).read_bytes()))
+    owning = put(root / 'tests/fictional_owning_tests.py',
+                 b'def test_source_generation_seven_roles():\n    pass\n')
+    manifest = put(root / 'source-manifest.json', dict(schema=owner.CONTROL_SCHEMA, root=str(root),
+        files=sorted(sources + [owning], key=lambda pin: pin['path']), namespace_profiles=[]))
+    pins = sources + [owning, manifest]
+    assert len(pins) == 9 and len({pin['path'] for pin in pins}) == 9
+    assert all(root in Path(pin['path']).parents and len(os.fsencode(pin['path'])) <= 512 for pin in pins)
+    package_ref = _source_generation_copy_package_v2(root, pins, population='sdk-control9',
+        qualification_schema='agent-supervisor/immutable-source-qualification@2')
+    fields = ('st_dev', 'st_ino', 'st_mode', 'st_uid', 'st_gid', 'st_nlink',
+              'st_size', 'st_mtime_ns', 'st_ctime_ns')
+    def snapshot():
+        population = list(root.rglob('*'))
+        assert not any(path.is_symlink() for path in population)
+        assert {str(path) for path in population if path.is_file()} == {pin['path'] for pin in pins}
+        snapshots = []
+        for pin in pins:
+            path = Path(pin['path'])
+            with os.fdopen(os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK), 'rb') as stream:
+                before = os.fstat(stream.fileno())
+                assert stat.S_ISREG(before.st_mode) and before.st_uid == os.getuid() and before.st_nlink == 1
+                assert stat.S_IMODE(before.st_mode) == 0o400 and before.st_size == pin['bytes']
+                raw = stream.read()
+                after = os.fstat(stream.fileno())
+            identity = tuple(getattr(before, name) for name in fields)
+            assert identity == tuple(getattr(after, name) for name in fields)
+            assert identity == tuple(getattr(path.lstat(), name) for name in fields)
+            assert len(raw) == pin['bytes'] and hashlib.sha256(raw).hexdigest() == pin['sha256']
+            snapshots.append(identity)
+        return tuple(snapshots)
+    original = snapshot()
+    # No mutable descriptor object or policy/capability is shared across cases.
+    keys = ('path', 'bytes', 'sha256')
+    bundle = (str(root), tuple(tuple(pin[key] for key in keys) for pin in sources),
+              tuple(owning[key] for key in keys), tuple(manifest[key] for key in keys))
+    yield bundle
+    assert snapshot() == original  # Verify retained files; never delete them.
+    assert _source_generation_health.descriptor(Path(package_ref['path'])) == package_ref
+    assert not Path(package_ref['path']).lstat().st_mode & 0o222
+
+
+@pytest.fixture(scope='module')
+def immutable_parent_source_generation_A_qualification_package_v2_DATA(tmp_path_factory):
+    """Explicit @2-only copy package; historical @1 fixture is unchanged.
+
+    The seven SDK control files, three fictional role bodies and owning file
+    form eleven source pins plus one excluded manifest. Only byte copies are shared. Policies, SDK witnesses and every
+    fictional invocation stay private to their function-scoped case.
+    """
+    import stat
+    from ipfs_accelerate_py.agent_supervisor.rescue import repair_candidate_owners as owner
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon import engine
+    put = _source_generation_canonical_DATA
+    base = Path(tmp_path_factory.getbasetemp())
+    root = tmp_path_factory.mktemp('source-generation-immutable-parent-A-v2', numbered=False)
+    assert root.parent == base and root.resolve(strict=True) == root
+    assert not any(path.is_symlink() for path in (root, *root.parents))
+    source_root = Path(owner.__file__).parents[3]
+    sources = []
+    for relative in ('ipfs_accelerate_py/__init__.py', 'ipfs_accelerate_py/agent_supervisor/__init__.py',
+        'ipfs_accelerate_py/agent_supervisor/rescue/__init__.py',
+        'ipfs_accelerate_py/agent_supervisor/rescue/repair_authorization.py',
+        'ipfs_accelerate_py/agent_supervisor/rescue/repair_candidate_owners.py',
+        'ipfs_accelerate_py/agent_supervisor/rescue/repair_validation_worker.py'):
+        sources.append(put(root / relative, (source_root / relative).read_bytes()))
+    sources.append(put(root / 'ipfs_accelerate_py/agent_supervisor/todo_daemon/engine.py',
+                       Path(engine.__file__).read_bytes()))
+    # Fictional legal-ir bodies are SOURCE DATA, never executable deployment claims.
+    for name in ('scientific_executor.py', 'native_executor_health.py', 'native_catalogue_probe.py'):
+        sources.append(put(root / 'ipfs_accelerate_py/agent_supervisor/rescue' / name,
+                           ('# fictional immutable qualification body: ' + name + '\n').encode()))
+    owning = put(root / 'tests/fictional_owning_tests.py',
+                 b'def test_source_generation_seven_roles():\n    pass\n')
+    manifest = put(root / 'source-manifest.json', dict(schema=owner.CONTROL_SCHEMA, root=str(root),
+        files=sorted(sources + [owning], key=lambda pin: pin['path']), namespace_profiles=[]))
+    pins = sources + [owning, manifest]
+    assert len(pins) == 12 and len({pin['path'] for pin in pins}) == 12
+    assert all(root in Path(pin['path']).parents and len(os.fsencode(pin['path'])) <= 512 for pin in pins)
+    package_ref = _source_generation_copy_package_v2(root, pins, population='immutable-qualification12',
+        qualification_schema='agent-supervisor/immutable-source-qualification@2')
+    fields = ('st_dev', 'st_ino', 'st_mode', 'st_uid', 'st_gid', 'st_nlink',
+              'st_size', 'st_mtime_ns', 'st_ctime_ns')
+    def snapshot():
+        population = list(root.rglob('*'))
+        assert not any(path.is_symlink() for path in population)
+        assert {str(path) for path in population if path.is_file()} == {pin['path'] for pin in pins}
+        snapshots = []
+        for pin in pins:
+            path = Path(pin['path'])
+            with os.fdopen(os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK), 'rb') as stream:
+                before = os.fstat(stream.fileno())
+                assert stat.S_ISREG(before.st_mode) and before.st_uid == os.getuid() and before.st_nlink == 1
+                assert stat.S_IMODE(before.st_mode) == 0o400 and before.st_size == pin['bytes']
+                raw = stream.read()
+                after = os.fstat(stream.fileno())
+            identity = tuple(getattr(before, name) for name in fields)
+            assert identity == tuple(getattr(after, name) for name in fields)
+            assert identity == tuple(getattr(path.lstat(), name) for name in fields)
+            assert len(raw) == pin['bytes'] and hashlib.sha256(raw).hexdigest() == pin['sha256']
+            snapshots.append(identity)
+        return tuple(snapshots)
+    original = snapshot()
+    # No mutable descriptor object or policy/capability is shared across cases.
+    keys = ('path', 'bytes', 'sha256')
+    bundle = (str(root), tuple(tuple(pin[key] for key in keys) for pin in sources),
+              tuple(owning[key] for key in keys), tuple(manifest[key] for key in keys))
+    yield bundle
+    assert snapshot() == original  # Verify retained files; never delete them.
+    assert _source_generation_health.descriptor(Path(package_ref['path'])) == package_ref
+    assert not Path(package_ref['path']).lstat().st_mode & 0o222
+
+
+@pytest.fixture
+def complete_parent_source_generation_DATA(tmp_path, monkeypatch,
+        immutable_parent_source_generation_SDK_control_package_v2_DATA):
+    """Reuse the original fictional builder only inside the explicit @2 path."""
+    return complete_source_generation_DATA.__wrapped__(tmp_path, monkeypatch,
+        immutable_parent_source_generation_SDK_control_package_v2_DATA)
+
+
+def _source_generation_immutable_mode_DATA(original, immutable_source_generation_A_qualification_DATA,
+        *, delegated_parent=False):
+    """Fresh private evidence over a separately sealed immutable A population.
+
+    The original complete case, all shared source files and its original proof
+    records are retained untouched. This fixture models no new live operation.
+    """
+    h=_source_generation_health;put=_source_generation_canonical_DATA
+    from ipfs_accelerate_py.agent_supervisor.rescue import repair_candidate_owners as owner
+    case=_source_generation_copy.deepcopy(original)
+    root=original['root']/('immutable-parent-mode-DATA' if delegated_parent else 'immutable-mode-DATA');root.mkdir()
+    control_name,frozen_sources,frozen_owning,_=immutable_source_generation_A_qualification_DATA
+    control=Path(control_name);keys=('path','bytes','sha256')
+    package=[dict(zip(keys,row))for row in frozen_sources]+[dict(zip(keys,frozen_owning))]
+    by_name={Path(pin['path']).name:pin for pin in package}
+    profile=_source_generation_copy.deepcopy(original['profile'])
+    oldpackage=Path(profile['main_entrypoint']['path']).parents[3]
+    profile.update(main_entrypoint=by_name['scientific_executor.py'],health_module=by_name['native_executor_health.py'])
+    profile['source_descriptors']=[pin for pin in profile['source_descriptors']
+        if oldpackage not in Path(pin['path']).parents]+package
+    argv=profile['unit']['argv'];argv[2]=profile['main_entrypoint']['path']
+    argv[argv.index('--catalogue-parser-source')+1]=by_name['native_catalogue_probe.py']['path']
+    argv[argv.index('--catalogue-parser-sha256')+1]=by_name['native_catalogue_probe.py']['sha256']
+    profile['unit']['environment']['PYTHONPATH']=str(control)+os.pathsep+str(original['root']/'old-package')
+    # A fresh profile/config pair preserves the original complete fixture files.
+    config=_source_generation_copy.deepcopy(original['config']);config['profile_path']=str(root/'profile.json')
+    config_ref=put(root/'config.json',config)
+    oldconfig_path=argv[argv.index('--config')+1]
+    profile['source_descriptors']=[pin for pin in profile['source_descriptors'] if pin['path']!=oldconfig_path]+[config_ref]
+    argv[argv.index('--config')+1]=config_ref['path'];argv[argv.index('--config-sha256')+1]=config_ref['sha256']
+    case.update(root=root,profile=profile,profile_ref=put(root/'profile.json',profile),config=config,
+        packagepins=package,source_subjects=[profile['main_entrypoint'],profile['health_module']]+original['source_subjects'][2:])
+    case=_source_generation_immutable_qualification_v5_DATA(case,immutable_source_generation_A_qualification_DATA,
+        delegated_parent=delegated_parent)
+    previous=h._document(original['commitment'])
+    inventory=put(root/'source-inventory.json',dict(schema='legal-ir-scientific-source-inventory/v1',source_root=str(control),
+        source_commit=previous['source_commit'],source_tree=previous['source_tree'],file_count=len(package),
+        files=[dict(pin,mode=0o400)for pin in package]))
+    commitment=dict(previous,source_root=str(control),source_inventory=inventory,
+        source_qualification=case['qualification'],main_entrypoint=profile['main_entrypoint'],
+        health_module=profile['health_module'],catalogue_parser=by_name['native_catalogue_probe.py'])
+    case.update(commitment=put(root/'source-commitment.json',commitment),source_inventory=inventory,
+                original_complete_case=original)
+    assert owner.checked_source_qualification(h._document(case['v5']['policy']))['root']==control
+    return case
+
+
+@pytest.fixture
+def immutable_parent_source_generation_qualification_DATA(complete_parent_source_generation_DATA,
+        immutable_parent_source_generation_A_qualification_package_v2_DATA):
+    return _source_generation_immutable_mode_DATA(complete_parent_source_generation_DATA,
+        immutable_parent_source_generation_A_qualification_package_v2_DATA,delegated_parent=True)
+
+
+@pytest.mark.parametrize('schema,label,policy_schema', [
+    ('agent-supervisor/scientific-source-generation-current-v5-qualification@1',
+     'closed_v5_current_Source', None),
+    ('agent-supervisor/scientific-source-generation-current-v5-qualification@1',
+     'closed_v5_current_immutable_Source', 'agent-supervisor/immutable-source-qualification@1'),
+    ('agent-supervisor/scientific-source-generation-current-v5-qualification@2',
+     'closed_v5_current_immutable_parent_Source', 'agent-supervisor/immutable-source-qualification@2'),
+])
+def test_source_generation_current_profile_has_three_distinct_explicit_contracts(schema, label, policy_schema):
+    validation = {} if policy_schema is None else {'source_qualification': {'schema': policy_schema}}
+    assert executor._source_generation_current_qualification_profile(
+        {'schema': schema, 'qualification_profile': label}, policy={'validation': validation}) == policy_schema
+
+
+@pytest.mark.parametrize('schema,label', [
+    ('agent-supervisor/scientific-source-generation-current-v5-qualification@1', 'closed_v5_current_immutable_parent_Source'),
+    ('agent-supervisor/scientific-source-generation-current-v5-qualification@2', 'closed_v5_current_Source'),
+    ('agent-supervisor/scientific-source-generation-current-v5-qualification@2', 'closed_v5_current_immutable_Source'),
+    ('agent-supervisor/scientific-source-generation-current-v5-qualification@3', 'closed_v5_current_immutable_parent_Source'),
+])
+def test_source_generation_current_profile_refuses_crossed_versions(schema, label):
+    with pytest.raises(ValueError, match='source_generation_current_v5_profile_required'):
+        executor._source_generation_current_qualification_profile({'schema': schema, 'qualification_profile': label})
+
+
+@pytest.mark.parametrize('policy_schema', [None, 'agent-supervisor/immutable-source-qualification@1', 'unknown'])
+def test_source_generation_parent_profile_cannot_relabel_an_old_policy(policy_schema):
+    validation = {} if policy_schema is None else {'source_qualification': {'schema': policy_schema}}
+    with pytest.raises(ValueError, match='source_generation_v5_qualification_profile_policy_mismatch'):
+        executor._source_generation_current_qualification_profile({
+            'schema': 'agent-supervisor/scientific-source-generation-current-v5-qualification@2',
+            'qualification_profile': 'closed_v5_current_immutable_parent_Source'}, policy={'validation': validation})
+
+
+@pytest.fixture
+def delegated_source_generation_join_DATA(tmp_path):
+    """Authored metadata joins only: no original parent or held Source claim.
+
+    The complete SDK verifier and original process qualification are separate.
+    This fixture tests this reader's joins using explicit fictional attestations.
+    """
+    from copy import deepcopy
+    control = tmp_path/'control'; control.mkdir()
+    physical_datasets = tmp_path/'published-datasets'; physical_datasets.mkdir()
+    invocation = tmp_path/'invocation'; invocation.mkdir()
+    observation = _source_generation_canonical_DATA(invocation/'parent-source-observation.json',
+        {'fixture_only': True, 'original_parent_or_Source_observed': False})
+    roots = [dict(physical_root=str(physical_datasets), canonical_root=str(executor.ORIGINAL_NAMED_ROOTS[0].parents[1])),
+             dict(physical_root=str(control), canonical_root=str(control))]
+    identity = dict(pid=987654321, birth='12345'); nonce = '1'*64
+    mode = 'delegated-original-parent-read/v1'
+    joined = dict(source_custody_mode=mode, parent_identity=identity, parent_nonce_sha256=nonce,
+        parent_source_observation=observation, source_root_bindings=roots)
+    policy = dict(datasets_root=str(physical_datasets), validation={'source_qualification': dict(
+        schema='agent-supervisor/immutable-source-qualification@2', snapshot={}, required_source_bodies=[],
+        source_custody_mode=mode)})
+    request = dict(path=str(invocation/'execution-request.json'), bytes=2, sha256='2'*64)
+    plan = dict(candidate_root=str(control), parent_identity=deepcopy(identity), parent_nonce_sha256=nonce,
+        parent_source_observation_path=observation['path'], execution_request_path=request['path'],
+        source_root_bindings=deepcopy(roots))
+    report = dict(deepcopy(joined), schema='immutable-source-parent-delegated-validation@1',
+        source_READ_closed=False, source_READ_admission_complete=False)
+    profile = {'main_entrypoint': {'path': str(control/'ipfs_accelerate_py/agent_supervisor/rescue/scientific_executor.py')}}
+    return dict(policy=policy, plan=plan, summary=deepcopy(joined), custody=deepcopy(joined), report=report,
+        request_ref=request, invocation=invocation, profile=profile)
+
+
+def test_source_generation_parent_join_keeps_physical_code_and_canonical_locks_distinct(
+        delegated_source_generation_join_DATA, monkeypatch):
+    from ipfs_accelerate_py.agent_supervisor.rescue import repair_candidate_owners as owner
+    import subprocess
+    def forbidden(*args, **kwargs):
+        raise AssertionError('a metadata join must acquire no process or Source authority')
+    monkeypatch.setattr(subprocess, 'Popen', forbidden)
+    monkeypatch.setattr(owner, 'public_source_lease', forbidden)
+    monkeypatch.setattr(owner, 'original_runner_wait', forbidden)
+    case = delegated_source_generation_join_DATA
+    physical, canonical = executor._source_generation_delegated_source_binding(**case)
+    assert physical[0] == case['policy']['datasets_root']
+    assert physical[0] != canonical[0]
+    assert canonical[0] == str(executor.ORIGINAL_NAMED_ROOTS[0].parents[1])
+    assert physical[1] == canonical[1] == case['plan']['candidate_root']
+    assert case['report']['source_READ_closed'] is case['report']['source_READ_admission_complete'] is False
+
+
+@pytest.mark.parametrize('frame,key', [
+    (frame, key) for frame in ('summary', 'custody', 'report') for key in (
+        'source_custody_mode', 'parent_source_observation', 'parent_nonce_sha256', 'parent_identity', 'source_root_bindings')
+])
+def test_source_generation_parent_join_refuses_each_crossed_attestation_field(
+        delegated_source_generation_join_DATA, frame, key):
+    case = delegated_source_generation_join_DATA
+    case[frame].pop(key)
+    with pytest.raises(ValueError):
+        executor._source_generation_delegated_source_binding(**case)
+
+
+@pytest.mark.parametrize('fault', [
+    'mode', 'profile_schema', 'reordered_roots', 'extra_root_field', 'duplicate_canonical_roots',
+    'wrong_physical_dataset', 'wrong_canonical_dataset', 'wrong_control_origin', 'boolean_pid',
+    'zero_birth', 'non_ascii_birth', 'bad_nonce', 'changed_request_path', 'changed_observation_path',
+    'changed_observation_bytes', 'old_worker_schema', 'child_claims_Source_closed', 'child_claims_Source_admission',
+])
+def test_source_generation_parent_join_refuses_unbound_roots_identity_and_child_custody(
+        delegated_source_generation_join_DATA, fault):
+    case = delegated_source_generation_join_DATA; plan = case['plan']; report = case['report']
+    source_profile = case['policy']['validation']['source_qualification']
+    if fault == 'mode': source_profile['source_custody_mode'] = 'unknown'
+    elif fault == 'profile_schema': source_profile['schema'] = 'agent-supervisor/immutable-source-qualification@1'
+    elif fault == 'reordered_roots': plan['source_root_bindings'].reverse()
+    elif fault == 'extra_root_field': plan['source_root_bindings'][0]['lock_path'] = '/tmp/caller-selected.lock'
+    elif fault == 'duplicate_canonical_roots': plan['source_root_bindings'][1]['canonical_root'] = plan['source_root_bindings'][0]['canonical_root']
+    elif fault == 'wrong_physical_dataset': plan['source_root_bindings'][0]['physical_root'] = plan['candidate_root']
+    elif fault == 'wrong_canonical_dataset': plan['source_root_bindings'][0]['canonical_root'] = plan['candidate_root']
+    elif fault == 'wrong_control_origin': case['profile']['main_entrypoint']['path'] = str(case['invocation']/'ipfs_accelerate_py/agent_supervisor/rescue/scientific_executor.py')
+    elif fault == 'boolean_pid': plan['parent_identity']['pid'] = True
+    elif fault == 'zero_birth': plan['parent_identity']['birth'] = '0'
+    elif fault == 'non_ascii_birth': plan['parent_identity']['birth'] = '\u0661'
+    elif fault == 'bad_nonce': plan['parent_nonce_sha256'] = 'x'*64
+    elif fault == 'changed_request_path': plan['execution_request_path'] += '.other'
+    elif fault == 'changed_observation_path': plan['parent_source_observation_path'] += '.other'
+    elif fault == 'changed_observation_bytes': Path(report['parent_source_observation']['path']).chmod(0o600); Path(report['parent_source_observation']['path']).write_bytes(b'{}')
+    elif fault == 'old_worker_schema': report['schema'] = 'agent-supervisor/repair-validation@1'
+    elif fault == 'child_claims_Source_closed': report['source_READ_closed'] = True
+    elif fault == 'child_claims_Source_admission': report['source_READ_admission_complete'] = True
+    else: raise AssertionError(fault)
+    with pytest.raises(ValueError):
+        executor._source_generation_delegated_source_binding(**case)
+
+
+@pytest.mark.parametrize('label', ['closed_v5_current_Source', 'closed_v5_current_immutable_Source'])
+def test_source_generation_legacy_profiles_cannot_accept_parent_policy(label):
+    with pytest.raises(ValueError, match='source_generation_v5_qualification_profile_policy_mismatch'):
+        executor._source_generation_current_qualification_profile({
+            'schema': 'agent-supervisor/scientific-source-generation-current-v5-qualification@1',
+            'qualification_profile': label}, policy={'validation': {'source_qualification': {
+                'schema': 'agent-supervisor/immutable-source-qualification@2'}}})
+
+
+def test_source_generation_parent_profile_reaches_complete_existing_SDK_metadata_reader(
+        immutable_parent_source_generation_qualification_DATA):
+    """Full fictional DATA path through genuine SDK metadata readers; no run."""
+    from ipfs_accelerate_py.agent_supervisor.rescue import repair_candidate_owners as owner
+    case = immutable_parent_source_generation_qualification_DATA; h = _source_generation_health
+    source, selected = executor._source_generation_source_inventory(case['commitment'], case['profile'])
+    accepted = executor._source_generation_qualification(case['qualification'], case['profile'], selected)
+    assert accepted['schema'] == 'agent-supervisor/scientific-source-generation-current-v5-qualification@2'
+    assert accepted['qualification_profile'] == 'closed_v5_current_immutable_parent_Source'
+    v5 = case['v5']; policy = h._document(v5['policy']); plan = h._document(v5['plan'])
+    assert source['source_root'] == policy['control_release']['root'] == plan['candidate_root']
+    assert plan['execution_request_path'] == v5['request']['path']
+    assert plan['execution_request_path'] != str(v5['invocation']/'execution-request.json')
+    report = h._document(h.descriptor(v5['attempt']/'exports/trusted-validation.json'))
+    summary = owner.verify_validation_evidence(policy, plan, v5['request'], h._document(v5['terminal']), v5['invocation'])
+    custody = h._document(v5['parent'])['parent_source_custody']
+    for key in ('source_custody_mode', 'parent_source_observation', 'parent_nonce_sha256', 'parent_identity', 'source_root_bindings'):
+        assert report[key] == summary[key] == custody[key]
+    assert report['source_READ_closed'] is report['source_READ_admission_complete'] is False
+    assert accepted['runtime_activation_or_task_authority'] is False
+    assert not executor._source_generation_path(case['profile']).exists()
+
+
+def test_source_generation_parent_profile_rejects_same_byte_other_R_role_identity(
+        immutable_parent_source_generation_qualification_DATA):
+    case = immutable_parent_source_generation_qualification_DATA; h = _source_generation_health
+    value = h._document(case['qualification'])
+    role = next(pin for pin in value['required_raw_subjects'] if pin['path'].endswith('/logic/backends/process.py'))
+    other = _source_generation_canonical_DATA(case['root']/'other-source-root/process.py', h._bound(role))
+    assert other['sha256'] == role['sha256'] and other['bytes'] == role['bytes'] and other['path'] != role['path']
+    value['required_raw_subjects'] = [other if pin == role else pin for pin in value['required_raw_subjects']]
+    changed = _source_generation_canonical_DATA(case['root']/'crossed-R-role-qualification.json', value)
+    with pytest.raises(ValueError, match='source_generation_v5_exact_roles_package_and_owning_tests_required'):
+        executor._source_generation_qualification(changed, case['profile'], {pin['path']: pin for pin in case['packagepins']})
+    assert not executor._source_generation_path(case['profile']).exists()
