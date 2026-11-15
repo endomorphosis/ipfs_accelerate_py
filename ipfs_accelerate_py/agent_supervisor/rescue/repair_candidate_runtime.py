@@ -1043,7 +1043,7 @@ class CandidateRuntime:
     def _validation_command_wait(self, argv, invocation, timeout):
         from .repair_candidate_owners import original_runner_wait
         _need(self.command_runner is run_command,
-              "validation admission retry requires the original actual process runner")
+              "validation wait requires the original actual process runner")
         started = time.monotonic()
         completed, witness = original_runner_wait({"source_descriptors": list(self.runtime_policy.sources)},
             argv, self.policy.repository_root, timeout)
@@ -1129,13 +1129,13 @@ class CandidateRuntime:
                         'retry_authorized':False,'verified_operational':False}
                     return None
             owner_wait = None
-            if retry:
+            if retry or ledger_retry:
                 result, owner_wait = self._validation_command_wait(argv, invocation, command.timeout_seconds)
             else:
                 result = self.command_runner(argv, cwd=self.policy.repository_root, timeout_seconds=command.timeout_seconds)
             if result.returncode != 0:
                 terminal = {"command_returncode": result.returncode, "verifier_returncode": None}
-                if retry:
+                if retry or ledger_retry:
                     terminal["original_owner_wait"] = owner_wait
                 _new(invocation / "terminal.json", terminal)
                 if retry and type(result.returncode) is int and result.returncode == 75:
@@ -1148,7 +1148,8 @@ class CandidateRuntime:
             check = self.command_runner(verify, cwd=self.policy.repository_root,
                 timeout_seconds=command.timeout_seconds)
             _new(invocation / "terminal.json", {"command_returncode": result.returncode,
-                "verifier_returncode": check.returncode})
+                "verifier_returncode": check.returncode,
+                **({"original_owner_wait": owner_wait} if ledger_retry else {})})
             if check.returncode != 0:
                 return None
             self.authority.require_current(stage, self.session.binding)

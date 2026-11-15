@@ -1,5 +1,22 @@
 # LegalIR parallel supervisor operations
 
+The watchdog now rechecks an unchanged dependency stall after 120 monotonic
+seconds while retaining repair deduplication and the operator hold. The
+ledger-busy validation route retains its original process wait on successful
+and failed terminals, including later verifier refusal. Unknown original
+exits produce no terminal success and do not replay the operation.
+
+Fresh qualification on 2026-11-15 passed all 34 selected cases against the
+current 122-source dependency closure: 14 watchdog cases and 20 retained
+runtime/source-wait controls. Original Source, Native resource, process and
+storage custody closed; the original owner released this run's own 64 MiB
+promise. Earlier failures and the separate 2026-11-14 qualification remain
+historical evidence. See the [exact source and test record](evidence/legal-ir-stall-recheck-outer-wait-20261115.json).
+
+These changes grant no service activation, completion or adoption authority,
+new repair authorization, renewed attempt budget, legal review, model quality
+or native proof qualification.
+
 The `legal-ir-autoencoder-v1-workers.target` user target owns four independent
 implementation supervisor services. Lane 0 uses `legal-ir-autoencoder-v1.service`;
 lanes 1–3 use `legal-ir-autoencoder-v1-lane-N.service`. Each supervises one active
