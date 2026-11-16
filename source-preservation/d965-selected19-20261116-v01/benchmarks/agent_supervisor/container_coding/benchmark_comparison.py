@@ -1,0 +1,1362 @@
+"""Compare retained native Harbor receipts without reading model transcripts.
+
+Counts retain each provider's native scope and cache semantics. Codex cumulative
+session counters require native completion; Grok final-envelope counters also
+require explicit usage completeness. Neither establishes complete billing.
+Missing or interrupted usage retains observed counters separately from totals.
+"""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import html
+import json
+import math
+from pathlib import Path
+import re
+
+from benchmarks.agent_supervisor.container_coding.benchmark_controls import compare_controls
+from benchmarks.agent_supervisor.container_coding import native_usage_accounting
+
+BASELINE = "native-codex-harbor-baseline-receipt@1"
+SUPERVISOR = "terminal-full-supervisor-receipt@1"
+TOKENS = ("input_tokens", "cached_input_tokens", "output_tokens", "total_tokens")
+PHASES = ("environment_setup", "agent_setup", "agent_execution", "verifier")
+SUPERVISOR_PHASES = ("prepare_seconds", "initial_context_seconds", "planning_seconds",
+                     "context_seconds", "doctor_seconds", "post_publication_refresh_seconds")
+EMBEDDING_COUNTERS = ("local_embedding_calls", "local_embedding_texts",
+                      "remote_embedding_calls", "text_generation_calls")
+DECLARED_OUTPUT_FAILURE_STAGES = frozenset({
+    "admitted_scope", "settlement_and_cleanup", "native_directory", "attempt_directory",
+    "attempt_binding", "owner_event_log", "allocation_event", "allocation_root",
+    "invocation_join", "declared_output_files",
+})
+BASELINE_SESSION_LIMIT = 512
+BASELINE_SESSION_IDENTITY_SCHEMA = "terminal-baseline-native-session-identities@1"
+_BASELINE_IDENTITY_FIELDS = frozenset({"schema", "status", "reason", "provider", "inventory_complete",
+    "observed_session_count", "identity_sha256", "modern_source", "usage_population_coherent",
+    "observation_only", "source_authenticity_verified", "billing_total_verified", "completion_authority"})
+_BASELINE_IDENTITY_REASONS = frozenset({"native_session_inventory_observed", "historical_session_identity_not_recorded",
+    "invalid_native_session_population", "native_session_identity_missing", "native_session_identity_invalid",
+    "native_session_identity_duplicate", "native_session_source_unsupported"})
+_COLLECTION_COUNTERS = native_usage_accounting._COLLECTION_COUNTERS
+_COLLECTION_REASONS = native_usage_accounting._COLLECTION_REASONS
+_COLLECTION_FALSE_FIELDS = native_usage_accounting._COLLECTION_FALSE_FIELDS
+_COLLECTION_UNKNOWN_FIELDS = native_usage_accounting._COLLECTION_UNKNOWN_FIELDS
+_COLLECTION_FIELDS = native_usage_accounting._COLLECTION_FIELDS
+LABELS = {
+    "native-codex": "Native Codex harness",
+    "no-index": "Supervisor: no indexed context",
+    "full": "Supervisor: full indexed context",
+}
+
+
+def _number(value):
+    return value if type(value) in (int, float) and math.isfinite(value) and value >= 0 else None
+
+
+def _tokens(value):
+    value = value if isinstance(value, dict) else {}
+    return {
+        key: value.get(key) if type(value.get(key)) is int and value[key] >= 0 else None
+        for key in TOKENS
+    }
+
+
+def _text(value):
+    return value[:256] if isinstance(value, str) else None
+
+
+def _mapping(value):
+    return value if isinstance(value, dict) else {}
+
+
+def _count(value):
+    return value if type(value) is int and value >= 0 else None
+
+
+def _boolean(value):
+    return value if type(value) is bool else None
+
+
+def _completion(values):
+    values = list(values)
+    if any(value is False for value in values):
+        return False
+    return True if values and all(value is True for value in values) else None
+
+
+def _baseline_completion(native):
+    sessions = native.get("sessions")
+    flags = [_boolean(row.get("task_complete_observed"))
+             if isinstance(row, dict) else None for row in sessions] if isinstance(sessions, list) else []
+    explicit = _boolean(native.get("task_complete_observed"))
+    if explicit is False or any(flag is False for flag in flags):
+        return False
+    return True if explicit is True else _completion(flags)
+
+
+def _baseline_usage_population_coherent(native, sessions):
+    """Check current producer categories against its supplied session population."""
+    fields = (*TOKENS, "cache_write_input_tokens", "reasoning_output_tokens")
+    top = native.get("usage")
+    if type(top) is not dict or any(type(row.get("usage")) is not dict for row in sessions):
+        return None
+    values = [top, *(row["usage"] for row in sessions)]
+    for value in values:
+        if any(value.get(key) is not None and (type(value[key]) is not int or not 0 <= value[key] < (1 << 63))
+               for key in fields):
+            return False
+        inputs, outputs, total = (value.get(key) for key in ("input_tokens", "output_tokens", "total_tokens"))
+        if inputs is not None and outputs is not None and total is not None and inputs + outputs != total:
+            return False
+        if (inputs is not None and value.get("cached_input_tokens") is not None
+                and value["cached_input_tokens"] > inputs
+                or outputs is not None and value.get("reasoning_output_tokens") is not None
+                and value["reasoning_output_tokens"] > outputs):
+            return False
+    for key in fields:
+        parts = [row["usage"].get(key) for row in sessions]
+        expected = sum(parts) if all(value is not None for value in parts) else None
+        if expected is not None and expected >= (1 << 63) or top.get(key) != expected:
+            return False
+    return True if all(value.get(key) is not None for value in values
+                       for key in ("input_tokens", "output_tokens", "total_tokens")) else None
+
+
+def _baseline_session_identity_observation(native):
+    """Hash only exact declared IDs; never substitute artifact paths or hashes."""
+    modern = native.get("source") == "native_rollout_observed_cumulative_totals"
+    sessions = native.get("sessions")
+    bounded = type(sessions) is list and len(sessions) <= BASELINE_SESSION_LIMIT
+    result = dict(schema=BASELINE_SESSION_IDENTITY_SCHEMA, status="invalid",
+        reason="invalid_native_session_population", provider="codex_cli", inventory_complete=False,
+        observed_session_count=len(sessions) if bounded else None, identity_sha256=[], modern_source=modern,
+        usage_population_coherent=None, observation_only=True, source_authenticity_verified=False,
+        billing_total_verified=False, completion_authority=False)
+    if "sessions" not in native and native.get("source") is None:
+        result.update(status="unverified", reason="historical_session_identity_not_recorded")
+        return result
+    if not bounded:
+        return result
+    historical = (not modern and native.get("source") is None
+        and all(type(row) is dict and "session_id" not in row for row in sessions))
+    if historical:
+        result.update(status="unverified", reason="historical_session_identity_not_recorded")
+        return result
+    missing = malformed = duplicate = False
+    hashes = set()
+    for row in sessions:
+        if type(row) is not dict:
+            malformed = True
+            continue
+        if "session_id" not in row:
+            missing = True
+            continue
+        identity = row["session_id"]
+        if type(identity) is not str or re.fullmatch(r"[A-Za-z0-9-]{1,80}", identity) is None:
+            malformed = True
+            continue
+        digest = hashlib.sha256(identity.encode("utf-8")).hexdigest()
+        duplicate |= digest in hashes
+        hashes.add(digest)
+    result["identity_sha256"] = sorted(hashes)
+    if not sessions or malformed or missing or duplicate:
+        result["reason"] = ("native_session_identity_invalid" if malformed else "native_session_identity_missing"
+            if missing or not sessions else "native_session_identity_duplicate")
+        return result
+    if not modern and native.get("source") is not None:
+        result["reason"] = "native_session_source_unsupported"
+        return result
+    result.update(status="observed", reason="native_session_inventory_observed", inventory_complete=True)
+    if modern:
+        result["usage_population_coherent"] = _baseline_usage_population_coherent(native, sessions)
+    return result
+
+
+def _archive_digest(raw):
+    value = _mapping(_mapping(raw.get("agent_context")).get("metadata")).get("runtime_archive_sha256")
+    return value if isinstance(value, str) and len(value) == 64 and all(
+        char in "0123456789abcdef" for char in value) else None
+
+
+def _semantic_metadata_observation(value):
+    """Project declared representation counts, never usage or tokenizer authority."""
+    unavailable = {"status": "unavailable", "provider_usage_reported": False,
+        "tokenizer_compatibility_verified": False, "complete_run_token_savings_claimed": False}
+    if type(value) is not dict:
+        return unavailable
+    schema = value.get("schema")
+    if type(schema) is not str or schema not in {"supervisor-semantic-metadata-selection@1", "supervisor-semantic-metadata-selection@2"}:
+        return unavailable
+    if (value.get("token_proxy") != "utf8-bytes-ceil-div4@1"
+            or type(value.get("selected_mode")) is not str
+            or value["selected_mode"] not in {"legacy", "common-bindings@1", "common-bindings-instruction@1"}):
+        return unavailable
+    requested = value.get("requested_mode")
+    if "requested_mode" in value and (type(requested) is not str
+            or requested not in {"legacy", "common-bindings@1", "common-bindings-instruction@1"}
+            or value["selected_mode"] not in {"legacy", requested}):
+        return unavailable
+    if value["selected_mode"] == "common-bindings-instruction@1" and requested != value["selected_mode"]:
+        return unavailable
+    result = {**unavailable, "status": "reported", "schema": schema,
+        "selected_mode": value["selected_mode"], "token_proxy": value["token_proxy"],
+        "selection_basis": "byte_proxy", "measurement_scope": "complete-rendered-prompt-text@1"}
+    if "requested_mode" in value:
+        result["requested_mode"] = requested
+    for field in ("view_receipt_sha256", "native_complete_sha256", "candidate_complete_sha256", "selected_complete_sha256"):
+        digest = value.get(field)
+        if type(digest) is not str or re.fullmatch("[0-9a-f]{64}", digest) is None:
+            return unavailable
+        result[field] = digest
+    for prefix in ("native", "candidate", "selected"):
+        size, proxy = value.get(prefix + "_complete_bytes"), value.get(prefix + "_complete_proxy_tokens")
+        if (type(size) is not int or not 1 <= size <= 2_000_000
+                or type(proxy) is not int or proxy != (size + 3) // 4):
+            return unavailable
+        result[prefix + "_complete_bytes"], result[prefix + "_complete_proxy_tokens"] = size, proxy
+    chosen = "native" if result["selected_mode"] == "legacy" else "candidate"
+    if any(result["selected_complete_" + field] != result[chosen + "_complete_" + field]
+           for field in ("sha256", "bytes", "proxy_tokens")):
+        return unavailable
+    reason = value.get("fallback_reason")
+    allowed_reasons = {None, "complete_input_not_smaller_under_bytes_and_proxy"}
+    if schema.endswith("@2"):
+        allowed_reasons = {None, "complete_input_not_smaller_under_bytes_and_token_counter",
+            "complete_input_token_counter_invalid", "complete_input_token_counter_failed"}
+    if type(reason) not in (str, type(None)) or reason not in allowed_reasons:
+        return unavailable
+    if ((chosen == "candidate") != (reason is None)
+            or (chosen == "candidate" and result["candidate_complete_bytes"] >= result["native_complete_bytes"])):
+        return unavailable
+    result["fallback_reason"] = reason
+    if schema.endswith("@1"):
+        return result
+    identity = value.get("token_counter_identity")
+    status = value.get("token_counter_status")
+    if (type(status) is not str or status not in {"counted", "failed", "invalid"}
+            or value.get("selection_basis") != "token_counter"):
+        return unavailable
+    result.update(selection_basis="token_counter", token_counter_status=status,
+        token_counter_identity=None, token_counter_identity_sha256=None,
+        native_complete_tokens=None, candidate_complete_tokens=None, selected_complete_tokens=None)
+    if status == "invalid":
+        return result if (identity is None and value.get("token_counter_identity_sha256") is None
+            and reason == "complete_input_token_counter_invalid"
+            and all(value.get(field) is None for field in (
+                "native_complete_tokens", "candidate_complete_tokens", "selected_complete_tokens"))) else unavailable
+    if (type(identity) is not dict or identity.get("schema") != "supervisor-semantic-metadata-token-counter@1"
+            or identity.get("measurement_scope") != result["measurement_scope"]
+            or type(identity.get("qualification")) is not str
+            or identity["qualification"] not in {"provider_tokenizer", "estimate"}
+            or identity.get("identity_caller_supplied") is not True
+            or identity.get("provider_usage_verified") is not False):
+        return unavailable
+    safe_identity = {"schema": identity["schema"], "qualification": identity["qualification"],
+        "measurement_scope": result["measurement_scope"], "identity_caller_supplied": True,
+        "provider_usage_verified": False}
+    for field in ("provider", "model", "tokenizer", "tokenizer_revision"):
+        identifier = identity.get(field)
+        if type(identifier) is not str or re.fullmatch("[A-Za-z0-9][A-Za-z0-9._:/@+\\-]{0,255}", identifier) is None:
+            return unavailable
+        safe_identity[field] = identifier
+    digest = value.get("token_counter_identity_sha256")
+    canonical = json.dumps(safe_identity, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    if digest != hashlib.sha256(canonical.encode()).hexdigest():
+        return unavailable
+    result.update(token_counter_identity=safe_identity, token_counter_identity_sha256=digest)
+    if status == "failed":
+        return result if reason == "complete_input_token_counter_failed" and all(value.get(field) is None for field in (
+            "native_complete_tokens", "candidate_complete_tokens", "selected_complete_tokens")) else unavailable
+    for prefix in ("native", "candidate", "selected"):
+        tokens = value.get(prefix + "_complete_tokens")
+        if type(tokens) is not int or not 1 <= tokens <= 2**63 - 1:
+            return unavailable
+        result[prefix + "_complete_tokens"] = tokens
+    if result["selected_complete_tokens"] != result[chosen + "_complete_tokens"]:
+        return unavailable
+    if reason not in {None, "complete_input_not_smaller_under_bytes_and_token_counter"}:
+        return unavailable
+    if chosen == "candidate" and result["candidate_complete_tokens"] >= result["native_complete_tokens"]:
+        return unavailable
+    return result
+
+
+def _input_observation(raw):
+    """Project reported wire measurements without exporting prompt contents."""
+    translation = _mapping(raw.get("semantic_translation"))
+    residual = _mapping(raw.get("doctor_residual_context"))
+    result = {
+        **{key: _count(raw.get(key)) for key in (
+            "native_prompt_bytes", "router_prompt_bytes", "model_prompt_bytes", "workspace_advisory_bytes")},
+        **{key: _text(raw.get(key)) for key in (
+            "native_prompt_sha256", "router_prompt_sha256", "model_prompt_sha256", "workspace_advisory_sha256")},
+        "semantic_translation": {
+            **{key: _text(translation.get(key)) for key in ("schema", "translation_cid")},
+            **{key: _count(translation.get(key)) for key in (
+                "native_prompt_bytes", "provider_prompt_bytes", "identifier_mappings", "identifier_occurrences")},
+            "freshness_checked": _boolean(translation.get("freshness_checked")),
+        } if translation else None,
+        "doctor_residual_context": {
+            **{key: _text(residual.get(key)) for key in (
+                "schema", "context_cid", "native_capsule_id", "advisory_sha256")},
+            **{key: _count(residual.get(key)) for key in ("advisory_bytes", "extra_provider_calls")},
+            **{key: _boolean(residual.get(key)) for key in (
+                "source_freshness_verified", "candidate_only", "derived_runtime_admitted")},
+        } if residual else None,
+        "measurements_are_token_savings": False,
+        "input_reconstruction_verified_by_receipt_presence": False,
+    }
+    if "semantic_metadata_view" in raw:
+        result["semantic_metadata_view"] = _semantic_metadata_observation(raw["semantic_metadata_view"])
+    return result
+
+
+def _formalization_audit_observations(audit):
+    """Bound reported historical delivery facts without copying candidate text."""
+    capsules, matches, invocations = (audit.get(key, []) for key in ("capsules", "matches", "invocations"))
+    if (type(capsules) is not list or len(capsules) > 32
+            or type(matches) is not list or len(matches) > 32 * 16
+            or type(invocations) is not list or len(invocations) > 16):
+        return []
+    false_fields = ("current_sources_checked", "neural_inference_replayed", "proof_authority",
+        "formalization_authority", "execution_authority", "completion_authority",
+        "source_semantics_verified", "whole_program_semantics_verified")
+    digest_fields = ("expected_context_bundle_sha256", "dispatched_context_bundle_sha256",
+                     "worker_evidence_sha256")
+    fields = {"schema", "task_id", "task_cid", *digest_fields, "chunks", "source_files", "contexts",
+        "historical_receipt_bindings_verified", *false_fields, "source_obligations_discharged"}
+    context_fields = {"kind", "receipt_sha256", "summary_sha256", "source_hashes_sha256"}
+    kinds = ("source384-candidate-context", "numerical-formalization-context", "learned-numerical-selection-context")
+    digest = lambda value: type(value) is str and re.fullmatch(r"[a-f0-9]{64}", value) is not None
+    identity = lambda value: type(value) is str and re.fullmatch(r"[A-Za-z0-9_:./-]{1,512}", value) is not None
+    result = []
+    for capsule in capsules:
+        if type(capsule) is not dict:
+            continue
+        value = capsule.get("source_formalization_context")
+        if (type(value) is not dict or set(value) != fields
+                or value["schema"] != "terminal-historical-source-formalization-observation@1"
+                or not identity(capsule.get("capsule_id"))
+                or sum(type(row) is dict and row.get("capsule_id") == capsule["capsule_id"] for row in capsules) != 1
+                or any(not identity(value[key]) for key in ("task_id", "task_cid"))
+                or value["task_cid"] != capsule.get("task_cid")
+                or any(not digest(value[key]) for key in digest_fields)
+                or type(value["chunks"]) is not int or not 1 <= value["chunks"] <= 6
+                or type(value["source_files"]) is not int or not 0 <= value["source_files"] <= 768
+                or value["historical_receipt_bindings_verified"] is not True
+                or any(value[key] is not False for key in false_fields)
+                or type(value["source_obligations_discharged"]) is not int or value["source_obligations_discharged"] != 0):
+            continue
+        contexts = value["contexts"]
+        if (type(contexts) is not list or not 1 <= len(contexts) <= 3
+                or any(type(row) is not dict or set(row) != context_fields
+                    or row["kind"] not in kinds
+                    or any(not digest(row[key]) for key in context_fields - {"kind"}) for row in contexts)
+                or [row["kind"] for row in contexts] != [kind for kind in kinds if any(row["kind"] == kind for row in contexts)]):
+            continue
+        matched = []
+        for match in matches:
+            if type(match) is not dict or not identity(match.get("invocation_id")):
+                continue
+            checks = match.get("model_input_checks")
+            invocation = [row for row in invocations if type(row) is dict
+                          and row.get("invocation_id") == match["invocation_id"]]
+            if (capsule.get("all_context_checks_passed") is True
+                    and match.get("capsule_id") == capsule["capsule_id"]
+                    and digest(capsule.get("native_prompt_sha256"))
+                    and match.get("native_prompt_sha256") == capsule["native_prompt_sha256"]
+                    and type(capsule.get("native_prompt_bytes")) is int
+                    and type(match.get("native_prompt_bytes")) is int
+                    and 0 < match["native_prompt_bytes"] == capsule["native_prompt_bytes"] <= 262144
+                    and match.get("model_input_verified") is True
+                    and type(checks) is dict and checks.get("source_formalization_dispatch") is True
+                    and all(check is True for check in checks.values())
+                    and len(invocation) == 1 and invocation[0].get("native_input_verified") is True
+                    and invocation[0].get("model_input_verified") is True):
+                matched.append(match["invocation_id"])
+        result.append({**value, "contexts": [dict(row) for row in contexts],
+            "capsule_id": capsule["capsule_id"], "reported_model_input_verified": bool(matched),
+            "matched_invocation_ids": sorted(set(matched))})
+    return result
+
+
+def _audit_observation(report):
+    audit = _mapping(report.get("context_input_audit"))
+    return {
+        **{key: _text(audit.get(key)) for key in ("status", "reason", "error_type")},
+        **{key: _boolean(audit.get(key)) for key in (
+            "any_native_input_verified", "any_model_input_verified", "all_observed_coding_inputs_verified")},
+        **{key: _count(audit.get(key)) for key in ("coding_receipts_seen", "usable_coding_receipts")},
+        "seconds": _number(audit.get("seconds")),
+        "source_formalization": _formalization_audit_observations(audit),
+        "invocations": [{
+            **{key: _text(item.get(key)) for key in ("invocation_id", "status", "reason")},
+            **{key: _boolean(item.get(key)) for key in ("native_input_verified", "model_input_verified")},
+        } for item in audit.get("invocations", []) if isinstance(item, dict)][:16]
+            if isinstance(audit.get("invocations"), list) else [],
+        "task_correctness_established": False,
+    } if audit else None
+
+
+def _declared_output_observation(report):
+    """Retain closed byte facts separately from native settlement and reward."""
+    raw = _mapping(report.get("declared_output_observation"))
+    result = {"schema": "terminal-declared-output-observation@1", "status": "unavailable",
+        "reason": "not_recorded", "outputs": [], "observation_only": True,
+        "completion_authority": False, "settlement_authority": False,
+        "task_correctness_established": False, "patch_application_established": False,
+        "writer_identity_established": False}
+    if not raw:
+        return result
+    result["reason"] = "invalid_observation"
+    if (raw.get("schema") != result["schema"] or type(raw.get("status")) is not str
+            or raw["status"] not in {"observed", "partial", "unavailable"}):
+        return result
+    def digest(value, length=64):
+        return value if type(value) is str and re.fullmatch("[0-9a-f]{%d}" % length, value) else None
+    def file_fact(value):
+        value = _mapping(value)
+        unavailable = dict(status="unavailable", exists=None, size_bytes=None, sha256=None, equals_admitted_baseline=None)
+        if value.get("status") != "observed" or type(value.get("exists")) is not bool:
+            return unavailable
+        present = value["exists"]
+        size, hashed = _count(value.get("size_bytes")), digest(value.get("sha256"))
+        if (present and (size is None or size > 1_000_000 or hashed is None)
+                or not present and (value.get("size_bytes") is not None or value.get("sha256") is not None)):
+            return unavailable
+        return dict(status="observed", exists=present, size_bytes=size, sha256=hashed,
+            equals_admitted_baseline=_boolean(value.get("equals_admitted_baseline")))
+    rows = raw.get("outputs")
+    if type(rows) is not list or len(rows) > 32:
+        return result
+    paths = set()
+    try:
+        from ipfs_accelerate_py.agent_supervisor.runtime.local_planning_admission import _path
+        for row in rows:
+            if type(row) is not dict or type(row.get("path")) is not str or len(row["path"].encode()) > 1024:
+                raise ValueError("invalid output row")
+            path = _path(row["path"])
+            if path == "." or path in paths or row.get("effect") not in {"create", "modify", "delete"}:
+                raise ValueError("invalid output scope")
+            paths.add(path)
+            result["outputs"].append(dict(path=path, effect=row["effect"], baseline_sha256=digest(row.get("baseline_sha256")),
+                candidate=file_fact(row.get("candidate")), canonical=file_fact(row.get("canonical"))))
+    except (TypeError, ValueError):
+        result["outputs"] = []
+        return result
+    result.update(status=raw["status"], reason="reported_declared_byte_observation",
+        **{key: digest(raw.get(key)) for key in ("task_cid_sha256", "attempt_id_sha256", "invocation_id_sha256",
+            "allocation_path_sha256", "owner_events_sha256")}, baseline_commit=digest(raw.get("baseline_commit"), 40),
+        portal_attempt=_count(raw.get("portal_attempt")), original_allocation_inode_verified=False)
+    # Malformed individual facts cannot retain a blanket complete status.
+    if result["status"] == "observed" and (not rows or any(row[label]["status"] != "observed"
+            for row in result["outputs"] for label in ("candidate", "canonical"))):
+        result["status"] = "partial" if rows else "unavailable"
+    # This diagnostic is an enum, never exception text or an authority claim.
+    # Omit it for legacy receipts and inconsistent/nonfailure observations.
+    stage = raw.get("evidence_stage")
+    if (raw["status"] == "unavailable" and raw.get("reason") == "binding_or_file_evidence_unavailable"
+            and type(stage) is str and stage in DECLARED_OUTPUT_FAILURE_STAGES):
+        result["evidence_stage"] = stage
+    return result
+
+
+def _doctor_observation(report):
+    doctor = _mapping(report.get("doctor_dispatch"))
+    invocations = report.get("doctor_invocations")
+    invocations = invocations if isinstance(invocations, list) else []
+    observed = [item for item in invocations if isinstance(item, dict)
+        and item.get("schema") in {"native-doctor-candidate-materialization@1", "native-doctor-contract-candidate-materialization@1"}
+        and item.get("task_cid") == doctor.get("task_cid")]
+    return {
+        "route": _text(report.get("implementation_route")),
+        "status": _text(doctor.get("status")),
+        **{key: _count(doctor.get(key)) for key in (
+            "provider_calls", "residual_successors", "residual_work_proposals")},
+        "residual_context_prepared": bool(doctor.get("residual_context")) if doctor else None,
+        "observed_worker_receipts": len(observed) if isinstance(report.get("doctor_invocations"), list) else None,
+        "candidate_materializations_observed": sum(item.get("status") == "candidate_materialized" for item in observed)
+            if isinstance(report.get("doctor_invocations"), list) else None,
+        "selection_is_publication_or_completion_evidence": False,
+        "local_contract_proof_status": _text(_mapping(_mapping(doctor.get("contract_workflow")).get("proof")).get("status")),
+        "whole_program_proved": False,
+    }
+
+
+def _code_learning_observation(report):
+    initial = _mapping(report.get("initial_context"))
+    learner = _mapping(initial.get("codebase_autoencoder"))
+    if not learner:
+        return None
+    metrics = _mapping(learner.get("metrics"))
+    catalog = _mapping(initial.get("codebase_autoencoder_catalog"))
+    transfer = _mapping(learner.get("weight_transfer"))
+    security = _mapping(metrics.get("security_candidate_training"))
+    return {
+        **{key: _text(learner.get(key)) for key in (
+            "schema", "domain", "checkpoint_sha256", "receipt_sha256")},
+        **{key: _count(learner.get(key)) for key in ("sample_count", "epochs_completed")},
+        "training_elapsed_seconds": _number(learner.get("training_elapsed_seconds")),
+        "native_kernel_calls": _count(metrics.get("native_kernel_calls")),
+        "reconstruction_loss_before": _number(metrics.get("before_reconstruction_loss")),
+        "reconstruction_loss_after": _number(metrics.get("after_reconstruction_loss")),
+        "holdout_evaluated": _boolean(metrics.get("holdout_evaluated")),
+        "weight_transfer": {
+            **{key: _text(transfer.get(key)) for key in (
+                "source_checkpoint_sha256", "initializer_sha256", "runtime_validation_scope")},
+            "transferred_row_count": _count(transfer.get("transferred_row_count")),
+            "random_initialization": _boolean(_mapping(metrics.get("weight_transfer")).get("random_initialization")),
+            "legal_state_mutation_authorized": False,
+        } if transfer else None,
+        "canonical_cve_training": {
+            "manifest_sha256": _text(_mapping(learner.get("canonical_cve_training")).get("manifest_sha256")),
+            "sample_count": _count(security.get("sample_count")),
+            "training_bce_before": _number(_mapping(security.get("before")).get("training_bce")),
+            "training_bce_after": _number(_mapping(security.get("after")).get("training_bce")),
+            "holdout_evaluated": _boolean(security.get("holdout_evaluated")),
+            "classification_is_formal_translation": False,
+        } if security else None,
+        "task_candidate_rows": (len(_mapping(learner.get("security_candidate_nominations")).get("rows", []))
+            if learner.get("security_candidate_nominations") else None),
+        "catalog_status": _text(catalog.get("status")),
+        "new_training_steps_after_admission": _count(_mapping(report.get("context")).get("new_autoencoder_training_steps")),
+        "post_publication_status": _text(_mapping(report.get("post_publication_autoencoder")).get("status")),
+        "post_publication_freshness_checked": _boolean(_mapping(report.get("post_publication_autoencoder")).get("freshness_checked")),
+        "formal_translation_authority": False,
+        "reconstruction_improvement_is_security_accuracy": False,
+    }
+
+
+def _proof_index_observation(report):
+    refresh = _mapping(report.get("post_publication_proof_index"))
+    if not refresh:
+        return None
+    return {"status": _text(refresh.get("status")),
+        "active_receipts": len(refresh["active_receipt_ids"]) if isinstance(refresh.get("active_receipt_ids"), list) else None,
+        "invalidated_receipts": len(refresh["invalidated_receipt_ids"]) if isinstance(refresh.get("invalidated_receipt_ids"), list) else None,
+        "new_proof_authority": False}
+
+
+def _refresh_observation(report):
+    from .terminal_numerical_refresh_accounting import project as numerical_refresh_accounting
+    refresh = _mapping(report.get("post_publication_context"))
+    accounting = _mapping(refresh.get("embedding_accounting"))
+    complete = _boolean(accounting.get("all_refreshes_receipted"))
+    return {
+        **{key: _text(refresh.get(key)) for key in ("status", "reason", "error_type")},
+        **{key: _number(refresh.get(key)) for key in ("budget_seconds", "refresh_seconds")},
+        "embedding_calls": _count(refresh.get("embedding_calls")) if complete is True else None,
+        "learned_numerical_accounting": numerical_refresh_accounting(refresh.get("learned_numerical_accounting")),
+        "embedding_accounting": {
+            "all_refreshes_receipted": complete,
+            "totals": {key: _count(_mapping(accounting.get("totals")).get(key))
+                if complete is True else None for key in EMBEDDING_COUNTERS},
+            "known_subtotals": {key: _count(_mapping(accounting.get("known_subtotals")).get(key))
+                for key in EMBEDDING_COUNTERS},
+        },
+        "task_completion_is_context_refresh_evidence": False,
+    } if refresh else None
+
+
+def _sum(values):
+    values = list(values)
+    return sum(values) if values and all(value is not None for value in values) else None
+
+
+def _subtotal(values):
+    known = [value for value in values if value is not None]
+    return sum(known) if known else None
+
+
+def _grok_progress(raw):
+    value = raw.get("native_grok_progress")
+    if value is None:
+        return None
+    from ipfs_accelerate_py.cli_runtime.grok_stream_capture import validate_grok_stream_progress
+    try:
+        return validate_grok_stream_progress(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _uniform_boolean(values):
+    values = list(values)
+    return values[0] if values and type(values[0]) is bool and all(value is values[0] for value in values) else None
+
+
+def _invocations(report):
+    found = {}
+    rows = report.get("provider_invocations", [])
+    if not isinstance(rows, list):
+        raise ValueError("provider invocation receipts must be a list")
+    for raw in rows:
+        if (
+            not isinstance(raw, dict)
+            or not isinstance(raw.get("invocation_id"), str)
+            or not raw["invocation_id"]
+        ):
+            raise ValueError("provider invocation identity is required")
+        identity = raw["invocation_id"]
+        if identity in found:
+            if found[identity][0] != raw:
+                raise ValueError("conflicting provider invocation receipts")
+            continue
+        native = _mapping(raw.get("native_rollout_usage"))
+        observed = _tokens(native.get("usage"))
+        complete, scope, cache_included = native_usage_accounting.native_usage_contract(raw, native)
+        observed_cost = _number(native.get("dollar_cost"))
+        found[identity] = (
+            raw,
+            {
+                "invocation_id": _text(identity),
+                "phase": _text(raw.get("phase")),
+                "provider": _text(raw.get("provider")),
+                "model": _text(raw.get("model")),
+                "status": _text(raw.get("status")),
+                "error_type": _text(raw.get("error_type")),
+                "timeout_seconds": _number(raw.get("timeout_seconds")),
+                "seconds": _number(raw.get("seconds")),
+                "tokens": {key: value if complete is True else None for key, value in observed.items()},
+                "known_token_subtotals": observed,
+                "native_task_complete_observed": _boolean(native.get("task_complete_observed")),
+                "native_usage_complete_observed": complete,
+                "token_count_scope": scope,
+                "cache_included_in_input": cache_included,
+                "observed_counts_are_lower_bounds": scope == "native_session_cumulative",
+                "billing_total_verified": False,
+                "reported_cost_usd": observed_cost if complete is True else None,
+                "known_reported_cost_subtotal_usd": observed_cost,
+                "input_observation": _input_observation(raw),
+                "native_grok_progress": _grok_progress(raw),
+            },
+        )
+    return [item[1] for item in found.values()]
+
+
+def _interaction_observation(report, invocations):
+    """Recompute bounded native and helper observations from original receipts.
+
+    An existing producer summary is never an input. Modern Codex receipts must
+    reconcile native sessions; historical unlabelled sums remain descriptive.
+    """
+    raw = report.get("provider_invocations", [])
+    identified = any(("thread_id" in _mapping(item.get("native_rollout_usage"))
+        and (item.get("provider") == "codex_cli"
+             or _mapping(item.get("native_rollout_usage")).get("schema") == "native-codex-cumulative-usage@1"))
+        or (item.get("schema") == "router-implementation-invocation@1"
+            and _mapping(item.get("native_rollout_usage")).get("schema") == "native-codex-cumulative-usage@1")
+        for item in raw)
+    modern = any(item.get("schema") == "router-implementation-invocation@1"
+        and _mapping(item.get("native_rollout_usage")).get("schema") in {
+            "native-codex-cumulative-usage@1", "native-grok-final-usage@1"} for item in raw)
+    phases = {name: sum(item["phase"] == name for item in invocations) for name in ("planning", "coding")}
+    phase_coverage = dict(planning_invocations=phases["planning"], coding_invocations=phases["coding"],
+        unknown_phase_invocations=sum(item["phase"] not in phases for item in invocations),
+        planning_observed=bool(phases["planning"]), coding_observed=bool(phases["coding"]),
+        all_phase_calls_retained=None, whole_interaction_qualified=False)
+    context = accounting = None
+    pins = dict(native_session_accounting_source_sha256=None, context_delivery_observation_source_sha256=None)
+    if identified or modern:
+        accounting = dict(status="unavailable", reason="native_session_observation_unavailable",
+            complete_supplied_native_usage=False, complete_native_total_tokens=None,
+            campaign_call_population_complete=None, billing_total_verified=False,
+            token_savings_established=False, completion_authority=False)
+        try:
+            from ipfs_accelerate_py.agent_supervisor.runtime import context_delivery_accounting as core
+            from . import terminal_context_delivery_observation as delivery
+            pins = dict(native_session_accounting_source_sha256=hashlib.sha256(Path(core.__file__).read_bytes()).hexdigest(),
+                context_delivery_observation_source_sha256=hashlib.sha256(Path(delivery.__file__).read_bytes()).hexdigest())
+            context = delivery.collect(report=report)
+            accounting = context["native_invocations"]
+        except (ValueError, TypeError, KeyError, OSError, ImportError, OverflowError, RecursionError, UnicodeError):
+            context = dict(status="unavailable", reason="retained_interaction_observation_invalid",
+                observation_only=True, provider_usage_modified=False, billing_total_verified=False,
+                total_token_savings_measured=False, completion_authority=False, raw_content_exported=False)
+    return identified, accounting, context, phase_coverage, pins
+
+
+def _provider_receipt_collection_observation(value):
+    return native_usage_accounting.provider_receipt_collection_observation(value)
+
+
+def _usage_coverage_inputs(report):
+    """Derive local channel coverage without replacing native usage accounting."""
+    observation = dict(schema="terminal-supplied-usage-coverage-observation@1",
+        status="not_recorded", scope="supplied_local_receipt_channels_only",
+        semantic_decision_selected=False, semantic_decision_coverage=None,
+        semantic_decision_coverage_recomputed=False, provider_receipt_collection=None,
+        provider_receipt_collection_status="not_recorded", complete_usage_blocked=False,
+        campaign_usage_complete=None, whole_interaction_qualified=False,
+        stored_usage_summary_trusted=False, provider_collection_authenticated=False,
+        local_prompt_estimates_added=False, billing_total_verified=False,
+        execution_authority=False, completion_authority=False)
+    inputs = report
+    try:
+        from . import terminal_decision_usage_projection as decision
+        selected = decision.decision_usage_selected(report)
+        observation["semantic_decision_selected"] = selected
+        if selected:
+            rows, coverage = decision._accounting_inputs(report)
+            inputs = {**report, "provider_invocations": rows}
+            observation.update(status="observed", semantic_decision_coverage=coverage,
+                semantic_decision_coverage_recomputed=True,
+                complete_usage_blocked=coverage["authoritative_usage_coverage_complete"] is not True)
+    except (ValueError, TypeError, KeyError, OSError, ImportError, OverflowError, RecursionError, UnicodeError):
+        observation.update(status="unavailable", complete_usage_blocked=True,
+            reason="semantic_decision_coverage_inputs_unavailable")
+    if "provider_receipt_collection" in report:
+        collection = _provider_receipt_collection_observation(report["provider_receipt_collection"])
+        observation["provider_receipt_collection"] = collection
+        observation["provider_receipt_collection_status"] = "reported" if collection is not None else "invalid"
+        if collection is None or collection["complete"] is not True:
+            observation["complete_usage_blocked"] = True
+        elif observation["status"] == "not_recorded":
+            observation["status"] = "reported"
+    if observation["complete_usage_blocked"] and observation["status"] != "unavailable":
+        observation["status"] = "incomplete"
+    return inputs, observation, observation["complete_usage_blocked"]
+
+
+def _trial(receipt, raw, *, source):
+    baseline = receipt["schema"] == BASELINE
+    arm = "native-codex" if baseline else receipt["arm"]
+    durations = raw.get("seconds" if baseline else "durations_seconds") or {}
+    report = raw.get("supervisor") if not baseline else None
+    report = report if isinstance(report, dict) else {}
+    context = _mapping(report.get("context"))
+    doctor = _mapping(context.get("doctor_repair"))
+    initial = _mapping(report.get("initial_context"))
+    planning_index = _mapping(_mapping(report.get("planning")).get("initial_indexed_context"))
+    phases = _mapping(report.get("phases"))
+    exception = _text(raw.get("exception_type"))
+    rewards = raw.get("reward")
+    reward = _number(rewards.get("reward")) if isinstance(rewards, dict) else None
+    completed = report.get("task_completed") if type(report.get("task_completed")) is bool else None
+    if reward == 1:
+        outcome = "official_verifier_passed"
+    elif reward is not None:
+        outcome = "official_verifier_not_passed"
+    elif exception and not report and durations.get("agent_execution") is None:
+        outcome = "setup_or_environment_aborted"
+    elif exception or report.get("error"):
+        outcome = "failed_without_verifier_reward"
+    else:
+        outcome = "outcome_unknown"
+    usage_report, usage_coverage, usage_blocked = (_usage_coverage_inputs(report) if not baseline
+        else (report, None, False))
+    invocations = _invocations(usage_report) if not baseline else []
+    identified, session_accounting, delivery_observation, phase_coverage, accounting_pins = (
+        _interaction_observation(usage_report, invocations) if not baseline else
+        (False, None, None, None, {}))
+    unreceipted = bool(report.get("unreceipted_provider_attempt"))
+    baseline_identity = None
+    subtotal_basis = "reported_invocation_observations"
+    if baseline:
+        native = _mapping(raw.get("raw_usage"))
+        baseline_identity = _baseline_session_identity_observation(native)
+        population_invalid = (baseline_identity["status"] == "invalid"
+            or baseline_identity["modern_source"] and baseline_identity["usage_population_coherent"] is not True)
+        if population_invalid:
+            completion = False
+        elif baseline_identity["modern_source"]:
+            completion = _completion([_boolean(native.get("task_complete_observed")),
+                *(_boolean(row.get("task_complete_observed")) for row in native["sessions"])])
+        else:
+            completion = _baseline_completion(native)
+        subtotal = _tokens(native.get("usage"))
+        tokens = {key: value if completion is True else None for key, value in subtotal.items()}
+        sessions = native.get("sessions")
+        calls = (len(sessions) if isinstance(sessions, list) and sessions else None) if not population_invalid else None
+        cost_subtotal = _number(native.get("reported_cost_usd"))
+        cost = cost_subtotal if completion is True else None
+        cache_included, lower_bounds = True, not population_invalid
+        subtotal_basis = "raw_baseline_usage_unreconciled" if population_invalid else "reported_baseline_usage"
+    else:
+        completion = None if unreceipted else _completion(
+            row["native_usage_complete_observed"] for row in invocations)
+        subtotal = {key: _subtotal(row["known_token_subtotals"][key] for row in invocations) for key in TOKENS}
+        tokens = {
+            key: None if unreceipted else _sum(row["tokens"][key] for row in invocations)
+            for key in TOKENS
+        }
+        calls = len(invocations) if invocations and not unreceipted else None
+        cost = None if unreceipted else _sum(row["reported_cost_usd"] for row in invocations)
+        cost_subtotal = _subtotal(row["known_reported_cost_subtotal_usd"] for row in invocations)
+        cache_included = _uniform_boolean(row["cache_included_in_input"] for row in invocations)
+        lower_bounds = bool(invocations) and all(row["observed_counts_are_lower_bounds"] for row in invocations)
+    accounting_basis = "native_baseline_reported_session_totals" if baseline else "legacy_invocation_sum_unreconciled"
+    input_scope = "native_provider_categories"
+    cost_basis = "reported_native_costs" if baseline else "reported_invocation_costs_unreconciled"
+    if baseline and baseline_identity["status"] == "unverified":
+        accounting_basis = "legacy_baseline_identity_unverified"
+    elif baseline and population_invalid:
+        accounting_basis, cost_basis = "native_baseline_population_unreconciled", "raw_baseline_cost_subtotal_unreconciled"
+    reconciliation_available = bool(identified and session_accounting is not None
+        and session_accounting.get("schema") == "supervisor-context-delivery-summary@1")
+    shared_sessions = 0
+    if identified:
+        accounting_basis, input_scope = "native_session_reconciled", "native_input_including_cache"
+        complete_counts = _mapping(_mapping(session_accounting).get("complete_native_counts"))
+        known_counts = _mapping(_mapping(session_accounting).get("known_native_counter_subtotals"))
+        names = {"input_tokens": "input_tokens_including_cache", "cached_input_tokens": "cached_input_tokens",
+                 "output_tokens": "output_tokens", "total_tokens": "total_tokens"}
+        tokens = {key: complete_counts.get(name) for key, name in names.items()}
+        subtotal = {key: known_counts.get(name) for key, name in names.items()}
+        completion = _mapping(session_accounting).get("complete_supplied_native_usage") is True
+        sessions = _mapping(session_accounting).get("sessions", [])
+        shared_sessions = sum(session.get("identity_kind") == "native_session"
+            and len({session_accounting["observations"][index]["invocation_id"]
+                for index in session["observation_indices"]}) > 1 for session in sessions)
+        if shared_sessions or not completion:
+            cost = None
+            cost_basis = "raw_invocation_cost_subtotal_unreconciled"
+        else:
+            cost_basis = "reported_invocation_costs_with_native_session_token_accounting"
+        lower_bounds = bool(sessions) and all(session.get("identity_kind") == "native_session"
+            and session.get("provider") == "codex_cli" and session.get("status") != "conflict"
+            for session in sessions)
+    if usage_blocked:
+        tokens = dict.fromkeys(TOKENS)
+        completion, cost, calls = False, None, None
+        cost_basis = "raw_invocation_cost_subtotal_incomplete_receipt_coverage"
+    return {
+        "arm": arm,
+        "label": LABELS[arm],
+        "trial": _text(raw.get("trial")),
+        "source_receipts": [source],
+        "task": _text(receipt.get("task")),
+        "model": _text(receipt.get("model")),
+        "reasoning_effort": _text(receipt.get("reasoning_effort")),
+        "cli_version": _text(receipt.get("cli_version")),
+        "runtime_archive_sha256": _archive_digest(raw) if not baseline else None,
+        "original_task_inputs_unchanged": receipt.get("original_task_inputs_unchanged") is True,
+        "native_result_sha256": _text(
+            raw.get("result_sha256" if baseline else "native_result_sha256")
+        ),
+        "official_reward": reward,
+        "native_task_completed": completed,
+        "native_completion_applicable": not baseline,
+        "outcome": outcome,
+        "exception_type": exception,
+        "supervisor_error_type": _text((report.get("error") or {}).get("type")),
+        "durations_seconds": {key: _number(durations.get(key)) for key in PHASES},
+        "native_total_seconds": _number(raw.get("total_seconds")),
+        "supervisor_seconds": _number(report.get("seconds")),
+        "preparation_seconds": _number(phases.get("prepare_seconds")),
+        "context_seconds": _number(phases.get("context_seconds")),
+        "supervisor_phases_seconds": {key: _number(phases.get(key)) for key in SUPERVISOR_PHASES}
+            if not baseline else None,
+        "initial_indexed_context_observation": {
+            "prepared": bool(initial),
+            "learned_embeddings": _boolean(initial.get("learned_embeddings")),
+            **{key: _count(initial.get(key)) for key in (
+                "indexed_symbols", "full_capsules", "world_task_count", "provider_calls")},
+            "canonical_tasks_created": _boolean(initial.get("canonical_tasks_created")),
+            "supplied_to_planning_router": _boolean(planning_index.get("supplied_to_router")),
+            "planning_model_request_sha256": _text(_mapping(report.get("planning")).get("model_request_sha256")),
+            "summary_sha256": _text(planning_index.get("summary_sha256")),
+            "preparation_is_provider_dispatch_evidence": False,
+        } if not baseline else None,
+        "indexed_context_observation": {
+            "prepared": bool(context),
+            "learned_embeddings": _boolean(context.get("learned_embeddings")),
+            **{key: _number(context.get(key)) for key in (
+                "indexed_symbols", "native_fact_rows_replayed", "full_capsules",
+                "worker_capsules", "worker_semantic_bytes",
+            )},
+            "doctor_repair_status": _text(doctor.get("status")),
+            "initial_indexes_reused": _boolean(context.get("initial_indexes_reused")),
+            "new_embedding_calls": _count(context.get("new_embedding_calls")),
+            "context_preparation_is_dispatch_evidence": False,
+        } if not baseline else None,
+        "doctor_observation": _doctor_observation(report) if not baseline else None,
+        "code_learning_observation": _code_learning_observation(report) if not baseline else None,
+        "post_publication_proof_index": _proof_index_observation(report) if not baseline else None,
+        "context_input_audit": _audit_observation(report) if not baseline else None,
+        "declared_output_observation": _declared_output_observation(report) if not baseline else None,
+        "post_publication_context": _refresh_observation(report) if not baseline else None,
+        "provider_calls": calls,
+        "observed_provider_invocations": len(invocations) if not baseline else calls,
+        "unreceipted_provider_attempt": (True if type(report.get("unreceipted_provider_attempt")) is dict else
+            report.get("unreceipted_provider_attempt") if type(report.get("unreceipted_provider_attempt")) is bool else None)
+            if identified else unreceipted,
+        "native_usage_complete_observed": completion,
+        "cache_included_in_input": cache_included,
+        "observed_counts_are_lower_bounds": lower_bounds,
+        "billing_total_verified": False,
+        "tokens": tokens,
+        "known_token_subtotals": subtotal,
+        "known_token_subtotals_basis": subtotal_basis,
+        "native_token_accounting_basis": accounting_basis,
+        "input_token_scope": input_scope,
+        "native_session_reconciliation_available": reconciliation_available,
+        "native_session_accounting": session_accounting,
+        "baseline_native_session_identity_observation": baseline_identity,
+        "context_delivery_observation": delivery_observation,
+        "interaction_phase_coverage": phase_coverage,
+        "usage_coverage_observation": usage_coverage,
+        "whole_interaction_qualified": False,
+        "shared_native_session_count": shared_sessions,
+        **accounting_pins,
+        "reported_cost_usd": cost,
+        "known_reported_cost_subtotal_usd": cost_subtotal,
+        "reported_cost_accounting_basis": cost_basis,
+        "invocations": invocations,
+        "retained_trial": True,
+    }
+
+
+def _native_session_keys(row):
+    """Return content-free ownership keys from recomputed bounded projections."""
+    keys = set()
+    if row.get("arm") == "native-codex":
+        value = row.get("baseline_native_session_identity_observation")
+        if type(value) is not dict or set(value) != _BASELINE_IDENTITY_FIELDS:
+            return keys
+        count, identities = value["observed_session_count"], value["identity_sha256"]
+        if (value["schema"] != BASELINE_SESSION_IDENTITY_SCHEMA or value["provider"] != "codex_cli"
+                or type(value["status"]) is not str or type(value["reason"]) is not str
+                or value["status"] not in {"observed", "unverified", "invalid"}
+                or value["reason"] not in _BASELINE_IDENTITY_REASONS
+                or type(value["inventory_complete"]) is not bool or type(value["modern_source"]) is not bool
+                or value["usage_population_coherent"] is not None and type(value["usage_population_coherent"]) is not bool
+                or value["observation_only"] is not True
+                or any(value[field] is not False for field in ("source_authenticity_verified", "billing_total_verified", "completion_authority"))
+                or count is not None and (type(count) is not int or not 0 <= count <= BASELINE_SESSION_LIMIT)
+                or type(identities) is not list or len(identities) > BASELINE_SESSION_LIMIT
+                or any(type(identity) is not str or re.fullmatch(r"[0-9a-f]{64}", identity) is None for identity in identities)
+                or identities != sorted(set(identities))
+                or identities and (count is None or len(identities) > count)):
+            return keys
+        if value["status"] == "observed":
+            if (value["inventory_complete"] is not True or count in (None, 0) or len(identities) != count
+                    or value["reason"] != "native_session_inventory_observed"):
+                return keys
+        elif value["inventory_complete"] is not False:
+            return keys
+        if value["status"] == "unverified" and (identities or value["modern_source"] is not False
+                or value["reason"] != "historical_session_identity_not_recorded"
+                or value["usage_population_coherent"] is not None):
+            return keys
+        if (value["status"] == "invalid" and value["reason"] in {
+                "native_session_inventory_observed", "historical_session_identity_not_recorded"}
+                or value["modern_source"] is False and value["usage_population_coherent"] is not None):
+            return keys
+        return {("codex_cli", identity) for identity in identities}
+    if row.get("native_token_accounting_basis") == "native_session_reconciled":
+        accounting = _mapping(row.get("native_session_accounting"))
+        sessions = accounting.get("sessions")
+        if (accounting.get("schema") != "supervisor-context-delivery-summary@1"
+                or type(sessions) is not list or len(sessions) > BASELINE_SESSION_LIMIT):
+            return keys
+        for session in sessions:
+            if (type(session) is dict and session.get("identity_kind") == "native_session"
+                    and session.get("provider") == "codex_cli" and type(session.get("identity_sha256")) is str
+                    and re.fullmatch(r"[0-9a-f]{64}", session["identity_sha256"])):
+                keys.add(("codex_cli", session["identity_sha256"]))
+    return keys
+
+
+def _annotate_native_session_reuse(rows):
+    """Replace overlap annotations using all retained rows before filtering."""
+    native_owners = {}
+    populations = [_native_session_keys(row) for row in rows]
+    for ordinal, keys in enumerate(populations):
+        for key in keys:
+            native_owners.setdefault(key, set()).add(ordinal)
+    for row, keys in zip(rows, populations):
+        row["native_sessions_reused_across_comparison_trials"] = sorted({identity for provider, identity in keys
+            if len(native_owners[(provider, identity)]) > 1})
+    return rows
+
+
+def _aggregate(rows):
+    totals = {
+        "trials": len(rows),
+        "observed_official_passes": sum(row["official_reward"] == 1 for row in rows),
+        "unknown_reward_trials": sum(row["official_reward"] is None for row in rows),
+        "provider_calls": _sum(row["provider_calls"] for row in rows),
+        "tokens": {key: _sum(row["tokens"][key] for row in rows) for key in TOKENS},
+        "known_token_subtotals": {
+            key: _subtotal(row["known_token_subtotals"][key] for row in rows) for key in TOKENS
+        },
+        "unknown_token_trials": {
+            key: sum(row["tokens"][key] is None for row in rows) for key in TOKENS
+        },
+        "reported_cost_usd": _sum(row["reported_cost_usd"] for row in rows),
+        "known_reported_cost_subtotal_usd": _subtotal(row["known_reported_cost_subtotal_usd"] for row in rows),
+    }
+    native_owners = {}
+    for ordinal, row in enumerate(rows):
+        reused = row.get("native_sessions_reused_across_comparison_trials", [])
+        reused = reused if type(reused) is list and len(reused) <= BASELINE_SESSION_LIMIT else []
+        for key in _native_session_keys(row):
+            native_owners.setdefault(key, set()).add(ordinal)
+            if key[1] in reused:
+                native_owners[key].add(-1)
+    overlaps = sum(len(owners) > 1 for owners in native_owners.values())
+    totals.update(native_session_overlap_count=overlaps,
+        native_session_overlap_prevents_complete_total=bool(overlaps),
+        native_usage_complete_observed=False if overlaps else _completion(
+            row["native_usage_complete_observed"] for row in rows),
+        known_token_subtotals_basis=("per_trial_observations_unreconciled_across_shared_sessions" if overlaps
+            else "sum_of_per_trial_observations_including_unreconciled_baseline_usage"
+            if any(row.get("known_token_subtotals_basis") == "raw_baseline_usage_unreconciled" for row in rows)
+            else "sum_of_per_trial_accounting"),
+        known_reported_cost_subtotal_basis="raw_retained_invocation_observations_not_session_reconciled",
+        input_token_scope=(rows[0].get("input_token_scope") if rows
+            and all(row.get("input_token_scope") == rows[0].get("input_token_scope") for row in rows) else None),
+        native_token_accounting_basis=(rows[0].get("native_token_accounting_basis") if rows
+            and all(row.get("native_token_accounting_basis") == rows[0].get("native_token_accounting_basis") for row in rows)
+            else "mixed_or_unavailable_accounting_bases"), whole_interaction_qualified=False)
+    if overlaps:
+        # Distinct retained trials cannot charge the same cumulative session
+        # twice. Cross-trial sharing is unsupported; retain diagnostics only.
+        totals["tokens"] = dict.fromkeys(TOKENS)
+        totals["reported_cost_usd"] = None
+    unavailable = []
+    if totals["unknown_reward_trials"]:
+        unavailable.append("unknown_official_reward")
+    if not totals["observed_official_passes"]:
+        unavailable.append("no_official_passes")
+    token_reasons = unavailable + (["incomplete_native_token_usage"]
+                                  if totals["tokens"]["total_tokens"] is None else [])
+    cost_reasons = unavailable + (["incomplete_reported_provider_cost"]
+                                 if totals["reported_cost_usd"] is None else [])
+    if overlaps:
+        token_reasons.append("native_session_reused_across_retained_trials")
+        cost_reasons.append("native_session_reused_across_retained_trials")
+    totals["observed_efficiency"] = {
+        "schema": "terminal-observed-efficiency@1",
+        "numerator_scope": "all_retained_attempts_in_aggregate",
+        "denominator": "official_reward_equals_one",
+        "total_tokens_per_official_pass": (totals["tokens"]["total_tokens"]
+            / totals["observed_official_passes"] if not token_reasons else None),
+        "reported_cost_usd_per_official_pass": (totals["reported_cost_usd"]
+            / totals["observed_official_passes"] if not cost_reasons else None),
+        "token_ratio_unavailable_reasons": token_reasons,
+        "cost_ratio_unavailable_reasons": cost_reasons,
+        "token_count_basis": "sum_of_complete_reported_native_total_tokens",
+        "cache_included_in_input": _uniform_boolean(row["cache_included_in_input"] for row in rows),
+        "billing_total_verified": False,
+        "causal_claim": False,
+    }
+    return totals
+
+
+def collect(*, baseline: Path, supervisors: list[Path]) -> dict:
+    sources, rows, seen = [], [], {}
+    profile = None
+    baseline_controls = None
+    baseline_integrity = None
+    for index, path in enumerate([baseline, *supervisors]):
+        path = Path(path).resolve(strict=True)
+        raw = path.read_bytes()
+        if len(raw) > 64 * 1024 * 1024:
+            raise ValueError("receipt exceeds comparison input bound")
+        receipt = json.loads(raw)
+        expected = BASELINE if index == 0 else SUPERVISOR
+        if receipt.get("schema") != expected:
+            raise ValueError("comparison requires native baseline and supervisor receipts")
+        if not index:
+            baseline_controls = receipt.get("comparison_controls")
+            baseline_integrity = _boolean(receipt.get("original_task_inputs_unchanged"))
+            profile = tuple(
+                receipt.get(key) for key in ("task", "model", "reasoning_effort", "cli_version")
+            )
+        elif receipt.get("arm") not in ("full", "no-index"):
+            raise ValueError("unknown supervisor arm")
+        trials = receipt.get("trials")
+        if not isinstance(trials, list) or receipt.get("trial_count") != len(trials):
+            raise ValueError("receipt trial inventory is inconsistent")
+        source = {
+            "path": str(path),
+            "sha256": hashlib.sha256(raw).hexdigest(),
+            "trial_count": len(trials),
+            "invocation_seconds": _number(receipt.get("invocation_seconds")),
+        }
+        sources.append(source)
+        for trial in trials:
+            if (
+                not isinstance(trial, dict)
+                or not isinstance(trial.get("trial"), str)
+                or not trial["trial"]
+            ):
+                raise ValueError("retained native trial identity required")
+            row = _trial(receipt, trial, source=source)
+            row["reported_identity_matches"] = (
+                tuple(
+                    receipt.get(key) for key in ("task", "model", "reasoning_effort", "cli_version")
+                )
+                == profile
+            )
+            row["declared_controls_comparison"] = compare_controls(
+                baseline_controls, receipt.get("comparison_controls"))
+            row["comparison_profile_matches"] = row["declared_controls_comparison"]["matches"]
+            declared_identity = _mapping(_mapping(_mapping(receipt.get("comparison_controls")).get("declared")).get("identity"))
+            row["declaration_identity_matches_report"] = (
+                all(declared_identity.get(key) == receipt.get(key) for key in
+                    ("task", "model", "reasoning_effort", "cli_version")) if declared_identity else None)
+            if row["declaration_identity_matches_report"] is False:
+                row["comparison_profile_matches"] = False
+            if not row["reported_identity_matches"] or receipt.get("original_task_inputs_unchanged") is False:
+                row["comparison_profile_matches"] = False
+            if baseline_integrity is False:
+                row["comparison_profile_matches"] = False
+            elif row["comparison_profile_matches"] is True and (
+                baseline_integrity is not True or receipt.get("original_task_inputs_unchanged") is not True
+            ):
+                row["comparison_profile_matches"] = None
+            identity = (row["arm"], row["task"], row["trial"])
+            previous = seen.get(identity)
+            if previous:
+                if {key: value for key, value in previous.items() if key != "source_receipts"} != {
+                    key: value for key, value in row.items() if key != "source_receipts"
+                }:
+                    raise ValueError("conflicting retained trial identity")
+                previous["source_receipts"].append(source)
+            else:
+                seen[identity] = row
+                rows.append(row)
+    _annotate_native_session_reuse(rows)
+    unsuccessful = [
+        row for row in rows if row["outcome"] not in ("official_verifier_passed", "outcome_unknown")
+    ]
+    return {
+        "schema": "terminal-supervision-comparison@1",
+        "comparison_source_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
+        "native_usage_accounting_source_sha256": hashlib.sha256(Path(native_usage_accounting.__file__).read_bytes()).hexdigest(),
+        "sources": sources,
+        "rows": rows,
+        "retained_trial_count": len(rows),
+        "receipts_without_trials": [row for row in sources if not row["trial_count"]],
+        "arm_totals": {
+            arm: _aggregate([row for row in rows if row["arm"] == arm])
+            for arm in LABELS
+            if any(row["arm"] == arm for row in rows)
+        },
+        "unsuccessful_attempt_costs": {
+            arm: _aggregate([row for row in unsuccessful if row["arm"] == arm])
+            for arm in LABELS
+            if any(row["arm"] == arm for row in unsuccessful)
+        },
+        "benchmark_advantage_claimed": False,
+        "all_declared_controls_match": bool(rows) and all(
+            row["comparison_profile_matches"] is True for row in rows),
+        "runtime_control_enforcement_verified": False,
+        "causal_claim": False,
+        "unknown_fields_are_zero": False,
+        "cached_tokens_are_already_in_input": _uniform_boolean(row["cache_included_in_input"] for row in rows),
+        "provider_call_count_basis": "native CLI sessions for baseline; router invocations for supervisor; not internal model turns",
+        "dollar_cost_basis": "reported provider cost only; Harbor estimates excluded",
+        "notes": [
+            "Every supplied retained trial is shown, including setup aborts and unsuccessful planning or coding.",
+            "Per-pass ratios divide all retained attempt costs by official verifier passes; unknown rewards, incomplete required totals, or zero passes make the affected ratio unavailable. They are descriptive observations, not causal savings or verified billing.",
+            "No-index runs the native supervisor without an indexed context bundle; planning strategies may differ between workflows.",
+            "Native task completion and the independent original verifier reward are separate outcomes.",
+            "Known subtotals preserve observed failed-call costs when complete usage is unavailable.",
+            "Codex cumulative counters require native session completion; Grok final-envelope counters additionally require explicit usage completeness and coherent native categories. Unknown receipts retain observations only.",
+            "Grok final-envelope observations are not asserted to be cumulative lower bounds or complete whole-session billing; omitted completeness flags stay unknown.",
+            "Runtime archive hashes are reported from retained agent metadata; the comparison source hash identifies this reporting implementation separately.",
+            "Initial cold indexing, planning, Doctor and post-publication refresh are inside supervisor agent time; reported phases are observations, not added to total time or nested helper durations.",
+            "Prepared context, reported wire measurements, and independently reconstructed model inputs are separate observations; bytes do not establish token savings.",
+            "Identified Codex sessions are reconciled once per trial using original retained receipts; cross-trial session overlap withholds aggregate totals. Legacy invocation sums remain explicitly unreconciled.",
+            "Baseline session ownership uses exact declared native IDs, including valid observed IDs in incomplete inventories; artifact paths and hashes never substitute for IDs. Global overlap annotations are recomputed before filtering arms or unsuccessful attempts.",
+            "Current baseline receipts require a complete unique identity inventory, coherent per-session usage, and each session's completion. Historical receipts without IDs remain explicitly identity-unverified descriptive observations.",
+            "Reconciled trial input includes native cache categories; per-invocation and legacy observations retain their original provider categories. Prompt bytes and local tokenizer counts are never added to native usage.",
+            "Interaction phase coverage records observed planning and coding wrappers, not exhaustive campaign calls. Supplied producer summaries are not trusted as native usage or read-adoption evidence.",
+            "Selected semantic-decision coverage is reconstructed from retained attempts before native session accounting. Local receipt collection can withhold outer totals; complete supplied native-session counters remain separate from campaign completeness, which stays unknown.",
+            "A single-task pilot does not establish efficiency, parallelism, or benchmark superiority.",
+            "Matching declarations cover task bytes, timeouts, retries, resources and concurrency; they do not establish runtime enforcement. Legacy preparations without frozen controls remain unknown.",
+        ],
+    }
+
+
+def _cell(value):
+    if value is None:
+        return "unknown"
+    if isinstance(value, float):
+        return f"{value:.3f}"
+    return html.escape(str(value)).replace("|", "\\|").replace("\n", " ")
+
+
+def _token_cell(row, key):
+    value = row["tokens"][key]
+    if value is not None:
+        return value
+    observed = row["known_token_subtotals"][key]
+    prefix = "≥ " if row.get("observed_counts_are_lower_bounds") is True else ""
+    return f"{prefix}{observed} (observed)" if observed is not None else None
+
+
+def markdown(comparison: dict) -> str:
+    lines = [
+        "Retained pilot trials. These observations do not establish a benchmark advantage.",
+        "",
+        "Token cells marked ≥ are Codex cumulative lower bounds; complete totals remain unknown. Other cells marked observed do not assert a lower bound. Grok additionally requires explicit usage completeness. Verifier reward and supervisor task completion do not establish usage completeness or billing totals.",
+        "",
+        "| Arm | Trial | Reward | Native completion | Env setup s | Agent setup s | Agent s | Verifier s | Input | Cached | Output | Total | Outcome |",
+        "|---|---|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---|",
+    ]
+    for row in comparison["rows"]:
+        values = [
+            row["label"],
+            row["trial"],
+            row["official_reward"],
+            row["native_task_completed"] if row["native_completion_applicable"] else "N/A",
+            *(row["durations_seconds"][key] for key in PHASES),
+            *(_token_cell(row, key) for key in TOKENS),
+            row["outcome"],
+        ]
+        lines.append("| " + " | ".join(_cell(value) for value in values) + " |")
+    lines += [
+        "",
+        "Observed efficiency includes all retained attempts, including failures. Only official reward 1 counts as a pass. Unknown rewards, incomplete required totals, or zero passes leave the affected ratio unknown. These ratios do not establish causal token savings or verified billing.",
+        "",
+        "| Arm | All attempts | Official passes | Unknown rewards | Unknown token totals | Total tokens / official pass | Reported USD / official pass | Unavailable reasons |",
+        "|---|---:|---:|---:|---:|---:|---:|---|",
+    ]
+    for arm, totals in comparison["arm_totals"].items():
+        efficiency = totals["observed_efficiency"]
+        reasons = [*("tokens: " + reason for reason in efficiency["token_ratio_unavailable_reasons"]),
+                   *("cost: " + reason for reason in efficiency["cost_ratio_unavailable_reasons"])]
+        values = [LABELS[arm], totals["trials"], totals["observed_official_passes"],
+                  totals["unknown_reward_trials"], totals["unknown_token_trials"]["total_tokens"],
+                  efficiency["total_tokens_per_official_pass"],
+                  efficiency["reported_cost_usd_per_official_pass"], "; ".join(reasons)]
+        lines.append("| " + " | ".join(_cell(value) for value in values) + " |")
+    lines += ["", "Declared controls are checked separately from reported model identity. A match is a configuration comparison, not runtime enforcement or campaign qualification.", "",
+              "| Trial | Reported identity matches | Declared controls match | Differences |",
+              "|---|---|---|---|"]
+    for row in comparison["rows"]:
+        lines.append("| " + " | ".join(_cell(value) for value in (
+            row["trial"], row["reported_identity_matches"], row["comparison_profile_matches"],
+            ", ".join(row["declared_controls_comparison"]["differences"]))) + " |")
+    lines += [
+        "",
+        "Unsuccessful attempt costs are retained separately. Values below are observed subtotals; unknown calls or counters can make the actual total larger.",
+        "",
+        "| Arm | Unsuccessful trials | Known input | Known cached | Known output | Known total | Trials with unknown totals |",
+        "|---|---:|---:|---:|---:|---:|---:|",
+    ]
+    for arm, totals in comparison["unsuccessful_attempt_costs"].items():
+        values = [
+            LABELS[arm],
+            totals["trials"],
+            *(totals["known_token_subtotals"][key] for key in TOKENS),
+            totals["unknown_token_trials"]["total_tokens"],
+        ]
+        lines.append("| " + " | ".join(_cell(value) for value in values) + " |")
+    lines += [
+        "",
+        "Codex input includes cached tokens; Grok input excludes them. Each row retains native categories. Missing values remain unknown. Provider-reported dollar costs are unavailable when shown as null in JSON; estimated Harbor costs are excluded.",
+        "",
+        "No-index runs the native supervisor without an indexed context bundle; planning strategies may differ between workflows. Setup, agent execution, and verification remain separate timings.",
+    ]
+    supervised = [row for row in comparison["rows"] if row["native_completion_applicable"]]
+    calls = [(row, call) for row in supervised for call in row["invocations"]]
+    if calls:
+        lines += ["", "Provider invocation observations retain failure and timeout information independently of the eventual task outcome.", "",
+                  "| Trial | Invocation | Phase | Status | Error | Timeout s | Native session complete | Usage complete | Count scope | Input | Cached | Output | Total |",
+                  "|---|---|---|---|---|---:|---|---|---|---:|---:|---:|---:|"]
+        for row, call in calls:
+            values = [row["trial"], call["invocation_id"], call["phase"], call["status"],
+                call["error_type"], call["timeout_seconds"], call["native_task_complete_observed"],
+                call["native_usage_complete_observed"], call["token_count_scope"],
+                *(_token_cell(call, key) for key in TOKENS)]
+            lines.append("| " + " | ".join(_cell(value) for value in values) + " |")
+    archives = [row for row in supervised if row["runtime_archive_sha256"] is not None]
+    if archives:
+        lines += ["", "Runtime archive provenance is projected from retained agent metadata. The comparison implementation has its own source SHA256 in comparison.json; it may postdate these immutable runtimes.", "",
+                  "| Trial | Runtime archive SHA256 |", "|---|---|"]
+        for row in archives:
+            lines.append("| " + " | ".join(_cell(row[key]) for key in ("trial", "runtime_archive_sha256")) + " |")
+    if supervised:
+        lines += ["", "Supervisor phase observations are already inside agent time. Cold initial indexing is included; these values are not added to the total or to nested helper timings. Missing phases remain unknown.", "",
+                  "| Trial | Prepare s | Cold initial context s | Planning s | Admitted context s | Doctor s | Post-publication refresh s |",
+                  "|---|---:|---:|---:|---:|---:|---:|"]
+        for row in supervised:
+            values = [row["trial"], *(row["supervisor_phases_seconds"][key] for key in SUPERVISOR_PHASES)]
+            lines.append("| " + " | ".join(_cell(value) for value in values) + " |")
+    indexed = [row for row in comparison["rows"]
+               if (row.get("indexed_context_observation") or {}).get("prepared")]
+    if indexed:
+        lines += ["", "Indexed preparation is charged to agent time. These counts describe prepared context; they do not by themselves prove worker consumption or repair execution.", "",
+                  "| Trial | Initial indexes reused | Vector rows replayed | Full capsules | Worker capsules | Worker semantic bytes | Doctor eligibility status |",
+                  "|---|---|---:|---:|---:|---:|---|"]
+        for row in indexed:
+            context = row["indexed_context_observation"]
+            values = [row["trial"], context["initial_indexes_reused"], *(context[key] for key in (
+                "native_fact_rows_replayed", "full_capsules", "worker_capsules",
+                "worker_semantic_bytes", "doctor_repair_status"))]
+            lines.append("| " + " | ".join(_cell(value) for value in values) + " |")
+    if supervised:
+        lines += ["", "Doctor selection, worker materialization and context refresh remain separate from native completion and verifier reward. Embedding subtotals retain measured failed work when complete accounting is unavailable.", "",
+                  "| Trial | Implementation route | Doctor status | Worker materializations observed | Refresh status | Local embedding calls | Known local call subtotal |",
+                  "|---|---|---|---:|---|---:|---:|"]
+        for row in supervised:
+            doctor = row["doctor_observation"]
+            refresh = row["post_publication_context"] or {}
+            accounting = refresh.get("embedding_accounting", {})
+            values = [row["trial"], doctor["route"], doctor["status"], doctor["candidate_materializations_observed"],
+                refresh.get("status"), accounting.get("totals", {}).get("local_embedding_calls"),
+                accounting.get("known_subtotals", {}).get("local_embedding_calls")]
+            lines.append("| " + " | ".join(_cell(value) for value in values) + " |")
+        lines += ["", "Model-input audit reconstructs retained context and exact task-prompt bytes. It does not cover provider system context or establish task correctness.", "",
+                  "| Trial | Audit status | Any native input verified | Any model input verified | All observed coding inputs verified |",
+                  "|---|---|---|---|---|"]
+        for row in supervised:
+            audit = row["context_input_audit"] or {}
+            values = [row["trial"], *(audit.get(key) for key in (
+                "status", "any_native_input_verified", "any_model_input_verified", "all_observed_coding_inputs_verified"))]
+            lines.append("| " + " | ".join(_cell(value) for value in values) + " |")
+    inputs = [(row, call) for row in supervised for call in row["invocations"]
+              if any(call["input_observation"][key] is not None for key in (
+                  "native_prompt_bytes", "router_prompt_bytes", "model_prompt_bytes"))]
+    if inputs:
+        lines += ["", "Reported task-prompt sizes are bytes, not token savings. Router bytes include semantic translation and any Doctor residual advisory; model bytes also include the workspace instruction.", "",
+                  "| Trial | Invocation | Phase | Native bytes | Router bytes | Model bytes | Identifier mappings | Residual advisory bytes |",
+                  "|---|---|---|---:|---:|---:|---:|---:|"]
+        for row, call in inputs:
+            observed = call["input_observation"]
+            values = [row["trial"], call["invocation_id"], call["phase"],
+                *(observed[key] for key in ("native_prompt_bytes", "router_prompt_bytes", "model_prompt_bytes")),
+                (observed["semantic_translation"] or {}).get("identifier_mappings"),
+                (observed["doctor_residual_context"] or {}).get("advisory_bytes")]
+            lines.append("| " + " | ".join(_cell(value) for value in values) + " |")
+    if comparison["receipts_without_trials"]:
+        lines += [
+            "",
+            f"{len(comparison['receipts_without_trials'])} supplied receipts contained no native trial record; they remain listed in comparison.json.",
+        ]
+    return "\n".join(lines) + "\n"
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--baseline", type=Path, required=True)
+    parser.add_argument("--supervisor", type=Path, action="append", required=True)
+    parser.add_argument("--output", type=Path, required=True)
+    args = parser.parse_args()
+    output = args.output.absolute()
+    if output.exists() or output.resolve() != output:
+        raise ValueError("fresh exact comparison output directory required")
+    comparison = collect(baseline=args.baseline, supervisors=args.supervisor)
+    output.mkdir(parents=True)
+    (output / "comparison.json").write_text(json.dumps(comparison, sort_keys=True, indent=2) + "\n")
+    (output / "comparison.md").write_text(markdown(comparison))
+    print(
+        json.dumps(
+            {
+                "retained_trials": comparison["retained_trial_count"],
+                "benchmark_advantage_claimed": False,
+            }
+        )
+    )
+
+
+if __name__ == "__main__":
+    main()
