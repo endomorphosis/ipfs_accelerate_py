@@ -1749,7 +1749,8 @@ def test_source_generation_fifteen_preparation_does_not_inherit_five_file_activa
         authorization='approve_technical_source_generation_without_execution_budget',
         profile_ref=case['value']['profile_ref'], preparation_spec_ref=case['spec'])
     ref = _source_generation_canonical_DATA(case['root']/'unqualified-full-review.json', value)
-    with pytest.raises(ValueError, match='source_generation_physical_CLI4_coherent_transition_unqualified'):
+    # Supported @3 construction still supplies no coherent prior-profile join.
+    with pytest.raises(ValueError, match='^source_generation_prior_comparison_join$'):
         executor._source_generation_review(ref, value['profile_ref'], h._profile(value['profile_ref']), {})
 
 
@@ -1873,7 +1874,8 @@ def immutable_parent_source_generation_SDK_control_package_v2_DATA(tmp_path_fact
     from ipfs_accelerate_py.agent_supervisor.todo_daemon import engine
     put = _source_generation_canonical_DATA
     base = Path(tmp_path_factory.getbasetemp())
-    root = tmp_path_factory.mktemp('source-generation-immutable-parent-SDK-v2', numbered=False)
+    # Interleaved module selections may start a second fixture lifetime.
+    root = tmp_path_factory.mktemp('source-generation-immutable-parent-SDK-v2-' + os.urandom(8).hex(), numbered=False)
     assert root.parent == base and root.resolve(strict=True) == root
     assert not any(path.is_symlink() for path in (root, *root.parents))
     source_root = Path(owner.__file__).parents[3]
@@ -1940,7 +1942,8 @@ def immutable_parent_source_generation_A_qualification_package_v2_DATA(tmp_path_
     from ipfs_accelerate_py.agent_supervisor.todo_daemon import engine
     put = _source_generation_canonical_DATA
     base = Path(tmp_path_factory.getbasetemp())
-    root = tmp_path_factory.mktemp('source-generation-immutable-parent-A-v2', numbered=False)
+    # Keep each retained source package fresh without pytest's current symlink.
+    root = tmp_path_factory.mktemp('source-generation-immutable-parent-A-v2-' + os.urandom(8).hex(), numbered=False)
     assert root.parent == base and root.resolve(strict=True) == root
     assert not any(path.is_symlink() for path in (root, *root.parents))
     source_root = Path(owner.__file__).parents[3]
@@ -2078,7 +2081,7 @@ def test_source_generation_current_profile_has_three_distinct_explicit_contracts
     ('agent-supervisor/scientific-source-generation-current-v5-qualification@1', 'closed_v5_current_immutable_parent_Source'),
     ('agent-supervisor/scientific-source-generation-current-v5-qualification@2', 'closed_v5_current_Source'),
     ('agent-supervisor/scientific-source-generation-current-v5-qualification@2', 'closed_v5_current_immutable_Source'),
-    ('agent-supervisor/scientific-source-generation-current-v5-qualification@3', 'closed_v5_current_immutable_parent_Source'),
+    ('agent-supervisor/scientific-source-generation-current-v5-qualification@4', 'closed_v5_current_immutable_parent_Source'),
 ])
 def test_source_generation_current_profile_refuses_crossed_versions(schema, label):
     with pytest.raises(ValueError, match='source_generation_current_v5_profile_required'):
@@ -2234,3 +2237,803 @@ def test_source_generation_parent_profile_rejects_same_byte_other_R_role_identit
     with pytest.raises(ValueError, match='source_generation_v5_exact_roles_package_and_owning_tests_required'):
         executor._source_generation_qualification(changed, case['profile'], {pin['path']: pin for pin in case['packagepins']})
     assert not executor._source_generation_path(case['profile']).exists()
+
+
+# New test-only archived-DATA builder, copied from the current owning helper
+# _source_generation_immutable_qualification_v5_DATA (base lines 1289-1478).
+# Narrow changes: physical/canonical root parameters, four A body roles,
+# the independently authored nineteen-role owning node and new Main @3 label.
+# Existing helper/tests remain byte-for-byte untouched; these are fictional
+# files, never a genuine SDK/Source/Native/ordinary@2 qualification.
+def _comparison3_archived_qualification_DATA(case, immutable_source_generation_A_qualification_DATA,
+        *, delegated_parent=False, physical_datasets_root, canonical_datasets_root, raw_compile_fault=None):
+    """Fictional original current-v5 SDK records; genuine SDK readers, no mocks.
+
+    Every execution/Source/Native statement in these files is unit DATA only.
+    We call existing metadata validators, never original_runner_wait, a process
+    constructor, scheduler, service, Source lease or storage reservation.
+    """
+    from ipfs_accelerate_py.agent_supervisor.rescue import repair_candidate_owners as owner
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon import engine
+    import pytest as actual_pytest
+    assert delegated_parent is True  # This new builder never relabels an old fixture.
+    assert raw_compile_fault in (None,'missing_R_child_compile_hash','stale_R_child_compile_hash')
+    h=_source_generation_health;put=_source_generation_canonical_DATA
+    root=case['root']/('immutable-original-v5-rawcompile-fault-DATA' if raw_compile_fault is not None else 'immutable-original-v5-DATA');root.mkdir()
+    invocation=root/'invocation';invocation.mkdir()
+    control_name, frozen_sources, frozen_owning, frozen_manifest = immutable_source_generation_A_qualification_DATA
+    control = Path(control_name)
+    keys = ('path', 'bytes', 'sha256')
+    control_sources = [dict(zip(keys, values)) for values in frozen_sources]
+    owning = dict(zip(keys, frozen_owning))
+    control_manifest = dict(zip(keys, frozen_manifest))
+    node = owning['path'] + '::test_source_generation_nineteen_roles_DATA'
+    incoming_engine = next(pin for pin in control_sources if pin['path'].endswith('/todo_daemon/engine.py'))
+    incoming_owner = next(pin for pin in control_sources if pin['path'].endswith('/repair_candidate_owners.py'))
+    engine_ref = incoming_engine
+    datasets=Path(physical_datasets_root);canonical=Path(canonical_datasets_root);directory=datasets/'ipfs_datasets_py/optimizers/logic_theorem_optimizer'
+    required=set(owner._v5_lifecycle_owner_paths(datasets))
+    required.update(str(path) for path in (directory/'autoencoder_source_lease.py',directory/'autoencoder_resource_recovery.py',
+        directory/'runtime_telemetry.py',directory/'validation_pytest.py',directory/'__init__.py',
+        datasets/'ipfs_datasets_py/optimizers/__init__.py',datasets/'ipfs_datasets_py/__init__.py',
+        datasets/'ipfs_datasets_py/router_deps.py',datasets/'ipfs_datasets_py/ipfs_backend_router.py',
+        datasets/'ipfs_datasets_py/logic/__init__.py',datasets/'ipfs_datasets_py/logic/backends/process.py'))
+    dependencies=[]
+    for path in sorted(required):
+        path=Path(path)
+        if not path.exists():put(path,b'# explicit fictional original SDK dependency DATA\n')
+        dependencies.append(h.descriptor(path))
+    subjects=case['source_subjects'];package=case['packagepins'];parent_cli=subjects[-1]
+    child_subjects=[pin for pin in subjects if pin['path']!=parent_cli['path']]
+    candidate_root=Path(case['profile']['main_entrypoint']['path']).parents[3]
+    pytest_ref=owner.descriptor(Path(actual_pytest.__file__).absolute())
+    pytest_support=owner.descriptor(Path(actual_pytest.__file__).parent.parent/'_pytest/python.py')
+    original_controls={pin['path']:pin for pin in [*control_sources,parent_cli,
+        *[pin for pin in dependencies if Path(pin['path']).name in ('autoencoder_source_lease.py',
+              'autoencoder_resource_recovery.py','validation_run_resources.py')]]}
+    imports={pin['path']:pin for pin in [*dependencies,*subjects,pytest_support]}
+    validation=dict(ordinary_scratch_profile={'schema':'owned-validation-ordinary-scratch-live/v1'},
+        trusted_tests=[owning],selected_checks=[node],pytest_module=pytest_ref,import_sources=list(imports.values()),
+        attempt_root=str(case['proof']),cpu_slots=1,memory_mb=1536,storage_bytes=16*1024**2,
+        timeout_seconds=300,child_process_slots=4,scheduler_state_path=str(root/'scheduler.json'),
+        expected_scheduler_policy_sha256='f'*64,roots=[str(path) for path in case['named']],resource_ledger=str(case['ledger']))
+    policy=dict(schema=owner.POLICY_SCHEMA,validation=validation,python=str(Path(_source_generation_sys.executable).absolute()),
+        datasets_root=str(datasets),source_descriptors=list(original_controls.values()),adoption={},
+        control_release=dict(root=str(control),manifest=control_manifest))
+    manifest={str(Path(pin['path']).relative_to(candidate_root)):
+        dict(bytes=pin['bytes'],sha256=pin['sha256'],executable=False) for pin in package}
+    frozen=dict(schema='agent-supervisor/immutable-source-snapshot@1',
+        binding=dict(namespace='ptr_lane_0',board_id=owner.REPAIR_PROFILE,attempt_id=owner.digest(dict(schema='comparison3-archived-DATA-invocation/v1',invocation=str(invocation)))[:32]),
+        source_root=str(candidate_root),manifest=manifest,
+        source_commitment=owner.digest(dict(source_root=str(candidate_root),manifest=manifest)))
+    freeze_ref=put(root/'immutable-source-snapshot.json',frozen)
+    validation['source_qualification']=dict(schema='agent-supervisor/immutable-source-qualification@1',
+        snapshot=freeze_ref,required_source_bodies=sorted(subjects[:4],key=lambda pin:pin['path']))
+    if delegated_parent:
+        validation['source_qualification'].update(schema='agent-supervisor/immutable-source-qualification@2',
+            source_custody_mode='delegated-original-parent-read/v1')
+    policy_ref=put(root/'policy.json',policy)
+    # Existing metadata parser is used only within the real explicit archived
+    # SDK source capability. The default current-owner reader remains strict.
+    sdk_source=owner.authenticate_archived_v5_sdk_source(policy_ref)
+    try:assert owner.archived_v5_sdk_source_data(sdk_source)['producer_ref']==incoming_owner
+    finally:owner.close_archived_v5_sdk_source(sdk_source)
+    source_parent_context = None
+    if delegated_parent:
+        # Authored original-parent DATA. No process, FD, Git or Source owner is
+        # queried or instantiated to manufacture a live qualification here.
+        nonce = 'ab'*32
+        source_parent_context = dict(parent_identity=dict(pid=987654320,birth='12344'),
+            parent_nonce_sha256=hashlib.sha256(bytes.fromhex(nonce)).hexdigest(),
+            parent_source_observation_path=str(invocation/'parent-source-observation.json'),
+            execution_request_path=str(owner.validation_control_directory(policy,frozen,invocation)/'execution-request.json'),
+            source_root_bindings=[dict(physical_root=str(datasets),canonical_root=str(canonical)),
+                dict(physical_root=str(candidate_root),canonical_root=str(candidate_root))])
+    plan=owner.validation_plan(policy,policy_ref,frozen,freeze_ref,candidate_root,invocation,
+        **({'source_parent_context':source_parent_context} if delegated_parent else {}))
+    plan_ref=put(invocation/'validation-plan.json',plan)
+    request=owner.validation_execution_request(policy,plan,plan_ref)
+    local_request=put(invocation/'execution-request.json',request)
+    request_ref=owner.publish_validation_request(policy,frozen,invocation,local_request)
+    assert owner.original_execution_request(invocation)==request_ref
+    attempt=Path(request['attempt_directory']);assert not os.path.lexists(attempt)
+    attempt.mkdir(mode=0o700,parents=True)
+    for name in ('logs','exports'):(attempt/name).mkdir()
+    report=dict(schema=owner.WORK_SCHEMA,passed=True,source_READ_closed=True,source_snapshot_stable=True,
+        cleanup_errors=[],error=None,junit_error=None,guard_denials=[],plan_sha256=plan_ref['sha256'],
+        full_source_manifest_sha256=owner.digest(plan['source_pins']),full_source_file_count=len(plan['source_pins']),
+        pytest_module_origin=policy['validation']['pytest_module'],startup=dict(python=policy['python'],isolated=1,no_bytecode=True),
+        executed_source_buffers={pin['path']:pin['sha256'] for pin in child_subjects+[owning]},
+        phases=[dict(nodeid=node,when=when,outcome='passed')for when in ('setup','call','teardown')],collected_cases=[node],
+        source_qualification=validation['source_qualification'], required_source_bodies=plan['required_source_bodies'],
+        freeze=freeze_ref,source_commitment=frozen['source_commitment'],semantic_negative=False,negative_profile=None,
+        raw_compiled_sources={pin['path']:pin['sha256'] for pin in child_subjects+[owning]})
+    if delegated_parent:
+        parent_receipts = [dict(schema_version='autoencoder-source-lease/v1',canonical_root=row['canonical_root'],
+            cooperative=True,lock_path=str(Path(row['canonical_root'])/'workspace/control-plane/source-leases/source.lock'),
+            mode='read',waited_seconds=0.0) for row in source_parent_context['source_root_bindings']]
+        source_argv = [policy['python'],'-I','-B',parent_cli['path'],'--request',request_ref['path'],
+            '--expected-request-sha256',request_ref['sha256'],'--resource-ledger',validation['resource_ledger']]
+        observation = put(invocation/'parent-source-observation.json', dict(
+            schema='agent-supervisor/immutable-source-parent-observation@1',request=request_ref,
+            parent_identity=source_parent_context['parent_identity'],nonce=nonce,source_receipts=parent_receipts,
+            source_fds=[dict(root=row['canonical_root'],lock_path=receipt['lock_path'],fd=3+index,
+                device=123,inode=456+index) for index,(row,receipt) in enumerate(zip(
+                    source_parent_context['source_root_bindings'],parent_receipts,strict=True))],
+            sdk_argv=source_argv,source_root_bindings=source_parent_context['source_root_bindings']))
+        delegation = dict(source_custody_mode='delegated-original-parent-read/v1',
+            parent_source_observation=observation,parent_nonce_sha256=source_parent_context['parent_nonce_sha256'],
+            parent_identity=source_parent_context['parent_identity'],source_root_bindings=source_parent_context['source_root_bindings'])
+        report.update(delegation,schema='immutable-source-parent-delegated-validation@1',
+            source_READ_closed=False,source_READ_admission_complete=False)
+    if raw_compile_fault is not None:
+        # Authored before first report serialization, seal and verified summary.
+        target=next(pin for pin in child_subjects
+            if pin['path']==str(datasets/'ipfs_datasets_py/logic/backends/process.py'))
+        assert target not in validation['source_qualification']['required_source_bodies']
+        assert report['executed_source_buffers'][target['path']]==target['sha256']
+        assert report['raw_compiled_sources'][target['path']]==target['sha256']
+        if raw_compile_fault=='missing_R_child_compile_hash':
+            del report['raw_compiled_sources'][target['path']]
+        else:
+            assert target['sha256']!='0'*64
+            report['raw_compiled_sources'][target['path']]='0'*64
+    put(attempt/'exports/trusted-validation.json',report)
+    put(attempt/'exports/test-results.xml',b'<testsuites><testsuite tests="1" failures="0" errors="0" skipped="0"><testcase classname="fictional_owning_tests" name="test_source_generation_nineteen_roles_DATA"/></testsuite></testsuites>')
+    result=dict(schema='owned-validation-result/v1',completed=True,returncode=0,
+        request_sha256=request_ref['sha256'],executed_checks=[node])
+    result_ref=put(attempt/'logs/result.json',result);put(attempt/'logs/execution.json',result)
+    rows=[]
+    for path in sorted(attempt.rglob('*')):
+        if path.is_file():
+            pin=h.descriptor(path);info=path.lstat()
+            rows.append(dict(path=str(path.relative_to(attempt)),bytes=pin['bytes'],sha256=pin['sha256'],device=info.st_dev,inode=info.st_ino))
+    rid='9'*32;lease='8'*32;pid=987654321;birth='12345'
+    seal=put(attempt/'logs/validation-durability.json',dict(schema='owned-validation-durability/v1',
+        request_sha256=request_ref['sha256'],reservation_id=rid,result_sha256=result_ref['sha256'],files=rows))
+    total=sum(row['bytes']for row in rows)+seal['bytes'];info=attempt.lstat()
+    record=dict(status='released',artifacts_durable_asserted=True,validation_request_sha256=request_ref['sha256'],
+        owner_pid=pid,owner_birth=birth,native_lease_id=lease,reservation_id=rid,
+        attempt_directory=dict(path=str(attempt),device=info.st_dev,inode=info.st_ino),
+        final_attempt_bytes=total,final_total_charged_bytes=total,storage_bytes=16*1024**2,
+        final_accounting={'limit_bytes':250_000_000_000})
+    terminal=dict(result=result_ref['path'],reservation=dict(status='released',record=record,cleanup_error=None,ledger_path=str(case['ledger']),
+        resource_lease=dict(released=True,lease_id=lease,owner_pid=pid),storage_limit_bytes=250_000_000_000,
+        process_observation=dict(live_processes=0,out_of_group_live_identities=[],tracking_error='')))
+    terminal_ref=put(root/'original-terminal.json',terminal)
+    runner_identity=dict(pid=pid,birth=birth);deadline=1000.0
+    observed=dict(schema='command-execution-observation/v1',completion_kind='completed',process_pid=pid,
+        process_returncode=0,leader_waited=True,output_capture='complete',work_deadline_monotonic=970.0,
+        cleanup_deadline_monotonic=980.0,observed_at_monotonic=710.0)
+    execution=dict(schema='agent-supervisor/v5-runner-execution-observation@1',request=request_ref,engine_source=engine_ref,
+        exact_command_result=True,exact_execution_observation=True,execution_observation=observed,
+        public_returncode=0,actual_process_pid=pid,actual_process_returncode=0,actual_Popen_returned=True,
+        spawn_attempted=True,process_count=1,runner_identity=runner_identity,identity_observation_error=None,
+        engine_returned=True,engine_started_at_monotonic=700.0,engine_finished_at_monotonic=720.0,
+        spawn_returned_at_monotonic=702.0,identity_observed_at_monotonic=704.0,
+        authority_deadline_monotonic=deadline,work_deadline_monotonic=970.0,cleanup_deadline_monotonic=980.0,
+        requested_nominal_window_seconds=300,window_scope='fictional-original-window',
+        source_closed=False,native_closed=False,storage_release_authorized=False,retry_authorized=False)
+    execution_ref=put(invocation/'runner-execution-observation.json',execution)
+    original_argv=[policy['python'],'-I','-B',parent_cli['path'],'--request',request_ref['path'],
+        '--expected-request-sha256',request_ref['sha256'],'--resource-ledger',validation['resource_ledger']]
+    wait=dict(request=request_ref,original_process_owner_returned=True,returncode=0,stdout=json.dumps(terminal),argv=original_argv,
+        actual_Popen_returned=True,actual_process_waited=True,actual_process_returncode=0,
+        runner_identity=runner_identity,engine_source=engine_ref,execution_observation=execution_ref)
+    wait_ref=put(invocation/'runner-wait.json',wait)
+    # Genuine saved-DATA verifier supplies the exact summary; no custody API is invoked.
+    summary=owner.verify_validation_evidence(policy,plan,request_ref,terminal,invocation)
+    custody=dict(schema='agent-supervisor/v5-validation-parent-source-custody@2',closure_kind='existing_verified_success',
+        storage_status='released',source_closed=True,native_closed=True,storage_release_authorized=False,retry_authorized=False,
+        original_wait=wait_ref,verified_checks=summary,source_receipts=[dict(schema_version='autoencoder-source-lease/v1',canonical_root=source_root,cooperative=True,
+            lock_path=str(Path(source_root)/'workspace/control-plane/source-leases/source.lock'),mode='read',waited_seconds=0.0)
+            for source_root in (str(canonical),str(candidate_root))],
+        authority_deadline_monotonic=deadline,execution_observation=execution_ref,
+        source_exit_finished_at_monotonic=730.0,work_deadline_monotonic=970.0,cleanup_deadline_monotonic=980.0)
+    if delegated_parent:
+        custody.update(delegation)
+    parent=put(invocation/'parent-source-closeout.json',dict(schema='agent-supervisor/v5-validation-parent-source-closeout@2',
+        request=request_ref,original_wait=wait_ref,producer=incoming_owner,parent_source_custody=custody))
+    qualification=put(root/'current-v5-source-qualification.json',dict(
+        schema='agent-supervisor/scientific-source-generation-current-v5-qualification@3',
+        qualification_profile=('closed_v5_current_immutable_parent_Source' if delegated_parent else 'closed_v5_current_immutable_Source'),
+        qualification_owner_source_ref=incoming_owner,policy_ref=policy_ref,plan_ref=plan_ref,request_ref=request_ref,
+        terminal_ref=terminal_ref,parent_source_closeout_ref=parent,invocation_root=str(invocation),owning_test_root=str(control),
+        required_raw_subjects=subjects,source_inventory_subjects=package,owning_test_sources=[owning],
+        expected_function_case_counts={node:1},runtime_activation_or_task_authority=False))
+    case['qualification']=qualification
+    case['v5']=dict(root=root,invocation=invocation,attempt=attempt,qualification=qualification,request=request_ref,
+        plan=plan_ref,policy=policy_ref,parent=parent,terminal=terminal_ref,owning=owning,wait=wait_ref,report=report)
+    return case
+
+
+# Test-only fictional comparison@3 inputs. No historical/private Python is imported.
+def _comparison3_template_DATA(seed, plan, request, links):
+    put = _source_generation_canonical_DATA
+    plan_ref = put(seed/'plan.json', plan)
+    request = _source_generation_copy.deepcopy(request)
+    request['argv'][request['argv'].index('--plan')+1] = plan_ref['path']
+    request['argv'][request['argv'].index('--plan-sha256')+1] = plan_ref['sha256']
+    request['source_sha256'][plan_ref['path']] = plan_ref['sha256']
+    request_ref = put(seed/'request.json', request)
+    return put(seed/'template.json', dict(schema=executor.TEMPLATE_SCHEMA,
+        kind='genuine_scoped_idle', seed_root=str(seed), plan_ref=plan_ref,
+        request_ref=request_ref, links=links))
+
+
+@pytest.fixture
+def comparison3_archived_review_DATA(immutable_parent_source_generation_qualification_DATA,
+        immutable_parent_source_generation_A_qualification_package_v2_DATA, monkeypatch):
+    """Construct new nineteen-role DATA; never relabel the old seven-role records.
+
+    The old complete archived review is a healthy control. The new SDK records
+    are authored fictional DATA checked by the same generic metadata readers;
+    they are not a real process/Source/Native/ordinary@2 qualification.
+    """
+    h = _source_generation_health; put = _source_generation_canonical_DATA
+    original = immutable_parent_source_generation_qualification_DATA
+    def forbidden(*_, **__):
+        raise AssertionError('comparison3 fictional review cannot issue, dispatch or launch custody')
+    monkeypatch.setattr(executor.subprocess, 'Popen', forbidden)
+    monkeypatch.setattr(h, '_manager', forbidden)
+    monkeypatch.setattr(executor, 'authorize_closed_capacity_source_generation', forbidden)
+    healthy_spec = dict(h._document(original['spec']), profile_ref=original['profile_ref'],
+                        source_commitment_ref=original['commitment'])
+    healthy_ref = put(original['root']/'comparison3-healthy-legacy-spec.json', healthy_spec)
+    healthy = executor._source_generation_review(healthy_ref, original['profile_ref'],
+                                                original['profile'], original['config'])
+    try:
+        assert healthy['source']['source_qualification'] == original['qualification']
+        assert len(h._document(original['qualification'])['required_raw_subjects']) == 7
+        assert healthy['policy']['execution_budget_created'] is False
+        assert healthy['policy']['hold_removal_authorized'] is False
+    finally:
+        h.close_historical_source_witness(healthy['witness'])
+    assert not executor._source_generation_path(original['profile']).exists()
+
+    def build(prior_cli):
+        assert prior_cli in ('prior_CLI2', 'prior_CLI3')
+        root = original['root']/('comparison3-'+prior_cli+'-fictional-DATA'); root.mkdir()
+        physical = root/'physical-datasets'; canonical = original['named'][0].parents[1]
+        binding = dict(physical_root=str(physical), canonical_root=str(canonical))
+        prior = _source_generation_copy.deepcopy(original['prior'])
+        replacements = []
+        for row in original['replacements']:
+            relative = Path(row['before_ref']['path']).relative_to(canonical)
+            replacements.append(dict(row, after_ref=put(physical/relative, h._bound(row['after_ref']))))
+        # Independent explicit population, matching the retained constructor fixture.
+        relatives = ('ipfs_datasets_py/__init__.py', 'ipfs_datasets_py/ipfs_backend_router.py',
+            'ipfs_datasets_py/logic/__init__.py', 'ipfs_datasets_py/optimizers/__init__.py',
+            'ipfs_datasets_py/optimizers/logic_theorem_optimizer/__init__.py',
+            'ipfs_datasets_py/optimizers/logic_theorem_optimizer/existing_resource_scheduler.py',
+            'ipfs_datasets_py/optimizers/logic_theorem_optimizer/proof_resource_safety.py',
+            'ipfs_datasets_py/optimizers/logic_theorem_optimizer/resource_scheduler.py',
+            'ipfs_datasets_py/optimizers/logic_theorem_optimizer/runtime_telemetry.py',
+            'ipfs_datasets_py/router_deps.py')
+        relocations = []
+        for relative in relatives:
+            path = canonical/relative
+            before = h.descriptor(path) if path.exists() else put(path, b'# unchanged dependency DATA\n')
+            slot = len(prior['source_descriptors']); prior['source_descriptors'].append(before)
+            relocations.append(dict(slot=slot, before_ref=before,
+                                    after_ref=put(physical/relative, h._bound(before))))
+        allrows = sorted(replacements+relocations, key=lambda row:row['slot'])
+        normal = physical/'ipfs_datasets_py/logic/backends'; info = normal.lstat()
+        assert not (normal/'__init__.py').exists()
+        physical_profile = dict(schema='native-embedded-physical-R-source@1', source_root_binding=binding,
+            source_descriptors=sorted([row['after_ref'] for row in allrows], key=lambda pin:pin['path']),
+            normal_namespace_profiles=[dict(fullname='ipfs_datasets_py.logic.backends',path=str(normal),
+                device=info.st_dev,inode=info.st_ino,initializer_absent=True)])
+
+        # A fresh sealed A population retains genuine SDK source bytes and adds
+        # explicitly fictional new owner/driver/guard/observer/import-role bodies.
+        oldcontrol, frozen_sources, _, _ = immutable_parent_source_generation_A_qualification_package_v2_DATA
+        oldcontrol = Path(oldcontrol); control = root/'new-A-epoch'; keys=('path','bytes','sha256')
+        sources = [put(control/Path(dict(zip(keys,pin))['path']).relative_to(oldcontrol),
+                       h._bound(dict(zip(keys,pin)))) for pin in frozen_sources]
+        extras = ('ipfs_accelerate_py/agent_supervisor/rescue/original_embedded_observation_owner.py',
+            'ipfs_accelerate_py/agent_supervisor/rescue/native_embedded_observation_driver.py',
+            'ipfs_accelerate_py/agent_supervisor/rescue/project_import_source_guard.py',
+            'ipfs_accelerate_py/agent_supervisor/todo_daemon/__init__.py',
+            'ipfs_accelerate_py/agent_supervisor/todo_daemon/native_owner_bootstrap.py',
+            'ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py',
+            'ipfs_accelerate_py/agent_supervisor/task_sources/__init__.py',
+            'ipfs_accelerate_py/agent_supervisor/task_sources/database_task_source.py',
+            'ipfs_accelerate_py/agent_implementation_route.py')
+        sources += [put(control/relative, ('# fictional new A role: '+relative+'\n').encode())
+                    for relative in extras]
+        owning = put(control/'tests/fictional_owning_tests.py',
+            b'def test_source_generation_nineteen_roles_DATA():\n    pass\n')
+        package = sources+[owning]
+        from ipfs_accelerate_py.agent_supervisor.rescue import repair_candidate_owners as owner
+        manifest = put(control/'source-manifest.json', dict(schema=owner.CONTROL_SCHEMA,
+            root=str(control),files=sorted(package,key=lambda pin:pin['path']),namespace_profiles=[]))
+        bundle = (str(control),tuple(tuple(pin[k] for k in keys) for pin in sources),
+                  tuple(owning[k] for k in keys),tuple(manifest[k] for k in keys))
+        roles = {name:next(pin for pin in package if Path(pin['path']).name==filename)
+            for name,filename in (('main_entrypoint','scientific_executor.py'),
+                ('health_module','native_executor_health.py'),('owner_source','original_embedded_observation_owner.py'),
+                ('driver_source','native_embedded_observation_driver.py'))}
+        parser = next(pin for pin in package if Path(pin['path']).name=='native_catalogue_probe.py')
+        guard = next(pin for pin in package if Path(pin['path']).name=='project_import_source_guard.py')
+        observer = next(pin for pin in package if Path(pin['path']).name=='native_owner_bootstrap.py')
+        old_A = Path(prior['owner_source']['path']).parents[3]
+        old_guard = put(old_A/'ipfs_accelerate_py/agent_supervisor/rescue/project_import_source_guard.py',
+                        b'# fictional prior guard DATA\n')
+        old_observer = put(old_A/'ipfs_accelerate_py/agent_supervisor/todo_daemon/native_owner_bootstrap.py',
+                           b'# fictional prior observer DATA\n')
+        old_A_pins=[]
+        for pin in package:
+            path=old_A/Path(pin['path']).relative_to(control)
+            old_A_pins.append(h.descriptor(path) if path.exists() else put(path,h._bound(pin)))
+        selected_paths={pin['path']for pin in prior['source_descriptors']}
+        prior['source_descriptors'] += [pin for pin in old_A_pins if pin['path'] not in selected_paths]
+        # Closed fictional CLI3 metadata, never an acquired archive or Git claim.
+        capsule_root=original['proof']/('f'*64)
+        capsule_root.mkdir(exist_ok=True)
+        runner=put(capsule_root/'ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py',
+                   b'# fictional retained runner source DATA\n')
+        accepted=dict(schema='ipfs_accelerate_py.agent_supervisor.accepted-control-plane@2',
+            runner_path=runner['path'],runner_sha256='sha256:'+runner['sha256'],
+            capsule_root=str(capsule_root),capsule_id='sha256:'+'f'*64,
+            source_head='a'*40,source_tree='b'*40,archive_sha256='sha256:'+'e'*64)
+        retained_manifest=put(capsule_root/'.agent-control-plane-manifest.json',dict(
+            schema='ipfs_accelerate_py.agent_supervisor.materialized-control-plane@1',
+            source_head='a'*40,source_tree='b'*40,capsule_id=accepted['capsule_id'],
+            files={'ipfs_accelerate_py/agent_supervisor/runtime/grok_cli_runner.py':accepted['runner_sha256']}))
+        retained_commitment=put(root/'prior-capsule-source-commitment-DATA.json',dict(
+            schema='legal-ir-scientific-source-commitment/v1',source_root=str(old_A),
+            source_commit='a'*40,source_tree='b'*40,runtime_activation_or_task_authority=False))
+        capsule=put(root/'prior-capsule-binding-DATA.json',dict(
+            schema='agent-supervisor/scientific-source-capsule-reuse@1',accepted_pin=accepted,
+            manifest_ref=retained_manifest,source_commitment_ref=retained_commitment))
+        capsule_pins=[capsule,retained_manifest,retained_commitment] if prior_cli=='prior_CLI3' else []
+        database = put(root/'fictional-database-preimage.DATA',b'fictional immutable DB preimage\n')
+        old_source = [row['before_ref'] for row in allrows]
+        new_source = [row['after_ref'] for row in allrows]
+        def plan(seed, *, current):
+            Aroot = control if current else old_A
+            selected = (new_source+package if current else old_source+old_A_pins)+capsule_pins
+            route=next(pin for pin in (package if current else old_A_pins)
+                       if pin['path']==str(Aroot/'ipfs_accelerate_py/agent_implementation_route.py'))
+            sql=('0001_control_plane.sql','0002_causal_event_federation_core.sql',
+                 '0003_state_server_restart_identity.sql','0004_hash_observations.sql','0005_tasks_index_repair.sql')
+            head_rows=[dict(relative_path=str(Path(pin['path']).relative_to(Aroot)),bytes=pin['bytes'],
+                object_id=hashlib.sha1(b'blob '+str(pin['bytes']).encode()+b'\0'+h._bound(pin)).hexdigest())
+                for pin in (package if current else old_A_pins)
+                if (Aroot/'ipfs_accelerate_py') in Path(pin['path']).parents]
+            head_rows += [dict(relative_path='ipfs_accelerate_py/agent_supervisor/task_sources/sql/'+name,
+                bytes=0,object_id=hashlib.sha1(b'blob 0\0').hexdigest())for name in sql]
+            head=dict(source_root=str(Aroot),source_head='a'*40,route_source=route,
+                ls_tree_tail=['ls-tree','-r','-z','a'*40,'--','ipfs_accelerate_py',
+                    'scripts/ops/agent_supervisor/configured_board_scheduler.py',
+                    'scripts/ops/agent_supervisor/implementation_supervisor_entry.py'],
+                scope='read-only normal import checks clean HEAD/tree without archiving a control-plane capsule; implementation is forbidden',
+                blobs=head_rows,required_relative_files=[row['relative_path']for row in head_rows],
+                selected_file_count=len(head_rows),unique_blob_count=len({row['object_id']for row in head_rows}),
+                payload_bytes=sum(row['bytes']for row in head_rows))
+            command = dict(schema=('native-embedded-scoped-observation-cli/v4' if current else
+                'native-embedded-scoped-observation-cli/v'+prior_cli[-1]),runtime_root=str(Aroot),
+                cwd=str(canonical),attempt_directory=str(seed/'attempt'),temporary_directory=str(seed/'attempt/temporary'),
+                result_path=str(seed/'attempt/exports/native-cli-driver-result.json'),
+                source_sha256={pin['path']:pin['sha256'] for pin in selected},
+                project_import_plan=dict(accelerate_root=str(Aroot),datasets_root=str(physical if current else canonical),
+                    publication_root=str(physical if current else canonical),source_pins=selected),
+                pre_body_guard=guard if current else old_guard,
+                observation_binding=dict(schema='native-embedded-daemon-observation-binding@1',database_preimage=database,
+                    task_scope=list(prior['task_scope']),plan_root_cid='fictional:plan',repository_tree_id='fictional:tree',
+                    source_schema='fictional:source',observer_source=observer if current else old_observer),
+                import_head_capsule_Git=head)
+            if current: command['physical_source_profile']=physical_profile
+            elif prior_cli=='prior_CLI3':
+                command['source_capsule_ref']=capsule
+                command['source_sha256'][capsule['path']]=capsule['sha256']
+            return dict(schema='native-embedded-scoped-observation-plan/v1',
+                operation='native_embedded_scoped_observation_v1',accelerate_root=str(Aroot),
+                task_scope=list(prior['task_scope']),native_metadata_cli=command)
+        links=dict(execution_request='attempt/execution-request.json',result='attempt/result.json',origins='attempt/origins.json')
+        oldseed=original['proof']/(root.name+'-prior-unissued');newseed=original['proof']/(root.name+'-current-unissued')
+        request_base = dict(original['request'])
+        request_base['cwd'] = str(canonical)
+        request_base['source_sha256']={pin['path']:pin['sha256'] for pin in old_source+old_A_pins+capsule_pins}
+        request_base['argv']=[prior['unit']['argv'][0],'-B',prior['driver_source']['path'],
+                              '--plan','unbound-plan','--plan-sha256','0'*64]
+        request_base['attempt_directory']=str(oldseed/'attempt')
+        if prior_cli=='prior_CLI3':request_base['source_sha256'][capsule['path']]=capsule['sha256']
+        oldtemplate=_comparison3_template_DATA(oldseed,plan(oldseed,current=False),request_base,links)
+        current_request=executor.relocate(request_base,oldseed,newseed)
+        current_request['argv'][2]=roles['driver_source']['path']
+        current_request['source_sha256']={pin['path']:pin['sha256'] for pin in new_source+package+capsule_pins}
+        newtemplate=_comparison3_template_DATA(newseed,plan(newseed,current=True),current_request,links)
+        prior_config=dict(original['config'],profile_path=str(root/'prior-profile.json'),idle_template_ref=oldtemplate)
+        prior_config_ref=put(root/'prior-config.json',prior_config)
+        oldconfig_path=prior['unit']['argv'][prior['unit']['argv'].index('--config')+1]
+        prior['source_descriptors']=[prior_config_ref if pin['path']==oldconfig_path else pin
+                                    for pin in prior['source_descriptors']]
+        prior['unit']['argv'][prior['unit']['argv'].index('--config')+1]=prior_config_ref['path']
+        prior['unit']['argv'][prior['unit']['argv'].index('--config-sha256')+1]=prior_config_ref['sha256']
+        prior['cycle_contract']=dict(plan_schema='native-embedded-scoped-observation-plan/v1',
+                                    plan_operation='native_embedded_scoped_observation_v1')
+        prior_ref=put(root/'prior-profile.json',prior);snapshot=put(root/'prior-profile-snapshot.json',h._bound(prior_ref))
+        stage=_source_generation_copy.deepcopy(prior)
+        for row in allrows:stage['source_descriptors'][row['slot']]=row['after_ref']
+        prep=put(root/'preparation.json',dict(schema='agent-supervisor/scientific-idle-source-preparation@3',
+            prior_profile_ref=prior_ref,prior_profile_snapshot_ref=snapshot,profile_ref=put(root/'stage-profile.json',stage),
+            replacements=replacements,source_root_binding=binding,source_relocations=relocations,
+            physical_source_profile=physical_profile))
+        comparison=executor.prepare_idle_source_replacement(prep)
+        assert comparison['raw_inverse_verified'] is True and comparison['changed_source_count']==5
+        assert comparison['relocated_source_count']==15 and comparison['authority_granted'] is False
+        profile=_source_generation_copy.deepcopy(stage);profile.update(roles)
+        profile['receipt_path']=str(original['proof']/(root.name+'-health-UNISSUED.json'))
+        config=dict(original['config'],profile_path=str(root/'current-profile.json'),idle_template_ref=newtemplate)
+        config_ref=put(root/'config.json',config);profile['source_descriptors']+=package+[config_ref]
+        argv=list(original['profile']['unit']['argv']);argv[2]=roles['main_entrypoint']['path']
+        for flag,pin in (('--config',config_ref),('--catalogue-parser-source',parser)):
+            argv[argv.index(flag)+1]=pin['path']
+        argv[argv.index('--config-sha256')+1]=config_ref['sha256']
+        argv[argv.index('--catalogue-parser-sha256')+1]=parser['sha256']
+        profile['unit']['argv']=argv
+        profile['unit']['environment']['PYTHONPATH']=str(control)+os.pathsep+prior['unit']['environment']['PYTHONPATH']
+        profile_ref=put(root/'current-profile.json',profile)
+        parent=next(pin for pin in new_source if pin['path'].endswith('/scripts/ops/legal_ir/run_owned_validation.py'))
+        subjects=[roles[key] for key in ('main_entrypoint','health_module','owner_source','driver_source')]
+        subjects += [pin for pin in new_source if pin!=parent]+[parent]
+        assert len(subjects)==len({pin['path'] for pin in subjects})==19
+        case=dict(original,root=root,profile=profile,profile_ref=profile_ref,config=config,
+                  packagepins=package,source_subjects=subjects)
+        case=_comparison3_archived_qualification_DATA(case,bundle,delegated_parent=True,
+            physical_datasets_root=physical,canonical_datasets_root=canonical)
+        inventory=put(root/'source-inventory.json',dict(schema='legal-ir-scientific-source-inventory/v1',
+            source_root=str(control),source_commit='a'*40,source_tree='b'*40,file_count=len(package),
+            files=[dict(pin,mode=0o400)for pin in package]))
+        commitment=dict(h._document(original['commitment']),source_root=str(control),source_inventory=inventory,
+            source_qualification=case['qualification'],main_entrypoint=roles['main_entrypoint'],
+            health_module=roles['health_module'],catalogue_parser=parser)
+        transition=put(root/'transition.json',dict(schema='agent-supervisor/scientific-idle-source-template-transition@3',
+            prior_template_ref=oldtemplate,template_ref=newtemplate,replacements=replacements,
+            preparation_spec_ref=prep,A_source_transitions={key:dict(before_ref=prior[key],after_ref=roles[key])
+                for key in ('owner_source','driver_source')},runtime_activation_or_task_authority=False))
+        witness=dict(h._document(h._document(original['spec'])['historical_source_witness_ref']),
+                     profile_ref=prior_ref,profile_snapshot_ref=snapshot)
+        policy=dict(h._document(original['policy']),resource_source_ref=replacements[1]['after_ref'])
+        spec=dict(h._document(original['spec']),profile_ref=profile_ref,prior_profile_ref=prior_ref,
+            prior_profile_snapshot_ref=snapshot,preparation_spec_ref=prep,
+            historical_source_witness_ref=put(root/'historical-witness.json',witness),
+            source_commitment_ref=put(root/'commitment.json',commitment),template_transition_ref=transition,
+            storage_policy_approval_ref=put(root/'policy.json',policy))
+        return dict(case=case,spec=put(root/'spec.json',spec),comparison=comparison,prior=prior,
+            transition=transition,physical_profile=physical_profile,oldtemplate=oldtemplate,newtemplate=newtemplate,
+            capsule=capsule,subjects=subjects,legacy_control_reviewed=True)
+    return build
+
+
+@pytest.mark.parametrize('prior_cli', ['prior_CLI2', 'prior_CLI3'])
+def test_source_generation_comparison3_full_archived_DATA_review_feature_gap(
+        comparison3_archived_review_DATA, prior_cli):
+    """Two fictional positive feature reproducers, not ordinary@2 proof credit.
+
+    CURRENT fdeed intentionally fails the final full review at
+    source_generation_physical_CLI4_coherent_transition_unqualified. A future
+    implementation must validate every bound input; this test never skips or
+    weakens that refusal and never creates a live source-generation approval.
+    """
+    value=comparison3_archived_review_DATA(prior_cli);case=value['case'];h=_source_generation_health
+    assert value['legacy_control_reviewed'] is True
+    comparison=value['comparison'];certificate=h._document(value['transition'])
+    assert certificate['preparation_spec_ref']==comparison['spec_ref']==h._document(value['spec'])['preparation_spec_ref']
+    assert comparison['namespace_metadata_is_compile_evidence'] is False
+    assert all(comparison[key] is False for key in ('coherent_handover_validated','runtime_qualified',
+        'activation_ready','dispatch_ready','hold_removal_authorized','authority_granted'))
+    qualification=h._document(case['qualification']);plan=h._document(qualification['plan_ref'])
+    request=h._document(qualification['request_ref']);report=h._document(h.descriptor(case['v5']['attempt']/'exports/trusted-validation.json'))
+    assert qualification['schema']=='agent-supervisor/scientific-source-generation-current-v5-qualification@3'
+    assert qualification['required_raw_subjects']==value['subjects'] and len(value['subjects'])==19
+    parent=value['subjects'][-1];children=value['subjects'][:-1]
+    assert len(children)==18 and parent['path'].endswith('/scripts/ops/legal_ir/run_owned_validation.py')
+    assert all(report['executed_source_buffers'][pin['path']]==pin['sha256'] for pin in children)
+    assert parent['path'] not in report['executed_source_buffers']
+    assert plan['source_root_bindings'][0]==value['physical_profile']['source_root_binding']
+    assert request['roots']==[str(path)for path in case['named']]
+    assert request['cpu_slots']==1 and request['memory_mb']==1536 and request['child_process_slots']==4
+    assert request['storage_bytes']==16*1024**2 and request['timeout_seconds']==300
+    old=h._document(h._document(value['oldtemplate'])['plan_ref'])['native_metadata_cli']
+    new=h._document(h._document(value['newtemplate'])['plan_ref'])['native_metadata_cli']
+    assert old['schema']=='native-embedded-scoped-observation-cli/v'+prior_cli[-1]
+    assert ('source_capsule_ref' in old)==(prior_cli=='prior_CLI3')
+    if prior_cli=='prior_CLI3':assert old['source_capsule_ref']==value['capsule']
+    assert new['schema']=='native-embedded-scoped-observation-cli/v4' and 'source_capsule_ref' not in new
+    assert new['physical_source_profile']==value['physical_profile']
+    assert case['config']['execution_templates']==[] and case['config']['max_cycles']==10000
+    assert case['config']['max_proof_bytes']==1073741824
+    assert not executor._source_generation_path(case['profile']).exists()
+    # Intended RED site: request the new supported-profile extension directly.
+    review=executor._source_generation_review(value['spec'],case['profile_ref'],case['profile'],case['config'])
+    try:
+        assert review['source']['source_qualification']==case['qualification']
+        assert review['policy']['execution_budget_created'] is review['policy']['hold_removal_authorized'] is False
+    finally:
+        h.close_historical_source_witness(review['witness'])
+    assert not executor._source_generation_path(case['profile']).exists()
+
+
+def _comparison3_healthy_before_mutation_DATA(build):
+    """Require the full positive first; unsupported @3 cannot credit a negative."""
+    value=build('prior_CLI3');case=value['case'];h=_source_generation_health
+    retained=tuple(h._bound(ref)for ref in (value['spec'],case['profile_ref'],case['qualification']))
+    review=executor._source_generation_review(value['spec'],case['profile_ref'],case['profile'],case['config'])
+    try:
+        assert review['source']['source_qualification']==case['qualification']
+        assert review['policy']['execution_budget_created'] is review['policy']['hold_removal_authorized'] is False
+        assert len(value['subjects'])==19 and len(value['subjects'][:-1])==18
+        assert value['comparison']['changed_source_count']==5 and value['comparison']['relocated_source_count']==15
+        assert value['comparison']['namespace_metadata_is_compile_evidence'] is False
+    finally:
+        h.close_historical_source_witness(review['witness'])
+    assert retained==tuple(h._bound(ref)for ref in (value['spec'],case['profile_ref'],case['qualification']))
+    assert not executor._source_generation_path(case['profile']).exists()
+    return value
+
+
+def _comparison3_mutated_review_input_DATA(value,label,*,profile_change=None,
+        inventory_change=None,qualification_change=None,qualification_ref=None,
+        plan_change=None,request_change=None,certificate_change=None):
+    """Clone frozen outer references so a refusal tests the selected inner defect.
+
+    All files are ordinary fictional case data. This helper neither simulates
+    an acceptance result nor patches any product validator or custody reader.
+    """
+    h=_source_generation_health;put=_source_generation_canonical_DATA;case=value['case']
+    root=case['root']/('adversarial-'+label);root.mkdir()
+    spec=h._document(value['spec']);profile=_source_generation_copy.deepcopy(case['profile'])
+    config=_source_generation_copy.deepcopy(case['config'])
+    certificate=h._document(value['transition']);commitment=h._document(spec['source_commitment_ref'])
+    if profile_change is not None:profile_change(profile)
+    if inventory_change is not None:
+        inventory=h._document(commitment['source_inventory']);inventory_change(inventory)
+        commitment['source_inventory']=put(root/'source-inventory.json',inventory)
+    if qualification_change is not None:
+        assert qualification_ref is None
+        qualification=h._document(case['qualification']);qualification_change(qualification)
+        qualification_ref=put(root/'qualification.json',qualification)
+    if qualification_ref is not None:commitment['source_qualification']=qualification_ref
+    if inventory_change is not None or qualification_ref is not None:
+        spec['source_commitment_ref']=put(root/'source-commitment.json',commitment)
+    if plan_change is not None or request_change is not None:
+        template=h._document(value['newtemplate']);oldseed=Path(template['seed_root'])
+        seed=Path(case['profile']['proof_root'])/('adversarial-'+label+'-unissued')
+        plan=executor.relocate(h._document(template['plan_ref']),oldseed,seed)
+        request=executor.relocate(h._document(template['request_ref']),oldseed,seed)
+        if plan_change is not None:plan_change(plan)
+        if request_change is not None:request_change(request)
+        newtemplate=_comparison3_template_DATA(seed,plan,request,template['links'])
+        certificate['template_ref']=newtemplate;config['idle_template_ref']=newtemplate
+    if certificate_change is not None:certificate_change(certificate)
+    if plan_change is not None or request_change is not None or certificate_change is not None:
+        spec['template_transition_ref']=put(root/'template-transition.json',certificate)
+    if profile_change is not None or plan_change is not None or request_change is not None:
+        profile_path=root/'profile.json';config['profile_path']=str(profile_path)
+        config_ref=put(root/'config.json',config);argv=profile['unit']['argv']
+        previous=argv[argv.index('--config')+1]
+        profile['source_descriptors']=[config_ref if pin['path']==previous else pin
+                                       for pin in profile['source_descriptors']]
+        argv[argv.index('--config')+1]=config_ref['path']
+        argv[argv.index('--config-sha256')+1]=config_ref['sha256']
+        profile_ref=put(profile_path,profile);spec['profile_ref']=profile_ref
+    else:profile_ref=case['profile_ref']
+    reference=put(root/'spec.json',spec)
+    assert h._document(reference)['profile_ref']==profile_ref
+    assert h._document(spec['template_transition_ref'])['template_ref']==config['idle_template_ref']
+    assert config['execution_templates']==[] and config['max_cycles']==10000
+    assert config['max_proof_bytes']==1073741824
+    return reference,profile_ref,profile,config
+
+
+def _comparison3_assert_refusal_DATA(value,inputs):
+    """A healthy review already passed; require an actual validation refusal."""
+    review=None
+    try:
+        with pytest.raises(ValueError) as caught:
+            review=executor._source_generation_review(*inputs)
+    finally:
+        # Cleanup cannot turn a wrongly accepted input into the expected error.
+        if review is not None:
+            _source_generation_health.close_historical_source_witness(review['witness'])
+    assert 'source_generation_physical_CLI4_coherent_transition_unqualified' not in str(caught.value)
+    assert not executor._source_generation_path(value['case']['profile']).exists()
+
+
+@pytest.mark.parametrize('fault', ['stale_owner_current_driver','current_owner_stale_driver',
+    'swapped_owner_driver_roles','owner_missing_from_A_inventory','driver_missing_from_A_inventory'])
+def test_source_generation_comparison3_rejects_crossed_A_epoch_DATA(
+        comparison3_archived_review_DATA,fault):
+    value=_comparison3_healthy_before_mutation_DATA(comparison3_archived_review_DATA)
+    case=value['case'];role='owner_source' if fault.startswith('owner_') else 'driver_source'
+    if fault in ('owner_missing_from_A_inventory','driver_missing_from_A_inventory'):
+        missing=case['profile'][role]['path']
+        def change(inventory):
+            assert sum(pin['path']==missing for pin in inventory['files'])==1
+            inventory['files']=[pin for pin in inventory['files']if pin['path']!=missing]
+            inventory['file_count']=len(inventory['files'])
+        inputs=_comparison3_mutated_review_input_DATA(value,fault,inventory_change=change)
+    else:
+        def change(profile):
+            if fault=='stale_owner_current_driver':profile['owner_source']=value['prior']['owner_source']
+            elif fault=='current_owner_stale_driver':profile['driver_source']=value['prior']['driver_source']
+            else:profile['owner_source'],profile['driver_source']=profile['driver_source'],profile['owner_source']
+        inputs=_comparison3_mutated_review_input_DATA(value,fault,profile_change=change)
+    _comparison3_assert_refusal_DATA(value,inputs)
+
+
+@pytest.mark.parametrize('fault', ['unchanged_relocation_omitted_plan_map',
+    'unchanged_relocation_omitted_request_map','unchanged_relocation_omitted_import_pins',
+    'physical_canonical_key_collision','alternate_valid_preparation_ref','CLI3_capsule_ref_left_in_CLI4_candidate'])
+def test_source_generation_comparison3_rejects_full15_template_inverse_DATA(
+        comparison3_archived_review_DATA,fault):
+    value=_comparison3_healthy_before_mutation_DATA(comparison3_archived_review_DATA)
+    h=_source_generation_health;row=value['comparison']['source_relocations'][0]
+    physical=row['after_ref']['path'];canonical=row['before_ref']['path']
+    assert physical!=canonical and row['before_ref']['sha256']==row['after_ref']['sha256']
+    if fault=='alternate_valid_preparation_ref':
+        original=value['comparison']['spec_ref']
+        alternate=_source_generation_canonical_DATA(value['case']['root']/'otherwise-identical-preparation.json',
+                                                    h._bound(original))
+        checked=executor.prepare_idle_source_replacement(alternate)
+        assert checked['raw_inverse_verified'] is True and checked['authority_granted'] is False
+        assert alternate['sha256']==original['sha256'] and alternate['path']!=original['path']
+        inputs=_comparison3_mutated_review_input_DATA(value,fault,
+            certificate_change=lambda certificate:certificate.update(preparation_spec_ref=alternate))
+    elif fault=='unchanged_relocation_omitted_request_map':
+        def change(request):
+            assert request['source_sha256'].pop(physical)==row['after_ref']['sha256']
+        inputs=_comparison3_mutated_review_input_DATA(value,fault,request_change=change)
+    else:
+        def change(plan):
+            command=plan['native_metadata_cli']
+            if fault=='unchanged_relocation_omitted_plan_map':
+                assert command['source_sha256'].pop(physical)==row['after_ref']['sha256']
+            elif fault=='unchanged_relocation_omitted_import_pins':
+                pins=command['project_import_plan']['source_pins']
+                assert sum(pin['path']==physical for pin in pins)==1
+                command['project_import_plan']['source_pins']=[pin for pin in pins if pin['path']!=physical]
+            elif fault=='physical_canonical_key_collision':
+                assert canonical not in command['source_sha256'] and physical in command['source_sha256']
+                command['source_sha256'][canonical]=row['before_ref']['sha256']
+            else:
+                old=h._document(h._document(value['oldtemplate'])['plan_ref'])['native_metadata_cli']
+                assert 'source_capsule_ref' not in command and old['source_capsule_ref']==value['capsule']
+                command['source_capsule_ref']=old['source_capsule_ref']
+        inputs=_comparison3_mutated_review_input_DATA(value,fault,plan_change=change)
+    _comparison3_assert_refusal_DATA(value,inputs)
+
+
+@pytest.mark.parametrize('fault', ['old_driver_argv_token','crossed_runtime_accelerate_root',
+    'old_guard_or_observer_A_epoch','extra_CLI4_field'])
+def test_source_generation_comparison3_rejects_explicit_CLI4_A_roots_and_fields_DATA(
+        comparison3_archived_review_DATA,fault):
+    value=_comparison3_healthy_before_mutation_DATA(comparison3_archived_review_DATA)
+    h=_source_generation_health
+    if fault=='old_driver_argv_token':
+        def change(request):
+            assert request['argv'][2]==value['case']['profile']['driver_source']['path']
+            request['argv'][2]=value['prior']['driver_source']['path']
+        inputs=_comparison3_mutated_review_input_DATA(value,fault,request_change=change)
+        _comparison3_assert_refusal_DATA(value,inputs)
+    elif fault=='old_guard_or_observer_A_epoch':
+        old=h._document(h._document(value['oldtemplate'])['plan_ref'])['native_metadata_cli']
+        # Independent frozen inputs check both halves within the single plan parameter.
+        for selected in ('guard','observer'):
+            def change(plan):
+                command=plan['native_metadata_cli']
+                if selected=='guard':command['pre_body_guard']=old['pre_body_guard']
+                else:command['observation_binding']['observer_source']=old['observation_binding']['observer_source']
+            inputs=_comparison3_mutated_review_input_DATA(value,fault+'-'+selected,plan_change=change)
+            _comparison3_assert_refusal_DATA(value,inputs)
+    else:
+        def change(plan):
+            command=plan['native_metadata_cli']
+            if fault=='crossed_runtime_accelerate_root':
+                assert command['runtime_root']==plan['accelerate_root']==command['project_import_plan']['accelerate_root']
+                command['runtime_root']=str(Path(value['prior']['owner_source']['path']).parents[3])
+            else:
+                assert 'unlisted_source_scope' not in command
+                command['unlisted_source_scope']='not authorized by this transition'
+        inputs=_comparison3_mutated_review_input_DATA(value,fault,plan_change=change)
+        _comparison3_assert_refusal_DATA(value,inputs)
+
+
+@pytest.mark.parametrize('fault', ['missing_owner','missing_driver','missing_unchanged_R_relocation',
+    'duplicate_raw_subject','extra_raw_subject','namespace_as_twentieth_body','old_seven_role_Main_qualification_record'])
+def test_source_generation_comparison3_rejects_nonexact_nineteen_role_qualification_DATA(
+        comparison3_archived_review_DATA,fault):
+    value=_comparison3_healthy_before_mutation_DATA(comparison3_archived_review_DATA)
+    h=_source_generation_health;case=value['case']
+    if fault=='old_seven_role_Main_qualification_record':
+        # Reuse the actual healthy old-seven fictional record, never relabel nineteen.
+        legacy_spec=h._document(h.descriptor(case['root'].parent/'comparison3-healthy-legacy-spec.json'))
+        legacy=h._document(legacy_spec['source_commitment_ref'])['source_qualification']
+        old=h._document(legacy)
+        assert old['schema']=='agent-supervisor/scientific-source-generation-current-v5-qualification@2'
+        assert len(old['required_raw_subjects'])==7 and legacy!=case['qualification']
+        inputs=_comparison3_mutated_review_input_DATA(value,fault,qualification_ref=legacy)
+    else:
+        def change(qualification):
+            rows=qualification['required_raw_subjects'];assert len(rows)==19
+            if fault in ('missing_owner','missing_driver','missing_unchanged_R_relocation'):
+                if fault=='missing_owner':missing=case['profile']['owner_source']
+                elif fault=='missing_driver':missing=case['profile']['driver_source']
+                else:missing=value['comparison']['source_relocations'][0]['after_ref']
+                assert rows.count(missing)==1
+                qualification['required_raw_subjects']=[pin for pin in rows if pin!=missing]
+            elif fault=='duplicate_raw_subject':
+                assert rows[0]!=rows[1];rows[1]=dict(rows[0]);assert len(rows)==19
+            elif fault=='extra_raw_subject':
+                extra=_source_generation_canonical_DATA(case['root']/'unqualified-extra-raw.py',
+                                                       b'# outside the qualified raw population\n')
+                assert extra not in rows;rows.append(extra)
+            else:
+                namespace=_source_generation_copy.deepcopy(value['physical_profile']['normal_namespace_profiles'][0])
+                assert set(namespace)=={'fullname','path','device','inode','initializer_absent'}
+                assert value['comparison']['namespace_metadata_is_compile_evidence'] is False
+                rows.append(namespace);assert len(rows)==20
+        inputs=_comparison3_mutated_review_input_DATA(value,fault,qualification_change=change)
+    _comparison3_assert_refusal_DATA(value,inputs)
+
+
+@pytest.mark.parametrize('fault', ['missing_R_child_compile_hash','stale_R_child_compile_hash'])
+def test_source_generation_comparison3_rejects_R_child_raw_compilation_gap_DATA(
+        comparison3_archived_review_DATA,fault):
+    """The SDK's A4 check cannot replace Main's exact eighteen-child check.
+
+    The fault is authored before the report's first serialization. The same
+    builder then produces fresh seals, summaries and parent-custody DATA. No
+    existing immutable receipt or validator is patched to manufacture a pass.
+    """
+    from ipfs_accelerate_py.agent_supervisor.rescue import repair_candidate_owners as owner
+    value=_comparison3_healthy_before_mutation_DATA(comparison3_archived_review_DATA)
+    h=_source_generation_health;case=_source_generation_copy.deepcopy(value['case'])
+    healthy_policy=h._document(case['v5']['policy']);control=healthy_policy['control_release']
+    owning=case['v5']['owning'];keys=('path','bytes','sha256')
+    sources=[pin for pin in case['packagepins']if pin!=owning]
+    assert len(sources)+1==len(case['packagepins'])
+    bundle=(control['root'],tuple(tuple(pin[key]for key in keys)for pin in sources),
+            tuple(owning[key]for key in keys),tuple(control['manifest'][key]for key in keys))
+    binding=value['physical_profile']['source_root_binding']
+    variant=_comparison3_archived_qualification_DATA(case,bundle,delegated_parent=True,
+        physical_datasets_root=Path(binding['physical_root']),
+        canonical_datasets_root=Path(binding['canonical_root']),raw_compile_fault=fault)
+    v5=variant['v5'];policy=h._document(v5['policy']);plan=h._document(v5['plan'])
+    terminal=h._document(v5['terminal'])
+    report=h._document(h.descriptor(v5['attempt']/'exports/trusted-validation.json'))
+    target=next(pin for pin in value['subjects']
+        if pin['path']==str(Path(binding['physical_root'])/'ipfs_datasets_py/logic/backends/process.py'))
+    assert target not in policy['validation']['source_qualification']['required_source_bodies']
+    assert len(policy['validation']['source_qualification']['required_source_bodies'])==4
+    assert report['executed_source_buffers'][target['path']]==target['sha256']
+    compiled=report['raw_compiled_sources']
+    if fault=='missing_R_child_compile_hash':assert target['path'] not in compiled
+    else:assert compiled[target['path']]=='0'*64 and compiled[target['path']]!=target['sha256']
+    assert all(compiled[pin['path']]==pin['sha256']for pin in
+               policy['validation']['source_qualification']['required_source_bodies'])
+    # These are genuine existing readers of authored fictional DATA. Requiring
+    # them to accept makes a stale seal/ref/summary an ordinary test failure,
+    # rather than the intended new Main raw-compilation refusal.
+    summary=owner.verify_validation_evidence(policy,plan,v5['request'],terminal,v5['invocation'])
+    assert type(summary)is dict and summary
+    witness=owner.authenticate_archived_v5_sdk_source(v5['policy'])
+    try:
+        checked=owner.verify_archived_v5_parent_source_closeout(witness,v5['request'],
+            v5['invocation'],v5['parent'],summary)
+        assert checked['historical_evidence_verified'] is True
+        assert checked['new_original_process_or_native_execution_performed'] is False
+    finally:
+        owner.close_archived_v5_sdk_source(witness)
+    inputs=_comparison3_mutated_review_input_DATA(value,fault,
+        qualification_ref=variant['qualification'])
+    review=None
+    try:
+        with pytest.raises(ValueError,match='source_generation_physical_child_raw_compilation_missing_or_changed'):
+            review=executor._source_generation_review(*inputs)
+    finally:
+        if review is not None:h.close_historical_source_witness(review['witness'])
+    assert not executor._source_generation_path(value['case']['profile']).exists()

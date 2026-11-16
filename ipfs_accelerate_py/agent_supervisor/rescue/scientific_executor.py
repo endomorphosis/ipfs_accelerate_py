@@ -4217,7 +4217,14 @@ def _source_generation_source_inventory(reference, profile):
         _source_generation_frozen(pin); seen.add(pin['path'])
     need(seen == set(selected), 'source_generation_inventory_missing_source')
     _source_generation_frozen(source['source_operation_plan'])
-    _source_generation_qualification(source['source_qualification'], profile, selected)
+    qualification = _source_generation_qualification(source['source_qualification'], profile, selected)
+    if qualification['schema'] == 'agent-supervisor/scientific-source-generation-current-v5-qualification@3':
+        for role, relative in (('owner_source', 'original_embedded_observation_owner.py'),
+                               ('driver_source', 'native_embedded_observation_driver.py')):
+            pin = profile[role]
+            need(pin['path'] == str(root/'ipfs_accelerate_py/agent_supervisor/rescue'/relative)
+                 and _source_generation_same(selected.get(pin['path']), pin),
+                 'source_generation_physical_A_owner_driver_package_required')
     return source, selected
 
 
@@ -4230,6 +4237,8 @@ def _source_generation_current_qualification_profile(value, *, policy=None):
         ('agent-supervisor/scientific-source-generation-current-v5-qualification@1',
          'closed_v5_current_immutable_Source'): 'agent-supervisor/immutable-source-qualification@1',
         ('agent-supervisor/scientific-source-generation-current-v5-qualification@2',
+         'closed_v5_current_immutable_parent_Source'): 'agent-supervisor/immutable-source-qualification@2',
+        ('agent-supervisor/scientific-source-generation-current-v5-qualification@3',
          'closed_v5_current_immutable_parent_Source'): 'agent-supervisor/immutable-source-qualification@2',
     }
     need(type(value.get('schema')) is str and type(value.get('qualification_profile')) is str,
@@ -4325,6 +4334,7 @@ def _source_generation_qualification(reference, profile, selected):
         'source_generation_current_v5_qualification_shape')
     source_qualification_schema = _source_generation_current_qualification_profile(value)
     delegated_source = source_qualification_schema == 'agent-supervisor/immutable-source-qualification@2'
+    physical_cli4 = value['schema'] == 'agent-supervisor/scientific-source-generation-current-v5-qualification@3'
     need(value['runtime_activation_or_task_authority'] is False,
          'source_generation_current_v5_profile_required')
     owner_ref = value['qualification_owner_source_ref']; h._bound(owner_ref)
@@ -4415,16 +4425,14 @@ def _source_generation_qualification(reference, profile, selected):
         subjects = value['required_raw_subjects']; package = value['source_inventory_subjects']
         tests = value['owning_test_sources']
         datasets = Path(physical_roots[0]) if delegated_source else ORIGINAL_NAMED_ROOTS[0].parents[1]
-        paths = [str(datasets/relative) for relative in (
-            'ipfs_datasets_py/logic/backends/process.py',
-            'ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_daemon_resources.py',
-            'ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_resource_recovery.py',
-            'ipfs_datasets_py/optimizers/logic_theorem_optimizer/parented_phase_resources.py',
-            'scripts/ops/legal_ir/run_owned_validation.py')]
+        relatives = _SOURCE_GENERATION_R_ROLES + (_SOURCE_GENERATION_R_RELOCATIONS if physical_cli4 else ())
+        paths = [str(datasets/relative) for relative in relatives]
         selected_profile = {pin['path']:pin for pin in profile['source_descriptors']}
         need(all(path in selected_profile for path in paths), 'source_generation_v5_missing_canonical_R_role')
-        expected_roles = [profile['main_entrypoint'], profile['health_module']]+[selected_profile[path] for path in paths]
-        need(type(subjects) is list and len(subjects) == 7 and len({pin['path'] for pin in subjects}) == 7
+        A_roles = ('main_entrypoint', 'health_module', 'owner_source', 'driver_source') if physical_cli4 else ('main_entrypoint', 'health_module')
+        expected_roles = [profile[role] for role in A_roles]+[selected_profile[path] for path in paths]
+        role_count = 19 if physical_cli4 else 7
+        need(type(subjects) is list and len(subjects) == role_count and len({pin['path'] for pin in subjects}) == role_count
              and sorted(_source_generation_canonical(pin) for pin in subjects)
                   == sorted(_source_generation_canonical(pin) for pin in expected_roles)
              and type(package) is list and len(package) == len(selected)
@@ -4446,7 +4454,7 @@ def _source_generation_qualification(reference, profile, selected):
         # genuine PID/birth/argv/wait + Source@2 custody are owned by the existing
         # SDK. That SDK checks classifier globals/co_filename under Source READ;
         # this is parent-source provenance, NOT a persisted child compile trace.
-        parent_cli = selected_profile[paths[-1]]
+        parent_cli = selected_profile[str(datasets/'scripts/ops/legal_ir/run_owned_validation.py')]
         child_subjects = [pin for pin in subjects if pin['path'] != parent_cli['path']]
         wait = h._document(h.descriptor(invocation/'runner-wait.json'))
         expected_argv = [policy['python'], '-I', '-B', parent_cli['path'], '--request', value['request_ref']['path'],
@@ -4459,15 +4467,23 @@ def _source_generation_qualification(reference, profile, selected):
                  and immutable_scope['root'] == Path(profile['main_entrypoint']['path']).parents[3],
                  'source_generation_v5_immutable_source_body_scope_changed')
             required_bodies = plan['required_source_bodies']
-        need(len(child_subjects) == 6 and wait['argv'] == expected_argv
+        need(len(child_subjects) == (18 if physical_cli4 else 6) and wait['argv'] == expected_argv
              and request['source_sha256'].get(parent_cli['path']) == parent_cli['sha256']
              and _source_generation_same(parent_cli, next(pin for pin in policy['source_descriptors']
                                                            if pin['path'] == parent_cli['path']))
              and terminal['reservation']['ledger_path'] == validation['resource_ledger'] == str(ORIGINAL_RESOURCE_LEDGER)
              and all(report['executed_source_buffers'].get(pin['path']) == pin['sha256'] for pin in child_subjects + tests)
-             and all(profile[role]['path'] in required_bodies for role in ('main_entrypoint', 'health_module'))
+             and all(profile[role]['path'] in required_bodies for role in A_roles)
              and report['collected_cases'] == owner.expected_natural_nodes(plan),
              'source_generation_v5_six_child_bodies_or_original_parent_provenance_missing')
+        if physical_cli4:
+            compiled = report.get('raw_compiled_sources')
+            need(type(compiled) is dict
+                 and all(compiled.get(pin['path']) == pin['sha256'] for pin in child_subjects),
+                 'source_generation_physical_child_raw_compilation_missing_or_changed')
+            need(parent_cli['path'] not in report['executed_source_buffers']
+                 and parent_cli['path'] not in report.get('raw_compiled_sources', {}),
+                 'source_generation_physical_parent_is_not_child_compile_evidence')
         # Bind exact current owning test functions and counts, not a pooled suite
         # count from CLI68, health242 or the old Owner128 source generation.
         counts = value['expected_function_case_counts']; index = {pin['path']: pin for pin in tests}
@@ -4650,11 +4666,207 @@ def _source_generation_v1_qualification(reference, profile, selected):
     return accepted
 
 
-def _source_generation_template_transition(reference, replacements, prior, profile, oldconfig, config):
+def _source_generation_template_transition(reference, replacements, prior, profile, oldconfig, config, *, comparison=None, source=None):
     """Normalize only the five explicit source slots in unissued template DATA."""
     h = health_owner(); certificate = h._decode(_source_generation_frozen(reference))
+    if type(certificate) is dict and certificate.get('schema') == 'agent-supervisor/scientific-idle-source-template-transition@3':
+        h._keys(certificate, {'schema', 'prior_template_ref', 'template_ref', 'replacements',
+            'runtime_activation_or_task_authority', 'preparation_spec_ref', 'A_source_transitions'},
+            'source_generation_physical_transition_shape')
+        need(type(comparison) is dict and comparison.get('schema') == 'agent-supervisor/scientific-idle-source-comparison@3'
+             and type(source) is dict
+             and _source_generation_same(certificate['preparation_spec_ref'], comparison['spec_ref'])
+             and _source_generation_same(certificate['replacements'], replacements)
+             and _source_generation_same(certificate['prior_template_ref'], oldconfig['idle_template_ref'])
+             and _source_generation_same(certificate['template_ref'], config['idle_template_ref'])
+             and certificate['runtime_activation_or_task_authority'] is False,
+             'source_generation_physical_transition_join')
+        _source_generation_frozen(certificate['preparation_spec_ref'])
+        h._keys(certificate['A_source_transitions'], {'owner_source', 'driver_source'},
+                'source_generation_physical_A_transition_shape')
+        A_old = Path(prior['main_entrypoint']['path']).parents[3]
+        A_new = Path(profile['main_entrypoint']['path']).parents[3]
+        binding = _source_generation_physical_R_binding(comparison['source_root_binding'], replacements)
+        R_old = Path(binding['canonical_root']); R_new = Path(binding['physical_root'])
+        roots = (A_old, A_new, R_old, R_new)
+        need(len(set(roots)) == 4 and all(left not in right.parents and right not in left.parents
+             for index, left in enumerate(roots) for right in roots[index+1:]),
+             'source_generation_physical_transition_root_alias')
+        A_relative = {'main_entrypoint': 'scientific_executor.py', 'health_module': 'native_executor_health.py',
+            'owner_source': 'original_embedded_observation_owner.py', 'driver_source': 'native_embedded_observation_driver.py'}
+        for role, filename in A_relative.items():
+            need(prior[role]['path'] == str(A_old/'ipfs_accelerate_py/agent_supervisor/rescue'/filename)
+                 and profile[role]['path'] == str(A_new/'ipfs_accelerate_py/agent_supervisor/rescue'/filename),
+                 'source_generation_physical_A_named_role')
+        for role, row in certificate['A_source_transitions'].items():
+            h._keys(row, {'before_ref', 'after_ref'}, 'source_generation_physical_A_transition_row')
+            need(_source_generation_same(row['before_ref'], prior[role])
+                 and _source_generation_same(row['after_ref'], profile[role]),
+                 'source_generation_physical_A_transition_join')
+        before_A = {str(Path(pin['path']).relative_to(A_old)): pin for pin in prior['source_descriptors']
+                    if A_old in Path(pin['path']).parents}
+        after_A = {str(Path(pin['path']).relative_to(A_new)): pin for pin in profile['source_descriptors']
+                   if A_new in Path(pin['path']).parents}
+        need(before_A and set(before_A) == set(after_A)
+             and all(Path(name).suffix == '.py' for name in before_A),
+             'source_generation_physical_A_package_population')
+        rows = replacements + comparison['source_relocations']
+        need(len(rows) == 15 and len({row['after_ref']['path'] for row in rows}) == 15,
+             'source_generation_physical_inverse_exact_fifteen')
+        inverse = {row['after_ref']['path']: row for row in rows}
+        for relative, after in after_A.items():
+            need(after['path'] not in inverse, 'source_generation_physical_inverse_source_collision')
+            inverse[after['path']] = dict(before_ref=before_A[relative], after_ref=after)
+        need(len({row['before_ref']['path'] for row in inverse.values()}) == len(inverse),
+             'source_generation_physical_inverse_previous_collision')
+        old = h._document(certificate['prior_template_ref']); new = h._document(certificate['template_ref'])
+        validate_template(old, prior, 'genuine_scoped_idle'); validate_template(new, profile, 'genuine_scoped_idle')
+        oldroot, newroot = Path(old['seed_root']), Path(new['seed_root'])
+        need(oldroot != newroot and oldroot not in newroot.parents and newroot not in oldroot.parents
+             and not any(newroot.glob('cycle-*')), 'source_generation_template_not_distinct_unissued_DATA')
+        projected = relocate(new, newroot, oldroot)
+        for key in ('request_ref', 'plan_ref'): projected[key] = old[key]
+        need(_source_generation_same(projected, old), 'source_generation_template_shape_changed')
+        oldplan = h._document(old['plan_ref']); newplan = h._document(new['plan_ref'])
+        oldrequest = h._document(old['request_ref']); newrequest = h._document(new['request_ref'])
+        plan_keys = {'schema', 'operation', 'accelerate_root', 'task_scope', 'native_metadata_cli'}
+        h._keys(oldplan, plan_keys, 'source_generation_physical_prior_plan_shape')
+        h._keys(newplan, plan_keys, 'source_generation_physical_plan_shape')
+        need(oldplan['schema'] == newplan['schema'] == 'native-embedded-scoped-observation-plan/v1'
+             and oldplan['operation'] == newplan['operation'] == 'native_embedded_scoped_observation_v1'
+             and oldplan['accelerate_root'] == str(A_old) and newplan['accelerate_root'] == str(A_new),
+             'source_generation_physical_plan_A_epoch')
+        oldmeta = oldplan['native_metadata_cli']; newmeta = newplan['native_metadata_cli']
+        common = {'schema', 'runtime_root', 'cwd', 'attempt_directory', 'temporary_directory',
+            'project_import_plan', 'pre_body_guard', 'result_path', 'source_sha256', 'observation_binding',
+            'import_head_capsule_Git'}
+        need(type(oldmeta) is dict and oldmeta.get('schema') in ('native-embedded-scoped-observation-cli/v2', 'native-embedded-scoped-observation-cli/v3'),
+             'source_generation_physical_prior_CLI_schema')
+        retained_capsule = oldmeta['schema'] == 'native-embedded-scoped-observation-cli/v3'
+        h._keys(oldmeta, common | ({'source_capsule_ref'} if retained_capsule else set()),
+                'source_generation_physical_prior_CLI_shape')
+        h._keys(newmeta, common | {'physical_source_profile'}, 'source_generation_physical_CLI_shape')
+        need(newmeta['schema'] == 'native-embedded-scoped-observation-cli/v4'
+             and _source_generation_same(newmeta['physical_source_profile'], comparison['physical_source_profile'])
+             and oldmeta['runtime_root'] == str(A_old) and newmeta['runtime_root'] == str(A_new),
+             'source_generation_physical_CLI_profile_or_A_epoch')
+        h._physical_profile(newmeta, newrequest, profile)
+        h._keys(oldmeta['project_import_plan'], {'accelerate_root', 'datasets_root', 'publication_root', 'source_pins'},
+                'source_generation_physical_prior_import_shape')
+        need(oldmeta['project_import_plan']['accelerate_root'] == str(A_old)
+             and oldmeta['project_import_plan']['datasets_root'] == oldmeta['project_import_plan']['publication_root'] == str(R_old),
+             'source_generation_physical_prior_import_roots')
+        for command, pins in ((oldmeta, before_A), (newmeta, after_A)):
+            guard = pins.get('ipfs_accelerate_py/agent_supervisor/rescue/project_import_source_guard.py')
+            observer = pins.get('ipfs_accelerate_py/agent_supervisor/todo_daemon/native_owner_bootstrap.py')
+            need(guard is not None and observer is not None
+                 and _source_generation_same(command['pre_body_guard'], guard)
+                 and type(command['observation_binding']) is dict
+                 and _source_generation_same(command['observation_binding'].get('observer_source'), observer),
+                 'source_generation_physical_guard_observer_A_epoch')
+        def restore_map(mapping):
+            need(type(mapping) is dict, 'source_generation_template_source_map_shape')
+            result = dict(mapping)
+            for path, row in inverse.items():
+                previous = row['before_ref']['path']
+                need(result.get(path) == row['after_ref']['sha256'] and previous not in result,
+                     'source_generation_physical_source_map_join_or_collision')
+                del result[path]; result[previous] = row['before_ref']['sha256']
+            return result
+        def checked_head(head, root, pins, expected_commit=None):
+            route = pins.get('ipfs_accelerate_py/agent_implementation_route.py')
+            h._keys(head, {'source_root', 'source_head', 'route_source', 'ls_tree_tail', 'scope', 'blobs',
+                'required_relative_files', 'selected_file_count', 'unique_blob_count', 'payload_bytes'},
+                'source_generation_physical_HEAD_shape')
+            commit = head['source_head']
+            need(route is not None and head['source_root'] == str(root) and type(commit) is str and len(commit) == 40
+                 and set(commit) <= set('0123456789abcdef') and (expected_commit is None or commit == expected_commit)
+                 and head['ls_tree_tail'] == ['ls-tree', '-r', '-z', commit, '--', 'ipfs_accelerate_py',
+                    'scripts/ops/agent_supervisor/configured_board_scheduler.py',
+                    'scripts/ops/agent_supervisor/implementation_supervisor_entry.py']
+                 and _source_generation_same(head['route_source'], route),
+                 'source_generation_physical_HEAD_A_epoch')
+            blobs = head['blobs']; need(type(blobs) is list and 0 < len(blobs) <= 20000,
+                                       'source_generation_physical_HEAD_population')
+            names = []; auxiliary = []
+            for row in blobs:
+                h._keys(row, {'relative_path', 'bytes', 'object_id'}, 'source_generation_physical_HEAD_blob_shape')
+                relative = row['relative_path']
+                need(type(relative) is str and relative and not Path(relative).is_absolute()
+                     and '..' not in Path(relative).parts and str(Path(relative)) == relative
+                     and h._integer(row['bytes'], 0, h.MAX_SOURCE)
+                     and type(row['object_id']) is str and len(row['object_id']) == 40
+                     and set(row['object_id']) <= set('0123456789abcdef'),
+                     'source_generation_physical_HEAD_blob_bounds')
+                names.append(relative); pin = pins.get(relative)
+                if pin is None:
+                    auxiliary.append(row)
+                else:
+                    raw = h._bound(pin)
+                    need(row['bytes'] == len(raw) and row['object_id'] == hashlib.sha1(
+                        b'blob '+str(len(raw)).encode()+b'\0'+raw).hexdigest(),
+                        'source_generation_physical_HEAD_blob_source_join')
+            selected = {relative for relative in pins if relative.startswith('ipfs_accelerate_py/')}
+            need(len(names) == len(set(names)) and selected <= set(names)
+                 and head['required_relative_files'] == names
+                 and type(head['selected_file_count']) is int and head['selected_file_count'] == len(blobs)
+                 and type(head['unique_blob_count']) is int and head['unique_blob_count'] == len({row['object_id'] for row in blobs})
+                 and type(head['payload_bytes']) is int and head['payload_bytes'] == sum(row['bytes'] for row in blobs),
+                 'source_generation_physical_HEAD_counts')
+            return auxiliary
+        oldhead = oldmeta['import_head_capsule_Git']; newhead = newmeta['import_head_capsule_Git']
+        need(checked_head(oldhead, A_old, before_A) == checked_head(newhead, A_new, after_A, source['source_commit'])
+             and oldhead['required_relative_files'] == newhead['required_relative_files']
+             and oldhead['scope'] == newhead['scope'], 'source_generation_physical_HEAD_unlisted_change')
+        projected_plan = relocate(newplan, newroot, oldroot); metadata = projected_plan['native_metadata_cli']
+        metadata['source_sha256'] = restore_map(metadata['source_sha256'])
+        pins = metadata['project_import_plan']['source_pins']; seen = set()
+        need(type(pins) is list, 'source_generation_template_source_pin_shape')
+        for index, pin in enumerate(pins):
+            row = inverse.get(pin.get('path')) if type(pin) is dict else None
+            if row:
+                need(pin['path'] not in seen and _source_generation_same(pin, row['after_ref']),
+                     'source_generation_template_source_descriptor_changed')
+                pins[index] = row['before_ref']; seen.add(pin['path'])
+        need(seen == set(inverse), 'source_generation_physical_template_source_population')
+        metadata['schema'] = oldmeta['schema']; del metadata['physical_source_profile']
+        if retained_capsule: metadata['source_capsule_ref'] = oldmeta['source_capsule_ref']
+        projected_plan['accelerate_root'] = str(A_old); metadata['runtime_root'] = str(A_old)
+        imports = metadata['project_import_plan']; imports['accelerate_root'] = str(A_old)
+        imports['datasets_root'] = imports['publication_root'] = str(R_old)
+        metadata['pre_body_guard'] = oldmeta['pre_body_guard']
+        metadata['observation_binding']['observer_source'] = oldmeta['observation_binding']['observer_source']
+        header = metadata['import_head_capsule_Git']
+        for key in ('source_root', 'source_head', 'route_source', 'ls_tree_tail', 'blobs',
+                    'selected_file_count', 'unique_blob_count', 'payload_bytes'):
+            header[key] = oldhead[key]
+        need(_source_generation_same(projected_plan, oldplan), 'source_generation_template_native_plan_changed')
+        projected_request = relocate(newrequest, newroot, oldroot)
+        projected_request['source_sha256'] = restore_map(projected_request['source_sha256'])
+        need(projected_request['source_sha256'].pop(old['plan_ref']['path'], None) == new['plan_ref']['sha256'],
+             'source_generation_template_selected_plan_join')
+        projected_request['source_sha256'][old['plan_ref']['path']] = old['plan_ref']['sha256']
+        need(projected_request['argv'].count('--plan-sha256') == 1
+             and projected_request['argv'][projected_request['argv'].index('--plan-sha256')+1] == new['plan_ref']['sha256'],
+             'source_generation_template_plan_argv_join')
+        projected_request['argv'][projected_request['argv'].index('--plan-sha256')+1] = old['plan_ref']['sha256']
+        need(len(projected_request['argv']) == len(oldrequest['argv']), 'source_generation_physical_argv_population')
+        forward_argv = {row['before_ref']['path']: row['after_ref']['path'] for row in inverse.values()}
+        for index, token in enumerate(oldrequest['argv']):
+            if type(token) is str and token in forward_argv:
+                need(newrequest['argv'][index] == forward_argv[token],
+                     'source_generation_physical_stale_source_argv_slot')
+        for index, token in enumerate(projected_request['argv']):
+            row = inverse.get(token)
+            if row:
+                need(oldrequest['argv'][index] == row['before_ref']['path'], 'source_generation_physical_unlisted_source_argv_slot')
+                projected_request['argv'][index] = row['before_ref']['path']
+        need(_source_generation_same(projected_request, oldrequest), 'source_generation_template_native_request_changed')
+        for ref in (certificate['template_ref'], new['request_ref'], new['plan_ref']): _source_generation_frozen(ref)
+        return newrequest
     h._keys(certificate, {'schema', 'prior_template_ref', 'template_ref', 'replacements',
         'runtime_activation_or_task_authority'}, 'source_generation_template_transition_shape')
+    need(comparison is None and source is None, 'source_generation_legacy_template_unlisted_binding')
     need(certificate['schema'] == 'agent-supervisor/scientific-idle-source-template-transition@1'
          and certificate['runtime_activation_or_task_authority'] is False
          and _source_generation_same(certificate['replacements'], replacements)
@@ -4745,7 +4957,9 @@ def _source_generation_review(spec_ref, profile_ref, profile, config):
     comparison = prepare_idle_source_replacement(spec['preparation_spec_ref'])
     # Explicit fifteen-source preparation is DATA only. CLI4 owner/driver,
     # runtime and template transition require a separate coherent contract.
-    need(comparison['schema'] == 'agent-supervisor/scientific-idle-source-comparison@1',
+    physical_cli4 = comparison['schema'] == 'agent-supervisor/scientific-idle-source-comparison@3'
+    need(comparison['schema'] in ('agent-supervisor/scientific-idle-source-comparison@1',
+                                 'agent-supervisor/scientific-idle-source-comparison@3'),
          'source_generation_physical_CLI4_coherent_transition_unqualified')
     need(_source_generation_same(comparison['prior_profile_ref'], spec['prior_profile_ref'])
          and _source_generation_same(comparison['prior_profile_snapshot_ref'], spec['prior_profile_snapshot_ref'])
@@ -4754,8 +4968,38 @@ def _source_generation_review(spec_ref, profile_ref, profile, config):
     prior = h._decode(_source_generation_frozen(spec['prior_profile_snapshot_ref']))
     stage = h._profile(comparison['profile_ref']); replacements = comparison['replacements']
     source, selected = _source_generation_source_inventory(spec['source_commitment_ref'], profile)
+    if physical_cli4:
+        qualification = h._decode(_source_generation_frozen(source['source_qualification']))
+        need(qualification['schema'] == 'agent-supervisor/scientific-source-generation-current-v5-qualification@3'
+             and _source_generation_current_qualification_profile(qualification) == 'agent-supervisor/immutable-source-qualification@2',
+             'source_generation_physical_qualification_contract_required')
+        binding = _source_generation_physical_R_binding(comparison['source_root_binding'], replacements)
+        qualified_plan = h._document(qualification['plan_ref']); qualified_policy = h._document(qualification['policy_ref'])
+        bindings = qualified_plan.get('source_root_bindings')
+        need(type(bindings) is list and len(bindings) == 2
+             and _source_generation_same(bindings[0], binding)
+             and qualified_policy['datasets_root'] == binding['physical_root']
+             and all(row['after_ref'] in qualification['required_raw_subjects']
+                     for row in replacements + comparison['source_relocations']),
+             'source_generation_physical_qualification_preparation_join')
+        transition = h._decode(_source_generation_frozen(spec['template_transition_ref']))
+        h._keys(transition, {'schema', 'prior_template_ref', 'template_ref', 'replacements',
+            'runtime_activation_or_task_authority', 'preparation_spec_ref', 'A_source_transitions'},
+            'source_generation_physical_transition_shape')
+        need(transition['schema'] == 'agent-supervisor/scientific-idle-source-template-transition@3'
+             and _source_generation_same(transition['preparation_spec_ref'], spec['preparation_spec_ref'])
+             and _source_generation_same(transition['preparation_spec_ref'], comparison['spec_ref']),
+             'source_generation_physical_transition_preparation_join')
+        h._keys(transition['A_source_transitions'], {'owner_source', 'driver_source'},
+                'source_generation_physical_A_transition_shape')
+        for role, row in transition['A_source_transitions'].items():
+            h._keys(row, {'before_ref', 'after_ref'}, 'source_generation_physical_A_transition_row')
+            need(_source_generation_same(row['before_ref'], prior[role])
+                 and _source_generation_same(row['after_ref'], profile[role]),
+                 'source_generation_physical_A_transition_join')
     for key in prior:
-        if key not in ('unit', 'main_entrypoint', 'health_module', 'receipt_path', 'source_descriptors'):
+        if key not in ('unit', 'main_entrypoint', 'health_module', 'receipt_path', 'source_descriptors') + (('owner_source', 'driver_source') if physical_cli4 else ()):
+
             need(_source_generation_same(stage[key], profile[key]), 'source_generation_non_source_scope_changed')
     need(profile['main_entrypoint'] != prior['main_entrypoint'] and profile['health_module'] != prior['health_module']
          and profile['receipt_path'] != prior['receipt_path']
@@ -4800,12 +5044,14 @@ def _source_generation_review(spec_ref, profile_ref, profile, config):
          and {pin['path'] for pin in current[len(stagepins):]} == set(selected)|{config_ref['path']},
          'source_generation_unlisted_source_added_removed_or_reordered')
     request = _source_generation_template_transition(spec['template_transition_ref'], replacements,
-                                                    prior, profile, oldconfig, config)
+        prior, profile, oldconfig, config, **({'comparison': comparison, 'source': source} if physical_cli4 else {}))
     policy = _source_generation_storage_policy(spec['storage_policy_approval_ref'], profile, replacements)
     # All seven named raw roles are exact current Main/health plus these five R
     # replacement bodies; arbitrary extra raw subjects cannot qualify them.
     qualification = h._document(source['source_qualification'])
-    expected_roles = [profile['main_entrypoint'], profile['health_module']]+[row['after_ref'] for row in replacements]
+    expected_roles = [profile[role] for role in (('main_entrypoint', 'health_module', 'owner_source', 'driver_source')
+        if physical_cli4 else ('main_entrypoint', 'health_module'))]+[row['after_ref'] for row in
+            (replacements + comparison['source_relocations'] if physical_cli4 else replacements)]
     need(sorted(_source_generation_canonical(pin) for pin in qualification['required_raw_subjects'])
          == sorted(_source_generation_canonical(pin) for pin in expected_roles),
          'source_generation_qualification_not_exact_seven_current_roles')
