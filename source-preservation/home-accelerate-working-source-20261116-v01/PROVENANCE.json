@@ -1,0 +1,110 @@
+{
+  "actual_new_public_versions": 0,
+  "captured_home_HEAD": "a2f7213b63989df96a8bb5b6b84b8d47ec7f7e08",
+  "evidence_identities": {
+    "bounded_exact_preservation_original_path_check": {
+      "bytes": 3944,
+      "sha256": "8b6c5089398ca58c1288f7672e5ba80c62efd5164a1cc6a45a129c6836e58245"
+    },
+    "five_file_content_and_license_observations": {
+      "bytes": 13893,
+      "sha256": "fbadbbf1a27bad30e08410982b122037ba83d3c279b1fe91fe6bb3a69ab5a99a"
+    },
+    "fresh_exact_integrity": {
+      "bytes": 6471,
+      "sha256": "c861898babf607cbc7fb66ff72eb5f2fdbcf6fa6d60bdc8e20c19b6ffc78123d"
+    },
+    "original_capture": {
+      "bytes": 20416,
+      "sha256": "afb653f358fc3b46031dd524ab5da80f1678793394ba094b822e0f4d1350ac1d"
+    },
+    "supervisor_content_review": {
+      "bytes": 5256,
+      "sha256": "97890d640b68e64c07c85563afa473d29d6ddb8e4277110348323da2629ae5aa"
+    }
+  },
+  "intended_archive_namespace": "source-preservation/home-accelerate-working-source-20261116-v01",
+  "intended_preservation_ref": "refs/heads/preserve/inflight-source-20261114",
+  "license": {
+    "archive_relative_path": "LICENSE",
+    "bytes": 35184,
+    "git_blob_oid": "ada1a8176b23b97e70d89300c3f06c3c471bec2c",
+    "observed_title": "GNU AFFERO GENERAL PUBLIC LICENSE",
+    "observed_version": "3, 19 November 2007",
+    "ownership_or_relicense_grant_inferred": false,
+    "sha256": "6f1e622c82a380075843bb084a7ec3b1f1d12a4a02526d75e78b0924a860aa75"
+  },
+  "limitations": [
+    "This draft packages metadata only; source bodies and license bytes were not reread for its construction.",
+    "Existing reviews concern content and captured license observations, not compatibility or publication approval.",
+    "Bounded public comparisons do not establish global historical uniqueness.",
+    "Snapshot backup does not establish main adoption, passing tests, or software qualification.",
+    "Exact destination, packaging review, fresh fences and the coordinated writer window remain pending."
+  ],
+  "proposal_identity": {
+    "bytes": 13291,
+    "sha256": "d0d199c979c2f666d175db1eb97b224bd036578c5b5d543aabb652172253c491"
+  },
+  "prospective_public_versions": 8,
+  "publication_authorized": false,
+  "publication_selected": false,
+  "published_commit": null,
+  "schema": "home-working-source-preservation-provenance-draft/v1",
+  "snapshot_origin": {
+    "captured_home_HEAD_role": "Checkout base identity only; not a claim that the captured file versions are committed at this HEAD.",
+    "exact_version_identity": "Each source row binds the captured working-file bytes by SHA-256 and Git blob OID.",
+    "historical_original_development_commits": "Not established by this manifest.",
+    "kind": "captured_working_tree_file_versions"
+  },
+  "source_bytes": 385673,
+  "source_repository": "https://github.com/endomorphosis/ipfs_accelerate_py",
+  "source_versions": [
+    {
+      "archive_relative_path": "ipfs_accelerate_py/agent_supervisor/duckdb_state.py",
+      "bytes": 17484,
+      "git_blob_oid": "71974ed073c7f5540eae19f8104271d529d9b9bd",
+      "original_relative_path": "ipfs_accelerate_py/agent_supervisor/duckdb_state.py",
+      "sha256": "ed47b3a62f4d84ec2f391a3c92aba1d7b1318567add9c1aa556cdf7f83968225"
+    },
+    {
+      "archive_relative_path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py",
+      "bytes": 352169,
+      "git_blob_oid": "398431cb10a719460aedd54b926bf2fac287e4f4",
+      "original_relative_path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py",
+      "sha256": "5ba32bec29c8d0119a690cad52d3de78ad3874811116046df4e27cfb0b0c1339"
+    },
+    {
+      "archive_relative_path": "pytest.ini",
+      "bytes": 3295,
+      "git_blob_oid": "a9a16e4ebefa1aeb5a45da54e5a5abe2c48006e4",
+      "original_relative_path": "pytest.ini",
+      "sha256": "e746499aede56cb746d3daa6c289187cb7bcd0201c13bcb584faf6f12965f9e5"
+    },
+    {
+      "archive_relative_path": "test/api/conftest.py",
+      "bytes": 1017,
+      "git_blob_oid": "2ea8bda3240553ac934c327a8a2064f0de90f1cc",
+      "original_relative_path": "test/api/conftest.py",
+      "sha256": "c4da7b08f0c7cdbf731b65cdd2091462b25e8a76913f6cd54b665e7bf00b13b4"
+    },
+    {
+      "archive_relative_path": "test/api/test_agent_supervisor_duckdb_state.py",
+      "bytes": 9467,
+      "git_blob_oid": "565315963591a4848fc6ee9f74565f2dd4f32279",
+      "original_relative_path": "test/api/test_agent_supervisor_duckdb_state.py",
+      "sha256": "4d11aee02ad9934e9858eb1ef4f9c081002f9d11f9e41a4eea1a07395204315e"
+    },
+    {
+      "archive_relative_path": "test/pytest.ini",
+      "bytes": 2241,
+      "git_blob_oid": "a0770c1298df08a1391fe8c5c8c7c52b39e70927",
+      "original_relative_path": "test/pytest.ini",
+      "sha256": "f68c6219a2923d0d385bd1f866c73049843f7ce11c8066004d0cf9a8f0b6803f"
+    }
+  ],
+  "status": "private_unselected_draft",
+  "supersedes_private_draft_identity": {
+    "bytes": 4460,
+    "sha256": "51e59b91355fab3ed0667035d4342770b79a6ee2fccec7a2a81ade8bd414d7f6"
+  }
+}
