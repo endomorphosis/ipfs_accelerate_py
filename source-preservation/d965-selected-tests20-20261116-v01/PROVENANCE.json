@@ -1,0 +1,273 @@
+{
+  "approval": "No publication or operational approval granted by this provenance.",
+  "archive_namespace": "source-preservation/d965-selected-tests20-20261116-v01",
+  "entries": [
+    {
+      "archive_path": "source-preservation/d965-selected-tests20-20261116-v01/test/api/test_agent_supervisor_configured_board_namespace.py",
+      "historical_git_origin": {
+        "blob_oid": "4ac211d8a4faa34f0d2b3f1227c13739bccbd480",
+        "blob_type": "blob",
+        "bytes": 14464,
+        "commit": "d965474493c68d7c3312f7a2cc516ab67ef01f9f",
+        "git_mode": "100644",
+        "original_path": "test/api/test_agent_supervisor_configured_board_namespace.py"
+      },
+      "sha256": "09230dc538c69bcc00c4bae5cbd6312b70f0e9a7ecb76ee958e9b2ad0500064b"
+    },
+    {
+      "archive_path": "source-preservation/d965-selected-tests20-20261116-v01/test/api/test_agent_supervisor_scoped_artifacts.py",
+      "historical_git_origin": {
+        "blob_oid": "937730454fd1a7bb99cf39a57e0f4bc12df9b303",
+        "blob_type": "blob",
+        "bytes": 9361,
+        "commit": "d965474493c68d7c3312f7a2cc516ab67ef01f9f",
+        "git_mode": "100644",
+        "original_path": "test/api/test_agent_supervisor_scoped_artifacts.py"
+      },
+      "sha256": "49b9bb10b9598e7443355ca905cc440f76ec34ffe7d17111c3c32b484d4658b8"
+    },
+    {
+      "archive_path": "source-preservation/d965-selected-tests20-20261116-v01/test/api/test_agent_supervisor_supervisor_activity.py",
+      "historical_git_origin": {
+        "blob_oid": "9cbb4151a8fdc0efe44777c29e80c76aadc5cc4d",
+        "blob_type": "blob",
+        "bytes": 15306,
+        "commit": "d965474493c68d7c3312f7a2cc516ab67ef01f9f",
+        "git_mode": "100644",
+        "original_path": "test/api/test_agent_supervisor_supervisor_activity.py"
+      },
+      "sha256": "465b2d6bf38c9f4d2e4bc104bdd38df6a2afb1a01ce165d20e73b3d47feabce4"
+    },
+    {
+      "archive_path": "source-preservation/d965-selected-tests20-20261116-v01/test/api/test_board_service_fleet_monitor.py",
+      "historical_git_origin": {
+        "blob_oid": "d8d62785a2cfb30d59ff5d6c3002117628f5f42c",
+        "blob_type": "blob",
+        "bytes": 44020,
+        "commit": "d965474493c68d7c3312f7a2cc516ab67ef01f9f",
+        "git_mode": "100644",
+        "original_path": "test/api/test_board_service_fleet_monitor.py"
+      },
+      "sha256": "7dac716829d1637e2d948d3d9bbd60049f2b725e631a5f98cd839280da2177da"
+    },
+    {
+      "archive_path": "source-preservation/d965-selected-tests20-20261116-v01/test/api/test_board_service_monitor.py",
+      "historical_git_origin": {
+        "blob_oid": "e2190a1d92b4be43e2e7624d146d46b2f7496c22",
+        "blob_type": "blob",
+        "bytes": 67658,
+        "commit": "d965474493c68d7c3312f7a2cc516ab67ef01f9f",
+        "git_mode": "100644",
+        "original_path": "test/api/test_board_service_monitor.py"
+      },
+      "sha256": "cfe3f61356fe23db9f1dd2ceb73b18acee5db63c5711da9358875f105db9b7a4"
+    },
+    {
+      "archive_path": "source-preservation/d965-selected-tests20-20261116-v01/test/api/test_codex_telemetry_pipeline.py",
+      "historical_git_origin": {
+        "blob_oid": "e87db5c832264d4a3321badeda4ee70a4745f6ae",
+        "blob_type": "blob",
+        "bytes": 14898,
+        "commit": "d965474493c68d7c3312f7a2cc516ab67ef01f9f",
+        "git_mode": "100644",
+        "original_path": "test/api/test_codex_telemetry_pipeline.py"
+      },
+      "sha256": "703b5d3cf33c4827b9f8eef1106875451d1a972aa627e3ac786ba8c069f1aabc"
+    },
+    {
+      "archive_path": "source-preservation/d965-selected-tests20-20261116-v01/test/api/test_codex_tool_diagnostics.py",
+      "historical_git_origin": {
+        "blob_oid": "263c56dd2b26e5ac87026f3c87ec3aea2d97ac7b",
+        "blob_type": "blob",
+        "bytes": 13933,
+        "commit": "d965474493c68d7c3312f7a2cc516ab67ef01f9f",
+        "git_mode": "100644",
+        "original_path": "test/api/test_codex_tool_diagnostics.py"
+      },
+      "sha256": "a0cbdc95428c2ca01ebe4a9b8a351a9bdd8513e639a0b76cde0fc90e902f7024"
+    },
+    {
+      "archive_path": "source-preservation/d965-selected-tests20-20261116-v01/test/api/test_codex_usage_lifecycle.py",
+      "historical_git_origin": {
+        "blob_oid": "426106fd2e3b14ce80660e09bb18ddd80bd133ed",
+        "blob_type": "blob",
+        "bytes": 10333,
+        "commit": "d965474493c68d7c3312f7a2cc516ab67ef01f9f",
+        "git_mode": "100644",
+        "original_path": "test/api/test_codex_usage_lifecycle.py"
+      },
+      "sha256": "8c6a31d1517f061a9e7eddfe8a702724011cfa2a5c932beb472d372195e6795c"
+    },
+    {
+      "archive_path": "source-preservation/d965-selected-tests20-20261116-v01/test/api/test_repository_source_policy.py",
+      "historical_git_origin": {
+        "blob_oid": "2b12ed22f801af2ee63e7b71310a3e48b109d096",
+        "blob_type": "blob",
+        "bytes": 12228,
+        "commit": "d965474493c68d7c3312f7a2cc516ab67ef01f9f",
+        "git_mode": "100644",
+        "original_path": "test/api/test_repository_source_policy.py"
+      },
+      "sha256": "3db347da5b30a9a8045cb4899d60cc3cc32b41876bbe39225880f76f03441fdf"
+    },
+    {
+      "archive_path": "source-preservation/d965-selected-tests20-20261116-v01/test/api/test_repository_source_probe.py",
+      "historical_git_origin": {
+        "blob_oid": "23fea680926633fcb9cc40a422cdf6a244fe0ad1",
+        "blob_type": "blob",
+        "bytes": 10241,
+        "commit": "d965474493c68d7c3312f7a2cc516ab67ef01f9f",
+        "git_mode": "100644",
+        "original_path": "test/api/test_repository_source_probe.py"
+      },
+      "sha256": "f7d0125fba738a52d3d366e6ed433a37d3164f164f14d22cc5ea2472dbd49d3d"
+    },
+    {
+      "archive_path": "source-preservation/d965-selected-tests20-20261116-v01/test/api/test_repository_source_read_observation.py",
+      "historical_git_origin": {
+        "blob_oid": "6ef768c24fbc7469a18a72e2cc663c92c4a2fc96",
+        "blob_type": "blob",
+        "bytes": 13196,
+        "commit": "d965474493c68d7c3312f7a2cc516ab67ef01f9f",
+        "git_mode": "100644",
+        "original_path": "test/api/test_repository_source_read_observation.py"
+      },
+      "sha256": "49e4d077cbd98790266ecdb713d554692e99c656ad4b5179dbe4efd5aff9ddcb"
+    },
+    {
+      "archive_path": "source-preservation/d965-selected-tests20-20261116-v01/test/api/test_repository_source_session.py",
+      "historical_git_origin": {
+        "blob_oid": "07f11f754e3ebeea05dd7b3c4d057538eb2704ad",
+        "blob_type": "blob",
+        "bytes": 30567,
+        "commit": "d965474493c68d7c3312f7a2cc516ab67ef01f9f",
+        "git_mode": "100644",
+        "original_path": "test/api/test_repository_source_session.py"
+      },
+      "sha256": "00bf66b89a0482cf3e3643a157d6b7899a87368d1ff948302a77d46317527340"
+    },
+    {
+      "archive_path": "source-preservation/d965-selected-tests20-20261116-v01/test/api/test_repository_world_dispatch.py",
+      "historical_git_origin": {
+        "blob_oid": "fb96e039fe9b214db97a225276160385bd66525e",
+        "blob_type": "blob",
+        "bytes": 28886,
+        "commit": "d965474493c68d7c3312f7a2cc516ab67ef01f9f",
+        "git_mode": "100644",
+        "original_path": "test/api/test_repository_world_dispatch.py"
+      },
+      "sha256": "230823d02cc97a86b39febf583274333ac55ea7ea93b53344ff9fef7851a996e"
+    },
+    {
+      "archive_path": "source-preservation/d965-selected-tests20-20261116-v01/test/api/test_repository_world_invocation_replay.py",
+      "historical_git_origin": {
+        "blob_oid": "d5cd15c98e8ac73d0164da48d106dbc6d5f2d456",
+        "blob_type": "blob",
+        "bytes": 28465,
+        "commit": "d965474493c68d7c3312f7a2cc516ab67ef01f9f",
+        "git_mode": "100644",
+        "original_path": "test/api/test_repository_world_invocation_replay.py"
+      },
+      "sha256": "17f7f6d6f488c6522eadc6883ae19504608cb36047255494256d737575ae89a8"
+    },
+    {
+      "archive_path": "source-preservation/d965-selected-tests20-20261116-v01/test/api/test_repository_world_packet.py",
+      "historical_git_origin": {
+        "blob_oid": "ab947351bc4a8ae3fbaeb79167491f06939ada37",
+        "blob_type": "blob",
+        "bytes": 24779,
+        "commit": "d965474493c68d7c3312f7a2cc516ab67ef01f9f",
+        "git_mode": "100644",
+        "original_path": "test/api/test_repository_world_packet.py"
+      },
+      "sha256": "c325dd39e13252fb6fef3b78ce5ee03c775ae973244b8f7bb0da976d3cb04a30"
+    },
+    {
+      "archive_path": "source-preservation/d965-selected-tests20-20261116-v01/test/api/test_semantic_selection_comparison.py",
+      "historical_git_origin": {
+        "blob_oid": "0b2063fd3d22de0b3d7cb6770e0eaaa9171f989a",
+        "blob_type": "blob",
+        "bytes": 16216,
+        "commit": "d965474493c68d7c3312f7a2cc516ab67ef01f9f",
+        "git_mode": "100644",
+        "original_path": "test/api/test_semantic_selection_comparison.py"
+      },
+      "sha256": "c235c96314d5a1e49ba87031789765269478997bea1ff3d7dee5c8843869b967"
+    },
+    {
+      "archive_path": "source-preservation/d965-selected-tests20-20261116-v01/test/api/test_semantic_selection_comparison_probe.py",
+      "historical_git_origin": {
+        "blob_oid": "3f7eda3084ee17f65842ad458add17f30919cf7c",
+        "blob_type": "blob",
+        "bytes": 13707,
+        "commit": "d965474493c68d7c3312f7a2cc516ab67ef01f9f",
+        "git_mode": "100644",
+        "original_path": "test/api/test_semantic_selection_comparison_probe.py"
+      },
+      "sha256": "e84637122cffb0c24c7bfa556ebc3765fb153e0d4f9e70655f68a1ddf4041db7"
+    },
+    {
+      "archive_path": "source-preservation/d965-selected-tests20-20261116-v01/test/api/test_terminal_decision_archive.py",
+      "historical_git_origin": {
+        "blob_oid": "624d09c6332cc81edfb999bd26285c3fbdb81c86",
+        "blob_type": "blob",
+        "bytes": 8044,
+        "commit": "d965474493c68d7c3312f7a2cc516ab67ef01f9f",
+        "git_mode": "100644",
+        "original_path": "test/api/test_terminal_decision_archive.py"
+      },
+      "sha256": "e20e49c38a840ce9f03bae065ab8439d9d3d98111ecca8d76cdef0a3826fb341"
+    },
+    {
+      "archive_path": "source-preservation/d965-selected-tests20-20261116-v01/test/api/test_terminal_timeout_configuration.py",
+      "historical_git_origin": {
+        "blob_oid": "54d3dac8514d4ad47db1545946a900497fd3ba30",
+        "blob_type": "blob",
+        "bytes": 32505,
+        "commit": "d965474493c68d7c3312f7a2cc516ab67ef01f9f",
+        "git_mode": "100644",
+        "original_path": "test/api/test_terminal_timeout_configuration.py"
+      },
+      "sha256": "a56a81c37139642cf6752258adbbf650ff13df39cc335918a3487b5529674e3d"
+    },
+    {
+      "archive_path": "source-preservation/d965-selected-tests20-20261116-v01/test/api/test_terminal_usage_accounting.py",
+      "historical_git_origin": {
+        "blob_oid": "bba40231f813427697b2d53ba1fe152b2f43040d",
+        "blob_type": "blob",
+        "bytes": 14655,
+        "commit": "d965474493c68d7c3312f7a2cc516ab67ef01f9f",
+        "git_mode": "100644",
+        "original_path": "test/api/test_terminal_usage_accounting.py"
+      },
+      "sha256": "50162e9da68837e3401eb7dbc7e0cc8ee52f3f11256643c8e3fd3340583c450b"
+    },
+    {
+      "archive_path": "source-preservation/d965-selected-tests20-20261116-v01/LICENSE",
+      "historical_git_origin": {
+        "blob_oid": "ada1a8176b23b97e70d89300c3f06c3c471bec2c",
+        "blob_type": "blob",
+        "bytes": 35184,
+        "commit": "d965474493c68d7c3312f7a2cc516ab67ef01f9f",
+        "git_mode": "100755",
+        "original_path": "LICENSE"
+      },
+      "sha256": "6f1e622c82a380075843bb084a7ec3b1f1d12a4a02526d75e78b0924a860aa75"
+    }
+  ],
+  "exclusions": [
+    "prior13HOLD",
+    "two_large_UNREAD_files",
+    "private_assets",
+    "models_and_checkpoints"
+  ],
+  "historical_commit": "d965474493c68d7c3312f7a2cc516ab67ef01f9f",
+  "historical_license_files": 1,
+  "license_bytes": 35184,
+  "prospective_archive_files_including_this_manifest": 22,
+  "repository": "https://github.com/endomorphosis/ipfs_accelerate_py",
+  "schema": "portable-historical-source-preservation-provenance/v1",
+  "scope": "Private identity capture for possible source-only preservation. Historical origin does not assert current checkout or public branch identity. No functional adoption or legal/scientific qualification.",
+  "source_or_test_bytes": 423462,
+  "source_or_test_versions": 20
+}
