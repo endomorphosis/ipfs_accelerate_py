@@ -12,6 +12,8 @@ from types import SimpleNamespace
 import pytest
 
 from ipfs_accelerate_py.agent_supervisor.runtime import router_implementation_runner as runner
+from ipfs_accelerate_py.agent_supervisor.context.context_compiler import ContextCompiler, EvidenceValuePolicy
+from ipfs_accelerate_py.agent_supervisor.context.context_contracts import ContextBudget
 from ipfs_accelerate_py.agent_supervisor.runtime.repository_world_packet import (
     prepare_repository_world_packet, repository_world_task_binding,
 )
@@ -105,15 +107,22 @@ def invoke(case, **changes):
     return runner.run(**options)
 
 
-def richer_world_case(case):
+def richer_world_case(case, *, reference_count=16, optional_items=None):
     """Issue a real packet with enough repeated metadata to exercise selection."""
     source, session, _packet, state = case
-    adapter = session.context_adapter(compiler())
+    # The authority contains the IDs and coverage of every required reference;
+    # its recursive item budget must accommodate this larger authored packet.
+    adapter = session.context_adapter(ContextCompiler(
+        ContextBudget(max_input_tokens=20_000, reserved_output_tokens=0,
+                      reserved_tool_tokens=0, max_items=128,
+                      max_item_bytes=32_768, max_text_bytes=16_384),
+        tokenizer=lambda value: max(1, len(value.encode("utf-8")) // 16),
+        value_policy=EvidenceValuePolicy(max_optional_items=optional_items)))
     effects = ("read_source", "write_source", "run_validation")
     paths = ("calc.py",)
     task_binding = repository_world_task_binding(
         task_id="task:arithmetic", task_text=TASK, allowed_effects=effects, write_paths=paths)
-    compilation = compile_context(adapter, tuple(obligation("retained-" + str(i)) for i in range(16)),
+    compilation = compile_context(adapter, tuple(obligation("retained-" + str(i)) for i in range(reference_count)),
         authority={**CORE["authority"], "world_task_packet": task_binding})
     packet = prepare_repository_world_packet(
         adapter=adapter, compilation=compilation, generation=1,
@@ -222,18 +231,22 @@ def test_compact_candidate_requires_working_strictly_smaller_count(dispatch_case
 
 def test_byte_gate_avoids_counting_unhelpful_candidate(dispatch_case):
     from ipfs_accelerate_py.agent_supervisor.runtime.repository_world_packet import project_repository_world_prompt
-    packet = dispatch_case[2]
+    # This separately admitted task has only two selected references. No
+    # requirement is removed from the original fixture's issued packet.
+    case = richer_world_case(dispatch_case, reference_count=1, optional_items=1)
+    packet = case[2]
     view = project_repository_world_prompt(packet.prompt)
+    assert view.receipt["reference_count"] == 2
     assert len(view.provider_prompt.encode()) >= len(packet.prompt.encode())
     counted = []
     def count(text):
         counted.append(text)
         return len(text.encode())
-    _output, receipt = invoke(dispatch_case, prompt_token_counter=counter(count_tokens=count))
+    _output, receipt = invoke(case, prompt_token_counter=counter(count_tokens=count))
     descriptor = receipt["world_task_packet"]["prompt_compaction"]
     assert descriptor["enabled"] is True and descriptor["selected_mode"] == "native"
     assert descriptor["projection"] == view.receipt and descriptor["selection"] is None
-    assert counted == [dispatch_case[3]["seen"][0][0]]
+    assert counted == [case[3]["seen"][0][0]]
 
 
 @pytest.mark.parametrize("value", [None, 0, 1, "false"])
@@ -245,7 +258,7 @@ def test_compaction_flag_requires_explicit_boolean(dispatch_case, value):
 
 def test_current_packet_is_actual_model_input_with_content_free_receipt(dispatch_case):
     source, _session, packet, state = dispatch_case
-    _output, receipt = invoke(dispatch_case)
+    _output, receipt = invoke(dispatch_case, compact_world_prompt=False)
     assert len(state["seen"]) == 1
     delivered, options = state["seen"][0]
     expected, advisory = runner.render_model_prompt(
