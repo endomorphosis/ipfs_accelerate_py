@@ -9,13 +9,11 @@ import json
 import math
 import os
 import signal
-import stat
 import subprocess
 import sys
 import threading
 import time
 from collections import Counter
-from contextlib import nullcontext
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -31,7 +29,6 @@ from ..merge.worktree_lifecycle import (
     read_process_birth,
 )
 from .core import now_iso, parse_timestamp, pid_alive, process_args, read_json, read_pid_file, remove_runtime_marker, terminate_pid_tree, write_json
-from .core import _process_identity_snapshot
 
 
 SUPERVISED_CHILD_IDENTITY_SCHEMA = (
@@ -43,15 +40,6 @@ SUPERVISED_CHILD_IDENTITY_PATH_ENV = (
 SUPERVISED_CHILD_OWNER_SCOPE_ENV = (
     "IPFS_ACCELERATE_SUPERVISED_CHILD_OWNER_SCOPE"
 )
-
-
-SUPERVISED_CHILD_LOG_MARKER_MODE_ENV = (
-    "IPFS_ACCELERATE_AGENT_SUPERVISOR_LOG_MARKER_MODE"
-)
-SUPERVISED_CHILD_LOG_MARKER_SCHEMA = (
-    "ipfs_accelerate_py.agent_supervisor.supervised-child-log-marker@1"
-)
-SUPERVISED_CHILD_LOG_MARKER_MAX_BYTES = 4096
 
 
 @dataclass
@@ -108,7 +96,6 @@ class SupervisedChildSpec:
     latest_log_path: Optional[Path] = None
     env: Mapping[str, str] = field(default_factory=dict)
     pass_fds: tuple[int, ...] = field(default_factory=tuple)
-    worker_credential_handoff: bool = False
     stdin_devnull: bool = True
     start_new_session: bool = True
 
@@ -324,7 +311,7 @@ def launch_process_child(
     text: bool = False,
     pass_fds: Sequence[int] = (),
     dispatch_binding: Mapping[str, object] | None = None,
-    absolute_deadline: float | None = None,
+    checked_context_input: str | None = None,
 ) -> subprocess.Popen[Any]:
     """Launch a supervisor-owned child process with normalized runtime defaults."""
 
@@ -350,29 +337,34 @@ def launch_process_child(
     if text:
         kwargs["text"] = True
     literal = [str(part) for part in command]
-    deadline_handoff = nullcontext(None)
-    if absolute_deadline is not None:
-        from ..runtime.owner_provider_deadline import (
-            DEADLINE_FD_ENV, DEADLINE_SHA256_ENV, owner_provider_deadline_selected,
-            prepare_owner_provider_deadline_handoff,
-        )
-        if owner_provider_deadline_selected(literal):
-            if any(name in child_env for name in (DEADLINE_FD_ENV, DEADLINE_SHA256_ENV)):
-                raise ValueError("owner provider deadline environment is created by the launcher")
-            deadline_handoff = prepare_owner_provider_deadline_handoff(
-                command=literal, workspace=cwd, absolute_deadline=absolute_deadline)
+    checked_flag = "--checked-context-owner-scope-cid"
+    checked_selected = any(part == checked_flag or part.startswith(checked_flag + "=") for part in literal)
+    checked_routing = any(child_env.get(name) for name in (
+        "IPFS_ACCELERATE_CHECKED_CONTEXT_DISPATCH_SOCKET", "IPFS_ACCELERATE_CHECKED_CONTEXT_DISPATCH_CID",
+        "IPFS_ACCELERATE_CHECKED_CONTEXT_OWNER_BIRTH"))
+    if checked_selected or (checked_routing and literal and literal[0] == "/opt/ipfs-supervisor/bin/router-worker"):
+        from ..runtime.checked_context_dispatch import require_checked_context_worker_dispatch
+        guard = require_checked_context_worker_dispatch(command=literal, worktree=cwd,
+            environment=child_env, dispatch_binding=dispatch_binding, input_text=checked_context_input)
+        kwargs["env"] = {**child_env, **guard.child_environment()}
+        process = None
+        try:
+            process = subprocess.Popen(guard.command, **kwargs)
+            guard.note_spawned(process)
+            return process
+        except BaseException:
+            if process is not None:
+                birth = read_process_birth(process.pid)
+                fenced = terminate_pid_tree(process.pid, grace_seconds=5.0,
+                    freeze_first=True, require_gone=True,
+                    owned_process_group_id=process.pid if start_new_session else None,
+                    expected_root_start_time_ticks=birth.start_time_ticks if birth is not None else None)
+                process.wait(timeout=5.0)
+                if not fenced:
+                    raise RuntimeError("checked context dispatch ACK failure could not be fenced")
+            guard.abort()
+            raise
     proof_flags = ("--finite-proof-query-context", "--finite-proof-query-sha256", "--finite-proof-query-context-cid")
-    with deadline_handoff as handoff:
-        if handoff is not None:
-            kwargs["env"] = {**child_env, **handoff.environment}
-            kwargs["pass_fds"] = (*normalized_pass_fds, *handoff.pass_fds)
-        return _launch_bound_process_child(literal, kwargs, child_env=kwargs["env"],
-            proof_flags=proof_flags, cwd=cwd, dispatch_binding=dispatch_binding,
-            start_new_session=start_new_session)
-
-
-def _launch_bound_process_child(literal, kwargs, *, child_env, proof_flags, cwd,
-        dispatch_binding, start_new_session):
     if not any(part == flag or part.startswith(flag + "=") for part in literal for flag in proof_flags):
         return subprocess.Popen(literal, **kwargs)
     from ..runtime.finite_proof_query_worker_dispatch import require_finite_proof_query_worker_dispatch
@@ -1067,8 +1059,7 @@ class ProcessGroupCancelled(RuntimeError):
 class ProcessGroupCleanupUnverified(RuntimeError):
     """The owned process group has not been proved absent after cleanup."""
 
-    def __init__(self, reason: str = "process_group_cleanup_unverified") -> None:
-        self.reason = reason if isinstance(reason, str) and reason.isidentifier() else "process_group_cleanup_unverified"
+    def __init__(self) -> None:
         super().__init__("process group cleanup unverified")
 
 
@@ -1161,7 +1152,6 @@ def run_process_group_stream(
     inherit_environment: bool = True,
     replace_env: bool = False,
     timeout_seconds: float,
-    absolute_deadline: float | None = None,
     progress_timeout_seconds: float | None = None,
     max_timeout_seconds: float | None = None,
     progress_paths: Sequence[Path | str] = (),
@@ -1184,52 +1174,13 @@ def run_process_group_stream(
     noisy or malicious child from extending its lease forever. Supplying only
     ``on_progress`` retains the absolute deadline while polling the same
     progress marker for telemetry.
-
-    ``absolute_deadline`` is an optional monotonic deadline shared with earlier
-    provider work. Launch and birth-callback time consume that lease; an expired
-    lease cannot start a child or become a fresh relative timeout after birth.
-    Elapsed telemetry includes launch and callbacks, and is captured before
-    timeout cleanup; cleanup grace does not become provider execution time.
     """
-
-    if absolute_deadline is not None and (
-        type(absolute_deadline) not in (int, float)
-        or not -sys.float_info.max <= absolute_deadline <= sys.float_info.max
-    ):
-        raise ValueError("absolute_deadline must be a finite monotonic timestamp")
-
-    invocation_started = time.monotonic()
-    progress_events = 0
-    idle_timeout: float | None = None
-    hard_timeout: float | None = None
-
-    def annotate_timeout(exc: subprocess.TimeoutExpired, observed_at: float) -> None:
-        # All expiry paths share these observations, including expiry before
-        # monitoring starts and subprocess.communicate's own TimeoutExpired.
-        setattr(exc, "elapsed_seconds", max(0.0, observed_at - invocation_started))
-        setattr(exc, "progress_events", progress_events)
-        setattr(exc, "progress_timeout_seconds", idle_timeout)
-        setattr(exc, "max_timeout_seconds", (
-            hard_timeout if hard_timeout is not None
-            else max(0.0, float(timeout_seconds))
-        ))
-
-    def remaining_absolute_budget() -> float | None:
-        if absolute_deadline is None:
-            return None
-        observed_at = time.monotonic()
-        remaining = absolute_deadline - observed_at
-        if remaining <= 0:
-            exc = subprocess.TimeoutExpired(cmd=list(command), timeout=0.0)
-            setattr(exc, "timeout_reason", "absolute_deadline")
-            setattr(exc, "absolute_deadline", absolute_deadline)
-            annotate_timeout(exc, observed_at)
-            raise exc
-        return remaining
 
     input_value: Any = input_text
     if input_text is not None and not text:
         input_value = input_text.encode("utf-8")
+    idle_timeout: float | None = None
+    hard_timeout: float | None = None
     poll_seconds: float | None = None
     monitor_progress = (
         progress_timeout_seconds is not None
@@ -1280,12 +1231,6 @@ def run_process_group_stream(
                 "progress_poll_seconds must be finite and positive"
             )
         poll_seconds = max(0.01, requested_poll_seconds)
-    remaining_absolute_budget()
-    deadline_options = {}
-    if absolute_deadline is not None:
-        from ..runtime.owner_provider_deadline import owner_provider_deadline_selected
-        if owner_provider_deadline_selected(command):
-            deadline_options["absolute_deadline"] = absolute_deadline
     process = launch_process_child(
         command,
         cwd=cwd,
@@ -1298,11 +1243,14 @@ def run_process_group_stream(
         start_new_session=True,
         text=text,
         pass_fds=pass_fds,
-        **deadline_options,
         **({"dispatch_binding": dispatch_binding} if dispatch_binding is not None else {}),
+        **({"checked_context_input": input_text}
+           if any(str(part) == "--checked-context-owner-scope-cid"
+                  or str(part).startswith("--checked-context-owner-scope-cid=") for part in command)
+           or ((env or {}).get("IPFS_ACCELERATE_CHECKED_CONTEXT_DISPATCH_CID")
+               and command and str(command[0]) == "/opt/ipfs-supervisor/bin/router-worker") else {}),
     )
     callback_failure_cleaned = False
-    deferred_deadline_failure: subprocess.TimeoutExpired | None = None
     try:
         if on_started is not None:
             try:
@@ -1346,20 +1294,16 @@ def run_process_group_stream(
                         "provider runner callback failure could not be fenced"
                     ) from callback_error
                 raise
-        remaining = remaining_absolute_budget()
         if not monitor_progress:
             process.communicate(
                 input=input_value,
-                timeout=(max(0.0, float(timeout_seconds)) if remaining is None
-                         else min(max(0.0, float(timeout_seconds)), remaining)),
+                timeout=max(0.0, float(timeout_seconds)),
             )
         else:
             assert hard_timeout is not None
             assert poll_seconds is not None
             started = time.monotonic()
             hard_deadline = started + hard_timeout
-            if absolute_deadline is not None:
-                hard_deadline = min(hard_deadline, absolute_deadline)
             idle_deadline = (
                 started + idle_timeout
                 if idle_timeout is not None
@@ -1370,6 +1314,8 @@ def run_process_group_stream(
                 stderr=stderr,
                 progress_paths=progress_paths,
             )
+            progress_events = 0
+
             input_thread: threading.Thread | None = None
             if process.stdin is not None:
                 stdin_stream = process.stdin
@@ -1397,12 +1343,7 @@ def run_process_group_stream(
                 )
                 input_thread.start()
 
-            while True:
-                # Check before poll can reap a completed leader: a slow
-                # progress callback must not turn an expired lease into success.
-                remaining_absolute_budget()
-                if process.poll() is not None:
-                    break
+            while process.poll() is None:
                 now = time.monotonic()
                 if cancel_requested is not None:
                     cancellation = cancel_requested()
@@ -1415,9 +1356,11 @@ def run_process_group_stream(
                         raise ProcessGroupCancelled(str(reason))
                 timeout_reason = ""
                 if now >= hard_deadline:
-                    timeout_reason = "hard_timeout" if idle_timeout is not None else "absolute_timeout"
-                    if absolute_deadline is not None and hard_deadline == absolute_deadline:
-                        timeout_reason = "absolute_deadline"
+                    timeout_reason = (
+                        "hard_timeout"
+                        if idle_timeout is not None
+                        else "absolute_timeout"
+                    )
                 elif idle_deadline is not None and now >= idle_deadline:
                     timeout_reason = "progress_idle_timeout"
                 if timeout_reason:
@@ -1430,9 +1373,10 @@ def run_process_group_stream(
                         timeout=timeout_value,
                     )
                     setattr(exc, "timeout_reason", timeout_reason)
-                    annotate_timeout(exc, now)
-                    if timeout_reason == "absolute_deadline":
-                        setattr(exc, "absolute_deadline", absolute_deadline)
+                    setattr(exc, "elapsed_seconds", max(0.0, now - started))
+                    setattr(exc, "progress_events", progress_events)
+                    setattr(exc, "progress_timeout_seconds", idle_timeout)
+                    setattr(exc, "max_timeout_seconds", hard_timeout)
                     raise exc
 
                 wait_deadlines = [
@@ -1464,7 +1408,7 @@ def run_process_group_stream(
                             on_progress(
                                 {
                                     "elapsed_seconds": max(
-                                        0.0, observed_at - invocation_started
+                                        0.0, observed_at - started
                                     ),
                                     "progress_events": progress_events,
                                     "progress_timeout_seconds": idle_timeout,
@@ -1477,9 +1421,6 @@ def run_process_group_stream(
                             pass
             if input_thread is not None:
                 input_thread.join(timeout=0.1)
-        # Waiting or a callback can finish after the shared lease, including
-        # when the leader has already exited. Cleanup retains its own grace.
-        remaining_absolute_budget()
     except ProcessGroupCancelled:
         # A canonical-board cancellation is an authority hand-off, so the
         # provider tree must be unable to execute before the caller can release
@@ -1498,11 +1439,15 @@ def run_process_group_stream(
         process.wait()
         raise
     except subprocess.TimeoutExpired as exc:
-        timeout_observed_at = time.monotonic()
-        if absolute_deadline is not None and timeout_observed_at >= absolute_deadline:
-            setattr(exc, "timeout_reason", "absolute_deadline")
-            setattr(exc, "absolute_deadline", absolute_deadline)
-        annotate_timeout(exc, timeout_observed_at)
+        terminate_pid_tree(
+            process.pid,
+            grace_seconds=max(0.0, float(termination_grace_seconds)),
+        )
+        try:
+            process.communicate(timeout=max(0.1, float(termination_grace_seconds)))
+        except subprocess.TimeoutExpired:
+            terminate_process_group(process, signal.SIGKILL)
+            process.communicate()
         timeout_exc = subprocess.TimeoutExpired(
             cmd=list(command),
             timeout=float(getattr(exc, "timeout", timeout_seconds)),
@@ -1515,26 +1460,10 @@ def run_process_group_stream(
             "progress_events",
             "progress_timeout_seconds",
             "max_timeout_seconds",
-            "absolute_deadline",
         ):
             if hasattr(exc, attribute):
                 setattr(timeout_exc, attribute, getattr(exc, attribute))
-        if absolute_deadline is not None and process.returncode is not None:
-            # A callback may run after wait has reaped the leader. Its numeric
-            # PID is no longer ours to walk/kill; quiesce the owned group below
-            # before reporting the late deadline observation.
-            deferred_deadline_failure = timeout_exc
-        else:
-            terminate_pid_tree(
-                process.pid,
-                grace_seconds=max(0.0, float(termination_grace_seconds)),
-            )
-            try:
-                process.communicate(timeout=max(0.1, float(termination_grace_seconds)))
-            except subprocess.TimeoutExpired:
-                terminate_process_group(process, signal.SIGKILL)
-                process.communicate()
-            raise timeout_exc from exc
+        raise timeout_exc from exc
     # A successful CLI process may have daemonized descendants that closed
     # their inherited output descriptors.  They remain in the owned session
     # and could mutate the checkout after the implementation fence's final
@@ -1542,16 +1471,6 @@ def run_process_group_stream(
     def group_alive() -> bool:
         try:
             os.killpg(process.pid, 0)
-            if sys.platform == "linux":
-                # killpg(..., 0) also succeeds for an unreaped orphan zombie.
-                # Reuse the strict native identity census: only an observed,
-                # nonempty all-zombie group proves no member can execute.
-                # Unavailable/empty observations retain the existing fence.
-                snapshot = _process_identity_snapshot()
-                if snapshot.available:
-                    members = [record for record in dict(snapshot.processes).values() if record[2] == process.pid]
-                    if members and all(record[0] == "Z" for record in members):
-                        return False
             return True
         except OSError as error:
             if error.errno == errno.ESRCH:
@@ -1581,8 +1500,6 @@ def run_process_group_stream(
         if signal_group(signal.SIGTERM) and not wait_for_group_absence(grace):
             if signal_group(signal.SIGKILL) and not wait_for_group_absence(max(0.1, grace)):
                 raise ProcessGroupCleanupUnverified()
-    if deferred_deadline_failure is not None:
-        raise deferred_deadline_failure
     return subprocess.CompletedProcess(
         args=list(command),
         returncode=int(process.returncode or 0),
@@ -1854,187 +1771,6 @@ def _write_bytes_atomic(path: Path, content: bytes) -> None:
         temporary.unlink(missing_ok=True)
 
 
-def _supervised_child_log_marker_mode(spec: SupervisedChildSpec) -> str:
-    mode = spec.env.get(
-        SUPERVISED_CHILD_LOG_MARKER_MODE_ENV,
-        os.environ.get(SUPERVISED_CHILD_LOG_MARKER_MODE_ENV, "symlink"),
-    )
-    if mode not in ("symlink", "regular-json"):
-        raise RuntimeError("invalid supervised child log marker mode")
-    if mode == "regular-json" and spec.latest_log_path is None:
-        raise RuntimeError("regular child log marker requires a latest-log path")
-    return mode
-
-
-def _open_child_log_directory(path: Path, *, create: bool = False) -> int:
-    """Open a directory without traversing symlinks, including ancestors."""
-
-    absolute = path.absolute()
-    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
-    descriptor = os.open(absolute.anchor, flags)
-    try:
-        for component in absolute.parts[1:]:
-            if component in ("", ".", ".."):
-                raise RuntimeError("invalid supervised child log directory")
-            try:
-                child_descriptor = os.open(component, flags, dir_fd=descriptor)
-            except FileNotFoundError:
-                if not create:
-                    raise
-                try:
-                    os.mkdir(component, 0o700, dir_fd=descriptor)
-                except FileExistsError:
-                    pass
-                child_descriptor = os.open(component, flags, dir_fd=descriptor)
-            os.close(descriptor)
-            descriptor = child_descriptor
-        return descriptor
-    except BaseException:
-        os.close(descriptor)
-        raise
-
-
-def _child_log_marker_basename(value: Any) -> str:
-    if (not isinstance(value, str) or value in ("", ".", "..")
-            or Path(value).name != value or "/" in value or "\\" in value
-            or any(ord(character) < 32 or ord(character) == 127 for character in value)):
-        raise RuntimeError("invalid supervised child log basename")
-    return value
-
-
-def _regular_child_log_paths(spec: SupervisedChildSpec) -> tuple[Path, Path]:
-    marker = spec.resolve(spec.latest_log_path).absolute()
-    log = spec.resolve(spec.log_path).absolute()
-    _child_log_marker_basename(marker.name)
-    _child_log_marker_basename(log.name)
-    if marker.parent != log.parent or marker.name == log.name:
-        raise RuntimeError("regular child log marker must share its distinct log directory")
-    return marker, log
-
-
-def _open_regular_child_run_log(spec: SupervisedChildSpec) -> Any:
-    marker, log = _regular_child_log_paths(spec)
-    directory = _open_child_log_directory(marker.parent)
-    descriptor = None
-    try:
-        descriptor = os.open(
-            log.name, os.O_WRONLY | os.O_APPEND | os.O_CREAT | os.O_NOFOLLOW
-            | os.O_CLOEXEC | os.O_NONBLOCK, 0o600, dir_fd=directory,
-        )
-        metadata = os.fstat(descriptor)
-        if (not stat.S_ISREG(metadata.st_mode) or metadata.st_uid != os.geteuid()
-                or metadata.st_nlink != 1 or stat.S_IMODE(metadata.st_mode) & 0o022):
-            raise RuntimeError("untrusted supervised child run log")
-        handle = os.fdopen(descriptor, "ab")
-        descriptor = None
-        return handle
-    finally:
-        if descriptor is not None:
-            os.close(descriptor)
-        os.close(directory)
-
-
-def _write_regular_child_log_marker(spec: SupervisedChildSpec) -> None:
-    marker, log = _regular_child_log_paths(spec)
-    payload = {
-        "schema": SUPERVISED_CHILD_LOG_MARKER_SCHEMA,
-        "command_id": _supervised_child_content_identity({"command": list(spec.command)}),
-        "log_basename": log.name,
-    }
-    content = (json.dumps(payload, sort_keys=True) + "\n").encode("utf-8")
-    if len(content) > SUPERVISED_CHILD_LOG_MARKER_MAX_BYTES:
-        raise RuntimeError("supervised child log marker is too large")
-    directory = _open_child_log_directory(marker.parent)
-    temporary = f".{marker.name}.{os.getpid()}.{time.time_ns()}.tmp"
-    try:
-        try:
-            existing = os.stat(marker.name, dir_fd=directory, follow_symlinks=False)
-        except FileNotFoundError:
-            existing = None
-        if existing is not None and (
-                existing.st_uid != os.geteuid() or existing.st_nlink != 1
-                or not (stat.S_ISREG(existing.st_mode) or stat.S_ISLNK(existing.st_mode))):
-            raise RuntimeError("untrusted existing supervised child log marker")
-        descriptor = os.open(
-            temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC,
-            0o600, dir_fd=directory,
-        )
-        with os.fdopen(descriptor, "wb") as handle:
-            os.fchmod(handle.fileno(), 0o600)
-            handle.write(content)
-            handle.flush()
-            os.fsync(handle.fileno())
-        os.replace(temporary, marker.name, src_dir_fd=directory, dst_dir_fd=directory)
-        os.fsync(directory)
-    finally:
-        try:
-            os.unlink(temporary, dir_fd=directory)
-        except FileNotFoundError:
-            pass
-        os.close(directory)
-
-
-def _read_regular_child_log_marker(spec: SupervisedChildSpec) -> Path:
-    """Resolve bounded, owned regular-file provenance; never fall back on adoption."""
-
-    marker, _new_log = _regular_child_log_paths(spec)
-    try:
-        directory = _open_child_log_directory(marker.parent)
-    except OSError as error:
-        raise RuntimeError("invalid supervised child regular log directory") from error
-    flags = os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC | os.O_NONBLOCK
-    try:
-        descriptor = os.open(marker.name, flags, dir_fd=directory)
-        try:
-            before = os.fstat(descriptor)
-            if (not stat.S_ISREG(before.st_mode) or before.st_uid != os.geteuid()
-                    or before.st_nlink != 1 or stat.S_IMODE(before.st_mode) != 0o600
-                    or before.st_size > SUPERVISED_CHILD_LOG_MARKER_MAX_BYTES):
-                raise RuntimeError("untrusted supervised child log marker")
-            raw = os.read(descriptor, SUPERVISED_CHILD_LOG_MARKER_MAX_BYTES + 1)
-            after = os.fstat(descriptor)
-            current = os.stat(marker.name, dir_fd=directory, follow_symlinks=False)
-            signature = lambda item: (item.st_dev, item.st_ino, item.st_size,
-                                      item.st_mtime_ns, item.st_ctime_ns)
-            if (len(raw) > SUPERVISED_CHILD_LOG_MARKER_MAX_BYTES
-                    or signature(before) != signature(after)
-                    or signature(after) != signature(current)):
-                raise RuntimeError("supervised child log marker changed during read")
-        finally:
-            os.close(descriptor)
-        def closed_pairs(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
-            result = dict(pairs)
-            if len(result) != len(pairs):
-                raise ValueError("duplicate child log marker field")
-            return result
-        payload = json.loads(raw.decode("utf-8"), object_pairs_hook=closed_pairs)
-        if (not isinstance(payload, dict)
-                or set(payload) != {"schema", "command_id", "log_basename"}
-                or payload["schema"] != SUPERVISED_CHILD_LOG_MARKER_SCHEMA
-                or payload["command_id"] != _supervised_child_content_identity(
-                    {"command": list(spec.command)})):
-            raise RuntimeError("foreign supervised child log marker")
-        name = _child_log_marker_basename(payload["log_basename"])
-        if name == marker.name:
-            raise RuntimeError("supervised child log marker points to itself")
-        descriptor = os.open(name, flags, dir_fd=directory)
-        try:
-            target = os.fstat(descriptor)
-            current_target = os.stat(name, dir_fd=directory, follow_symlinks=False)
-            if (not stat.S_ISREG(target.st_mode) or target.st_uid != os.geteuid()
-                    or target.st_nlink != 1 or stat.S_IMODE(target.st_mode) & 0o022
-                    or not stat.S_ISREG(current_target.st_mode)
-                    or (target.st_dev, target.st_ino) != (current_target.st_dev, current_target.st_ino)):
-                raise RuntimeError("untrusted supervised child run log")
-        finally:
-            os.close(descriptor)
-        return marker.parent / name
-    except (OSError, UnicodeError, ValueError, TypeError) as error:
-        raise RuntimeError("invalid supervised child regular log marker") from error
-    finally:
-        os.close(directory)
-
-
 def load_supervised_child_identity(
     path: Path,
 ) -> SupervisedChildIdentity | None:
@@ -2056,7 +1792,6 @@ def write_supervised_child_identity(
     command: Sequence[str],
     owner_scope: Mapping[str, str],
     require_direct_child: bool = False,
-    expected_process_birth: ProcessBirthIdentity | None = None,
 ) -> SupervisedChildIdentity:
     """Capture and atomically persist the exact birth identity of ``pid``."""
 
@@ -2072,13 +1807,6 @@ def write_supervised_child_identity(
         raise RuntimeError("supervised child process identity unavailable")
     if require_direct_child and process_birth.parent_pid != os.getpid():
         raise RuntimeError("supervised child is not owned by this launcher")
-    if expected_process_birth is not None and (
-        process_birth.pid, process_birth.start_time_ticks, process_birth.boot_id
-    ) != (
-        expected_process_birth.pid, expected_process_birth.start_time_ticks,
-        expected_process_birth.boot_id,
-    ):
-        raise RuntimeError("supervised child birth changed before identity capture")
     identity = SupervisedChildIdentity(
         process_birth=process_birth,
         command=tuple(str(part) for part in command),
@@ -2161,7 +1889,6 @@ def _prepare_marker_path(path: Path, *, remove_existing_file: bool) -> Optional[
 def launch_supervised_child(spec: SupervisedChildSpec) -> SupervisedChild:
     """Launch a supervisor-owned child process and write its marker files."""
 
-    log_marker_mode = _supervised_child_log_marker_mode(spec)
     log_path = spec.resolve(spec.log_path)
     child_pid_path = spec.resolve(spec.child_pid_path)
     identity_path = _configured_child_identity_path(spec)
@@ -2175,12 +1902,7 @@ def launch_supervised_child(spec: SupervisedChildSpec) -> SupervisedChild:
             "identity-protected child requires a dedicated process session"
         )
     latest_log_path = spec.resolve(spec.latest_log_path) if spec.latest_log_path is not None else None
-    if log_marker_mode == "regular-json":
-        _regular_child_log_paths(spec)
-        directory = _open_child_log_directory(log_path.parent, create=True)
-        os.close(directory)
-    else:
-        log_path.parent.mkdir(parents=True, exist_ok=True)
+    log_path.parent.mkdir(parents=True, exist_ok=True)
     child_pid_path.parent.mkdir(parents=True, exist_ok=True)
     _prepare_marker_path(log_path, remove_existing_file=False)
     _prepare_marker_path(child_pid_path, remove_existing_file=False)
@@ -2190,11 +1912,7 @@ def launch_supervised_child(spec: SupervisedChildSpec) -> SupervisedChild:
             raise RuntimeError(
                 "supervised child identity marker was not reconciled"
             )
-    if log_marker_mode == "regular-json":
-        _write_regular_child_log_marker(spec)
-        # Watch the actual child output, never the regular JSON pointer's mtime.
-        latest_log_path = log_path
-    elif latest_log_path is not None:
+    if latest_log_path is not None:
         latest_log_path.parent.mkdir(parents=True, exist_ok=True)
         _prepare_marker_path(latest_log_path, remove_existing_file=True)
         latest_log_path.symlink_to(log_path.name)
@@ -2202,30 +1920,8 @@ def launch_supervised_child(spec: SupervisedChildSpec) -> SupervisedChild:
     env = {key: str(value) for key, value in spec.env.items()}
     env.pop(SUPERVISED_CHILD_IDENTITY_PATH_ENV, None)
     env.pop(SUPERVISED_CHILD_OWNER_SCOPE_ENV, None)
-    out_handle = (
-        _open_regular_child_run_log(spec)
-        if log_marker_mode == "regular-json" else log_path.open("ab")
-    )
-    handoff = None
-    executable_fd = None
-    process = None
+    out_handle = log_path.open("ab")
     try:
-        launch_fds = spec.pass_fds
-        if spec.worker_credential_handoff:
-            from ..runtime.process_security import (
-                prepare_state_authority_child_handoff, STATE_AUTHORITY_PARENT_LOSS_TERMINATE,
-                state_authority_pass_fds,
-            )
-            env = {**os.environ, **env}
-            source_fds = state_authority_pass_fds(env)
-            if len(source_fds) != 1:
-                raise RuntimeError("managed worker requires a sealed broker bootstrap")
-            handoff = prepare_state_authority_child_handoff(
-                env, parent_loss_policy=STATE_AUTHORITY_PARENT_LOSS_TERMINATE,
-                bind_execution_identity=True,
-            )
-            executable_fd = os.open(spec.command[0], os.O_RDONLY | os.O_CLOEXEC)
-            launch_fds = tuple(fd for fd in launch_fds if fd not in source_fds) + handoff.pass_fds
         process = launch_process_child(
             spec.command,
             cwd=str(spec.repo_root),
@@ -2234,22 +1930,10 @@ def launch_supervised_child(spec: SupervisedChildSpec) -> SupervisedChild:
             stdout=out_handle,
             stderr=subprocess.STDOUT,
             start_new_session=spec.start_new_session,
-            pass_fds=launch_fds,
-            **({"replace_env": True} if spec.worker_credential_handoff else {}),
+            pass_fds=spec.pass_fds,
         )
-        if handoff is not None:
-            handoff.deliver(process, expected_executable_descriptor=executable_fd,
-                            expected_argv=spec.command, timeout_seconds=45)
-    except BaseException:
-        if process is not None and process.poll() is None:
-            terminate_direct_child_process(process, grace_seconds=1.0)
-        raise
     finally:
         out_handle.close()
-        if handoff is not None:
-            handoff.close()
-        if executable_fd is not None:
-            os.close(executable_fd)
     persisted_identity: SupervisedChildIdentity | None = None
     if identity_path is not None and owner_scope is not None:
         try:
@@ -2341,27 +2025,9 @@ def supervised_child_command_matches(command_line: str, command: Sequence[str]) 
     return all(fragment in command_line for fragment in required_fragments)
 
 
-def _supervised_child_identity_session_quiesced(
-    identity: SupervisedChildIdentity,
-) -> bool:
-    """Prove the recorded leader and its dedicated kernel custody gone."""
-
-    if supervised_child_identity_liveness(identity) is not OwnerLiveness.DEAD:
-        return False
-    from .core import _process_identity_snapshot
-
-    census = _process_identity_snapshot()
-    return bool(census.available and not any(
-        state != "Z" and (group == identity.process_birth.pid
-                          or session == identity.process_birth.pid)
-        for state, _parent, group, session, _start in census.processes.values()
-    ))
-
-
 def adopt_supervised_child(spec: SupervisedChildSpec) -> SupervisedChild | None:
     """Return a live matching child from the PID marker instead of launching a duplicate."""
 
-    log_marker_mode = _supervised_child_log_marker_mode(spec)
     child_pid_path = spec.resolve(spec.child_pid_path)
     identity_path = _configured_child_identity_path(spec)
     owner_scope = _configured_child_owner_scope(spec)
@@ -2374,33 +2040,23 @@ def adopt_supervised_child(spec: SupervisedChildSpec) -> SupervisedChild | None:
             "identity-protected child requires a dedicated process session"
         )
     pid = read_pid_file(child_pid_path)
-    adopted_regular_log: Path | None = None
     identity: SupervisedChildIdentity | None = None
     if identity_path is not None and owner_scope is not None and (
         not pid or not pid_alive(pid)
     ):
         identity_exists = identity_path.exists() or identity_path.is_symlink()
         if identity_exists:
-            # Orphan recovery may rewrite PID/identity markers below. In the
-            # opt-in mode, establish log provenance before those effects too.
-            if log_marker_mode == "regular-json":
-                adopted_regular_log = _read_regular_child_log_marker(spec)
             identity = load_supervised_child_identity(identity_path)
             if identity is None:
                 raise RuntimeError(
                     "orphaned supervised child identity is invalid"
                 )
-            if (identity.command != tuple(spec.command)
-                    or dict(identity.owner_scope) != owner_scope):
-                raise RuntimeError("orphaned supervised child ownership identity mismatch")
             liveness = supervised_child_identity_liveness(identity)
             if liveness is OwnerLiveness.UNKNOWN:
                 raise RuntimeError(
                     "orphaned supervised child identity liveness is unknown"
                 )
             if liveness is OwnerLiveness.DEAD:
-                if not _supervised_child_identity_session_quiesced(identity):
-                    raise RuntimeError("orphaned supervised child ownership session is not proven quiescent")
                 for path in (child_pid_path, identity_path):
                     if not path.exists() and not path.is_symlink():
                         continue
@@ -2423,33 +2079,13 @@ def adopt_supervised_child(spec: SupervisedChildSpec) -> SupervisedChild | None:
             pid = identity.process_birth.pid
     if not pid or not pid_alive(pid):
         return None
-    def admitted_session_birth() -> ProcessBirthIdentity:
-        try:
-            birth = read_process_birth(int(pid))
-            if (birth is None or owner_liveness(birth) is not OwnerLiveness.ALIVE
-                    or os.getsid(int(pid)) != int(pid)
-                    or os.getpgid(int(pid)) != int(pid)):
-                raise RuntimeError("identity-protected child lacks its dedicated process session")
-        except OSError as error:
-            raise RuntimeError("identity-protected child dedicated process session is unproven") from error
-        return birth
-
-    admission_birth = admitted_session_birth() if identity_path is not None else None
-    if identity_path is None and not supervised_child_command_matches(
-        process_args(pid), spec.command
-    ):
+    command_line = process_args(pid)
+    if not supervised_child_command_matches(command_line, spec.command):
         return None
-    # Resolve record provenance before identity migration or any duplicate launch.
-    if log_marker_mode == "regular-json" and adopted_regular_log is None:
-        adopted_regular_log = _read_regular_child_log_marker(spec)
     if identity_path is not None and owner_scope is not None:
         identity = load_supervised_child_identity(identity_path)
         process_argv = read_process_command_argv(int(pid))
-        if process_argv != tuple(spec.command):
-            raise RuntimeError("supervised child ownership identity mismatch")
         if identity is None:
-            if identity_path.exists() or identity_path.is_symlink():
-                raise RuntimeError("supervised child ownership identity mismatch")
             # A live legacy child is migratable only when it already matches
             # the exact desired command. A config-mismatched legacy PID is
             # rejected by the implementation supervisor before this point.
@@ -2457,17 +2093,11 @@ def adopt_supervised_child(spec: SupervisedChildSpec) -> SupervisedChild | None:
                 raise RuntimeError(
                     "legacy supervised child exact command is unproven"
                 )
-            current_birth = admitted_session_birth()
-            if (current_birth.pid, current_birth.start_time_ticks, current_birth.boot_id) != (
-                admission_birth.pid, admission_birth.start_time_ticks, admission_birth.boot_id
-            ):
-                raise RuntimeError("supervised child birth changed during admission")
             identity = write_supervised_child_identity(
                 identity_path,
                 pid=int(pid),
                 command=spec.command,
                 owner_scope=owner_scope,
-                expected_process_birth=admission_birth,
             )
         if (
             identity.process_birth.pid != int(pid)
@@ -2479,18 +2109,9 @@ def adopt_supervised_child(spec: SupervisedChildSpec) -> SupervisedChild | None:
             raise RuntimeError("supervised child ownership identity mismatch")
         if process_argv != identity.command:
             raise RuntimeError("supervised child command identity mismatch")
-        current_birth = admitted_session_birth()
-        if (current_birth.pid, current_birth.start_time_ticks, current_birth.boot_id) != (
-            identity.process_birth.pid, identity.process_birth.start_time_ticks,
-            identity.process_birth.boot_id,
-        ):
-            raise RuntimeError("supervised child birth changed during admission")
     latest_log_path = spec.resolve(spec.latest_log_path) if spec.latest_log_path is not None else None
     log_path = spec.resolve(spec.log_path)
-    if log_marker_mode == "regular-json":
-        log_path = adopted_regular_log
-        latest_log_path = log_path
-    elif latest_log_path is not None:
+    if latest_log_path is not None:
         try:
             # A supervisor restart creates a fresh run id, but an adopted
             # daemon continues writing the log selected by its original
@@ -2558,11 +2179,8 @@ def clear_child_pid_file(child: SupervisedChild | SupervisedChildSpec, *, pid: O
         child_pid_path
     )
     identity = load_supervised_child_identity(identity_path)
-    identity_required = (
-        child.identity_path is not None if isinstance(child, SupervisedChild)
-        else _configured_child_identity_path(child) is not None
-    )
     if isinstance(child, SupervisedChild):
+        identity_required = child.identity_path is not None
         if (
             (identity_required and identity is None)
             or (
@@ -2574,15 +2192,6 @@ def clear_child_pid_file(child: SupervisedChild | SupervisedChildSpec, *, pid: O
             )
         ):
             return False
-    if identity_required and (
-        identity is None
-        or not _supervised_child_identity_session_quiesced(identity)
-        or (isinstance(child, SupervisedChildSpec) and (
-            identity.command != tuple(child.command)
-            or dict(identity.owner_scope) != _configured_child_owner_scope(child)
-        ))
-    ):
-        return False
     try:
         current = child_pid_path.read_text(encoding="utf-8").strip()
     except FileNotFoundError:
