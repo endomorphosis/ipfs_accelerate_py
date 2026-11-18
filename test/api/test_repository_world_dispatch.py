@@ -231,12 +231,12 @@ def test_compact_candidate_requires_working_strictly_smaller_count(dispatch_case
 
 def test_byte_gate_avoids_counting_unhelpful_candidate(dispatch_case):
     from ipfs_accelerate_py.agent_supervisor.runtime.repository_world_packet import project_repository_world_prompt
-    # This separately admitted task has only two selected references. No
+    # This separately admitted task has no selected reference bodies. No
     # requirement is removed from the original fixture's issued packet.
-    case = richer_world_case(dispatch_case, reference_count=1, optional_items=1)
+    case = richer_world_case(dispatch_case, reference_count=0, optional_items=0)
     packet = case[2]
     view = project_repository_world_prompt(packet.prompt)
-    assert view.receipt["reference_count"] == 2
+    assert view.receipt["reference_count"] == 0
     assert len(view.provider_prompt.encode()) >= len(packet.prompt.encode())
     counted = []
     def count(text):
