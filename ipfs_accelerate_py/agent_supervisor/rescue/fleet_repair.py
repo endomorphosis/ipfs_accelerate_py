@@ -205,11 +205,64 @@ def _repair_limits(config: dict[str, Any]) -> dict[str, int | None]:
     return limits
 
 
+
+def _repair_budget_spent(job):
+    """The immutable finite slot tickets own spend; the job is only a mirror."""
+    attempts=job.get('attempts',0);rows=job.get('validation_ledger_busy_invocations',[])
+    if type(attempts)is not int or attempts<0 or type(rows)is not list or len(rows)>2:return None
+    seen=set();found=[]
+    from .repair_authorization import checked_descriptor
+    ticket_paths=set()
+    for row in rows:
+        try:
+            pin=row['spent_slot_ref'];body=json.loads(checked_descriptor(pin));p=Path(pin['path'])
+            if (p.lstat().st_mode & 0o222 or p.parent!=Path(row['invocation']).parent
+                    or p.name!='ledger-busy-slot-%02d.json'%row['index'] or str(p)in ticket_paths):return None
+            ticket_paths.add(str(p));found.append((body,pin))
+        except(OSError,ValueError,KeyError,TypeError):return None
+    runtime_metadata=job.get('candidate_runtime',{})
+    if type(runtime_metadata)is not dict:return None
+    metadata=runtime_metadata.get('candidate_metadata')
+    if type(metadata)is str and metadata:
+        root=Path(metadata)
+        if not root.is_absolute() or any(p.is_symlink()for p in(root,*root.parents)):return None
+        # A ticket whose job mirror was interrupted is spent/UNKNOWN. The
+        # original metadata pointer remains until a closeout changes candidate.
+        if any((root/('ledger-busy-slot-%02d.json'%index)).exists()
+               and str(root/('ledger-busy-slot-%02d.json'%index))not in ticket_paths for index in(1,2)):return None
+    for row,(body,pin)in zip(rows,found,strict=True):
+        try:
+            row_body=json.dumps({k:v for k,v in row.items()if k!='spent_slot_ref'},sort_keys=True,allow_nan=False)
+            actual_body=json.dumps(body,sort_keys=True,allow_nan=False)
+            row_pin=json.dumps(row['spent_slot_ref'],sort_keys=True,allow_nan=False)
+            actual_pin=json.dumps(pin,sort_keys=True,allow_nan=False)
+        except(ValueError,TypeError,KeyError,AttributeError):return None
+        if (type(row)is not dict or set(row)!={'schema','index','attempt_number','attempt_token',
+            'authorization_epoch_sha256','expires_at','freeze_sha256','source_commitment',
+            'request_attempt_id','invocation','prior_operational_ref','spent_at','spent_slot_ref'}
+            or row['schema']!='agent-supervisor/spent-validation-ledger-busy-slot@1'
+            or row_body!=actual_body
+            or row_pin!=actual_pin
+            or type(row['index'])is not int or not 1<=row['index']<=2
+            or type(row['attempt_number'])is not int or not 1<=row['attempt_number']<=attempts
+            or type(row['attempt_token'])is not str or re.fullmatch(r'[0-9a-f]{32}',row['attempt_token'])is None
+            or type(row['authorization_epoch_sha256'])is not str or re.fullmatch(r'[0-9a-f]{64}',row['authorization_epoch_sha256'])is None
+            or type(row['request_attempt_id'])is not str or re.fullmatch(r'[0-9a-f]{32}',row['request_attempt_id'])is None
+            or type(row['freeze_sha256'])is not str or re.fullmatch(r'[0-9a-f]{64}',row['freeze_sha256'])is None
+            or type(row['source_commitment'])is not str or re.fullmatch(r'[0-9a-f]{64}',row['source_commitment'])is None
+            or type(row['invocation'])is not str or not Path(row['invocation']).is_absolute()
+            or type(row['spent_at'])not in(int,float) or not math.isfinite(row['spent_at'])or row['spent_at']<=0
+            or type(row['expires_at'])not in(int,float) or not math.isfinite(row['expires_at'])or row['spent_at']>=row['expires_at']
+            or (row['attempt_number'],row['index'])in seen):return None
+        seen.add((row['attempt_number'],row['index']))
+    return attempts+len(rows)
+
+
 def _escalate_repair_budget(job: dict[str, Any], limit: int | None, now: float) -> bool:
     """Keep spent attempts and evidence; changing symptoms cannot replenish them."""
     if limit is None:
         return False
-    attempts = job.get("attempts", 0)
+    attempts = _repair_budget_spent(job)
     if type(attempts) is not int or attempts < 0:
         reason = "repair_budget_unknown"
     elif attempts >= limit:
@@ -394,6 +447,8 @@ def reconcile_queued_jobs(config: dict[str, Any], now: float, *, runner=command,
     """
     from .fleet_watchdog import normalize_probe
 
+    config={**config,"boards":[board for board in config["boards"]
+        if _operational_terminal_view(config,board,read_json(repair_job_directory(Path(config["state_dir"]),board)/"job.json"),now) is None]}
     limits = _repair_limits(config)
     if retired_job_sha256 is not None and (
             type(retired_job_sha256) is not dict
@@ -711,7 +766,7 @@ def enqueue(config: dict[str, Any], incident_path: Path) -> dict[str, Any]:
             else:
                 prior["repair_authorization_sha256"] = epoch.commitment
         # A frozen attempt remains owned by its validation/adoption path.
-        if prior.get("status") in CANDIDATE_PENDING:
+        if prior.get("status") in CANDIDATE_PENDING or prior.get("status") == "validation_needs_new_authorization":
             return {"status": prior["status"], "board_id": board_id,
                     "job": str(directory / "job.json"), "coding_attempts_incremented": False}
         # Preserve pending/running work and cooldown across changing symptoms.
@@ -1345,6 +1400,8 @@ def verify_job_recovery(board: dict[str, Any], incident: dict[str, Any],
 
 
 def next_job(config: dict[str, Any], now: float) -> tuple[dict[str, Any], Path] | None:
+    config={**config,"boards":[board for board in config["boards"]
+        if _operational_terminal_view(config,board,read_json(repair_job_directory(Path(config["state_dir"]),board)/"job.json"),now) is None]}
     limits = _repair_limits(config)
     candidates = []
     for board in config["boards"]:
@@ -1379,10 +1436,21 @@ def next_job(config: dict[str, Any], now: float) -> tuple[dict[str, Any], Path] 
 
 def queue_status(config: dict[str, Any], now: float) -> dict[str, Any]:
     """Distinguish an empty queue from held or scheduled recovery work."""
-    limits = _repair_limits(config)
+    views={board["id"]:_operational_terminal_view(config,board,read_json(repair_job_directory(Path(config["state_dir"]),board)/"job.json"),now)
+           for board in config["boards"]}
+    limits = _repair_limits({**config,"boards":[board for board in config["boards"] if views[board["id"]] is None]})
     waiting, held, escalated, candidates = [], [], [], []
+    operational = []
     for board in config["boards"]:
+        if views[board["id"]] is not None:
+            operational.append(views[board["id"]])
+            continue
         job = read_json(_repair_job_path(config, board))
+        if job.get("status") == "validation_needs_new_authorization":
+            operational.append({"board_id":board["id"],"status":job["status"],"attempts":job.get("attempts"),
+                "reason":job.get("candidate_operational_reason"),"candidate_runtime":job.get("candidate_runtime"),
+                "retry_authorized":False})
+            continue
         if job.get("status") in CANDIDATE_PENDING:
             candidates.append({"board_id": board["id"], "status": job["status"],
                                "attempts": job.get("attempts"),
@@ -1415,6 +1483,8 @@ def queue_status(config: dict[str, Any], now: float) -> dict[str, Any]:
         result.update(escalated=escalated, status="waiting" if waiting or held else "escalated")
     if candidates:
         result.update(candidates=candidates, status="candidate_pending")
+    if operational:
+        result.update(operational=operational, status="needs_new_authorization" if not waiting and not candidates else result["status"])
     return result
 
 
@@ -1671,6 +1741,9 @@ def _defer_unstarted_job(path: Path, policy: dict[str, Any], reason: str,
 
 def _iter_repair_jobs(config: dict[str, Any]):
     for board in config.get("boards") or []:
+        saved=read_json(repair_job_directory(Path(config['state_dir']),board)/'job.json')
+        if _operational_terminal_view(config,board,saved,time.time()) is not None:
+            continue
         job = read_json(_repair_job_path(config, board))
         if job:
             yield board, job
@@ -1738,9 +1811,59 @@ def candidate_dispatch_preflight(config: dict[str, Any], board: dict[str, Any]) 
         return "repair_candidate_policy_invalid"
 
 
+
+def _operational_terminal_view(config,board,job,now):
+    """Read saved operational wait DATA; no process, policy write or grant."""
+    if job.get('status')=='validation_needs_new_authorization':
+        return {'board_id':board['id'],'status':job['status'],'reason':job.get('candidate_operational_reason'),
+            'candidate_runtime':job.get('candidate_runtime'),'retry_authorized':False,
+            'coding_attempts_incremented':False,'read_only':True}
+    if job.get('status')!='validation_pending':return None
+    try:
+        from .repair_authorization import checked_descriptor,parse_authorization_epoch
+        from .repair_candidate_runtime import _checked_operational_ledger_busy_observation
+        runtime=job['candidate_runtime'];stage=json.loads(checked_descriptor(runtime['receipt']))
+        if (stage['schema']!='agent-supervisor/repair-candidate-runtime@1'
+            or stage['stage']!='validation_pending' or stage.get('reason')!='ledger_busy_cooldown'
+            or stage['board_id']!=board['id'] or stage['attempt_token']!=job['repair_unit_token']
+            or type(stage['attempts'])is not int or stage['attempts']!=job['attempts']):return None
+        offered=stage['operational_disposition'];observer=json.loads(checked_descriptor(offered['observer']))
+        proof=_checked_operational_ledger_busy_observation(json.loads(observer['stdout']),
+            binding=json.loads(checked_descriptor(offered['operational']))['binding'],
+            freeze_sha256=json.loads(checked_descriptor(offered['operational']))['freeze_sha256'],
+            source_commitment=json.loads(checked_descriptor(offered['operational']))['source_commitment'])
+        if json.loads(observer['stdout'])['operational']!=offered['operational']:return None
+        reason=None;epoch=parse_authorization_epoch(config['state_dir'],board)
+        profile=config['repair_worker']['candidate_runtime'].get('validation_ledger_busy_retry')
+        if epoch is None or type(profile)is not dict or profile.get('authorization_epoch_sha256')!=epoch.commitment:
+            reason='ledger_busy_authorization_profile_unavailable'
+        elif (job.get('repair_authorization_sha256')!=epoch.commitment
+              or profile.get('expires_at')!=epoch.value['expires_at']
+              or offered.get('epoch_sha256')!=epoch.commitment or offered.get('expires_at')!=epoch.value['expires_at']):
+            reason='ledger_busy_saved_epoch_or_expiry_changed'
+        elif not epoch.value['not_before_observed_at']<=now<epoch.value['expires_at']:
+            reason='ledger_busy_original_authorization_expired'
+        else:
+            spent=_repair_budget_spent(job);limit=board.get('max_repair_attempts')
+            command=config['repair_worker']['candidate_runtime']['validation_owner']
+            seconds=command['timeout_seconds']
+            if type(spent)is not int or type(limit)is not int or spent>=min(limit,epoch.value['max_attempts']):
+                reason='ledger_busy_original_global_attempt_slots_exhausted'
+            elif type(seconds)is not int or now+seconds*2+30>=epoch.value['expires_at']:
+                reason='ledger_busy_original_remaining_window_insufficient'
+        if reason is None:return None
+        return {'board_id':board['id'],'status':'validation_needs_new_authorization','reason':reason,
+            'operational':offered['operational'],'observer':offered['observer'],
+            'retry_authorized':False,'coding_attempts_incremented':False,'read_only':True}
+    except(OSError,ValueError,KeyError,TypeError):return None
+
+
 def next_pending_candidate(config: dict[str, Any], now: float):
     selected = []
     for board in config["boards"]:
+        operational_job=read_json(repair_job_directory(Path(config["state_dir"]),board)/"job.json")
+        if _operational_terminal_view(config,board,operational_job,now) is not None:
+            continue
         if observation_only(board) or hold_paths(board) or _recovery_denial(config, board):
             continue
         path = _repair_job_path(config, board)
@@ -1864,6 +1987,8 @@ def _candidate_finished(config: dict[str, Any], board: dict[str, Any], path: Pat
         job = read_json(path)
         if job.get("repair_unit_token") != token:
             return {"status": "completion_superseded", "board_id": board["id"]}
+        if job.get("status") == "validation_needs_new_authorization":
+            return {"status":job["status"],"board_id":board["id"],"retry_authorized":False,"coding_attempts_incremented":False}
         if job.get("status") == "running":
             # A missing or interrupted bootstrap receipt is an UNKNOWN retained
             # attempt, never permission to run another coding provider.

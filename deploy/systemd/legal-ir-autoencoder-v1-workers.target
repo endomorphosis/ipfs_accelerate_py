@@ -1,0 +1,7 @@
+[Unit]
+Description=Four parallel LegalIR implementation supervisors
+Wants=legal-ir-autoencoder-v1.service legal-ir-autoencoder-v1-lane-1.service legal-ir-autoencoder-v1-lane-2.service legal-ir-autoencoder-v1-lane-3.service
+After=network-online.target
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,13 @@
+[Unit]
+Description=Check for exactly recoverable missing LegalIR validation inputs
+
+[Timer]
+OnBootSec=120
+OnUnitInactiveSec=300
+AccuracySec=15
+RandomizedDelaySec=15
+Persistent=true
+Unit=legal-ir-validation-input-recovery.service
+
+[Install]
+WantedBy=timers.target

@@ -487,3 +487,280 @@ def test_fixed_point_selects_new_source_repair_without_completing_gate(lane: Sim
     assert tasks["TEST-060"]["status"] == "pending"
     assert json.loads(lane.report.read_text())["decision"] == original_report["decision"] == "NO_GO"
     assert packet_path.read_bytes() == packet
+
+
+def _first_refusal_requirements() -> list[dict[str, str]]:
+    return [
+        {"code": "MISSING_OWNER_POINTER", "subject": "metadata-v10"},
+        {"code": "MISSING_RUNTIME_WITNESS", "subject": "torch-cpu", "expected_sha256": "a" * 64},
+    ]
+
+
+def _install_first_refusal_requirements(
+    lane: SimpleNamespace, *, origin: str = "artifact",
+    requirements: list[dict[str, str]] | None = None,
+) -> None:
+    values = _first_refusal_requirements() if requirements is None else requirements
+    if origin == "artifact":
+        report = json.loads(lane.report.read_text())
+        report.update(schema="fixture/prerequisite-readiness@1", gaps=values)
+        lane.report.write_text(json.dumps(report), encoding="utf-8")
+    else:
+        assert origin == "declared"
+        with lane.board.open("a", encoding="utf-8") as stream:
+            stream.write("- Prerequisite requirements: " + json.dumps(values, sort_keys=True) + "\n")
+
+
+def _first_refusal_record(lane: SimpleNamespace) -> dict[str, Any]:
+    return json.loads((lane.root / "attempts.gates.json").read_text())["TEST-060"]
+
+
+def _first_refusal_packet(result: dict[str, Any]) -> dict[str, Any]:
+    assert result["state"] == "degraded"
+    assert result["phase"] == "gate_recovery_needed"
+    assert result["gate_recovery_needed"] is True
+    assert result["work_complete"] is result["completion_authority"] is False
+    path = Path(result["repair_packet"])
+    assert path.is_file()
+    packet = json.loads(path.read_text())
+    assert packet["work_complete"] is packet["completion_authority"] is False
+    assert packet["prerequisite_recovery"]["schema"] == (
+        "ipfs_accelerate_py/agent-supervisor/prerequisite-recovery-plan@1"
+    )
+    return packet
+
+
+@pytest.mark.parametrize("origin", ["artifact", "declared"])
+def test_first_typed_refusal_exposes_proposals_without_extra_execution(
+    lane: SimpleNamespace, origin: str,
+) -> None:
+    _install_first_refusal_requirements(lane, origin=origin)
+    original_board = lane.board.read_text()
+    result = lane.cycle()
+    packet = _first_refusal_packet(result)
+    plan = packet["prerequisite_recovery"]
+    assert plan["status"] == "recovery_required"
+    assert plan["parent_task_id"] == "TEST-060"
+    assert len(plan["steps"]) == 4
+    steps = {step["kind"]: step for step in plan["steps"]}
+    assert steps["discover_registered_preparer"]["depends_on"] == []
+    assert steps["verify_preparer_identity"]["depends_on"] == [
+        steps["discover_registered_preparer"]["task_id"]
+    ]
+    assert steps["locate_approved_runtime_witness"]["depends_on"] == []
+    assert steps["verify_runtime_identity"]["depends_on"] == [
+        steps["locate_approved_runtime_witness"]["task_id"]
+    ]
+    assert all(step["requires_admission"] is True for step in plan["steps"])
+    assert all("TEST-060" not in step["depends_on"] for step in plan["steps"])
+    for flag in ("completion_authority", "execution_authority", "admission_granted",
+                 "operator_hold_removal_allowed", "budget_reset_allowed"):
+        assert plan[flag] is False
+    assert [argv[-1] for argv in lane.calls] == ["gate.py"]
+    assert packet["dependency_validations"] == []
+    saved = _first_refusal_record(lane)
+    assert saved["unchanged_probes"] == saved["source_refusals"] == 1
+    assert saved["next_retry_at_ms"] == int(lane.now[0] * 1000)
+    assert not saved.get("dependencies_revalidated") and not saved.get("repair_attempted")
+    assert "TEST-060" not in json.loads((lane.root / "attempts.json").read_text())
+    assert lane.board.read_text() == original_board, "A proposal cannot admit or complete work."
+
+
+def test_legacy_first_and_second_refusals_still_have_no_recovery_packet(lane: SimpleNamespace) -> None:
+    original_board = lane.board.read_text()
+    for _ in range(2):
+        result = lane.cycle()
+        assert result["state"] == "healthy" and result["phase"] == "gate_withheld"
+        assert result["repair_packet"] == ""
+        assert result["gate_recovery_needed"] is False
+        assert result["next_retry_at_ms"] == int(lane.now[0] * 1000)
+        assert not list(lane.root.glob("gate-recovery-*.json"))
+    assert _first_refusal_record(lane)["source_refusals"] == 2
+    assert lane.board.read_text() == original_board
+
+
+def test_early_prerequisite_packet_preserves_delayed_probes_repair_and_cooldown(lane: SimpleNamespace) -> None:
+    _install_first_refusal_requirements(lane)
+    with lane.board.open("a", encoding="utf-8") as stream:
+        stream.write("- Deterministic repair: python3 repair.py\n")
+    original_board = lane.board.read_text()
+    for refusal in (1, 2):
+        packet = _first_refusal_packet(lane.cycle())
+        saved = _first_refusal_record(lane)
+        assert saved["source_refusals"] == refusal
+        assert packet["dependency_validations"] == []
+        assert not saved.get("dependencies_revalidated") and not saved.get("repair_attempted")
+        assert all(argv[-1] not in {"source.py", "coverage.json", "repair.py"} for argv in lane.calls)
+    third = lane.cycle()
+    packet = _first_refusal_packet(third)
+    assert len(packet["dependency_validations"]) == 2
+    assert packet["deterministic_repair"]["gate_exit_code"] == 75
+    for name in ("source.py", "coverage.json", "repair.py"):
+        assert sum(argv[-1] == name for argv in lane.calls) == 1
+    assert third["next_retry_at_ms"] - int(lane.now[0] * 1000) == 60_000
+    calls = len(lane.calls)
+    assert lane.cycle()["phase"] == "gate_retry_wait"
+    assert len(lane.calls) == calls
+    lane.now[0] = third["next_retry_at_ms"] / 1000 + 1
+    fourth = lane.cycle()
+    assert fourth["next_retry_at_ms"] - int(lane.now[0] * 1000) == 120_000
+    for name in ("source.py", "coverage.json", "repair.py"):
+        assert sum(argv[-1] == name for argv in lane.calls) == 1
+    assert lane.board.read_text() == original_board
+
+
+@pytest.mark.parametrize("condition", [
+    "MISSING_EXECUTION_AUTHORITY", "OPERATOR_HOLD", "LOOKUP_BUDGET_EXHAUSTED", "malformed_declaration",
+])
+def test_first_external_or_malformed_prerequisite_refusal_exposes_no_runnable_steps(
+    lane: SimpleNamespace, condition: str,
+) -> None:
+    sentinel = "INJECTED_PREREQUISITE_COMMAND_MUST_NOT_APPEAR"
+    if condition == "malformed_declaration":
+        raw = json.dumps([{"code": "MISSING_OWNER_POINTER", "subject": "metadata-v10", "command": sentinel}])
+        with lane.board.open("a", encoding="utf-8") as stream:
+            stream.write("- Prerequisite requirements: " + raw + "\n")
+    else:
+        _install_first_refusal_requirements(
+            lane, requirements=[*_first_refusal_requirements(), {"code": condition, "subject": "selected-unit"}],
+        )
+    original_board = lane.board.read_text()
+    packet = _first_refusal_packet(lane.cycle())
+    plan = packet["prerequisite_recovery"]
+    assert plan["status"] == "external_dependency"
+    assert plan["steps"] == plan["recheck_after"] == []
+    expected = "INVALID_PREREQUISITE_DIAGNOSTICS" if condition == "malformed_declaration" else condition
+    assert expected in {item["code"] for item in plan["external_requirements"]}
+    assert sentinel not in json.dumps(packet)
+    assert [argv[-1] for argv in lane.calls] == ["gate.py"]
+    assert _first_refusal_record(lane)["source_refusals"] == 1
+    assert lane.board.read_text() == original_board
+
+
+def test_declared_diagnostic_changes_preserve_source_refusal_history(lane: SimpleNamespace) -> None:
+    requirements = _first_refusal_requirements()
+    _install_first_refusal_requirements(lane, origin="declared", requirements=requirements)
+    first = lane.cycle()
+    _first_refusal_packet(first)
+    first_record = _first_refusal_record(lane)
+    old = json.dumps(requirements, sort_keys=True)
+    requirements[1]["expected_sha256"] = "b" * 64
+    lane.board.write_text(lane.board.read_text().replace(old, json.dumps(requirements, sort_keys=True)), encoding="utf-8")
+    changed = lane.cycle()
+    _first_refusal_packet(changed)
+    changed_record = _first_refusal_record(lane)
+    assert changed["gate_evidence_fingerprint"] != first["gate_evidence_fingerprint"]
+    assert changed_record["source_contract"] == first_record["source_contract"]
+    assert first_record["source_refusals"] == 1 and changed_record["source_refusals"] == 2
+    assert changed_record["next_retry_at_ms"] == int(lane.now[0] * 1000)
+    (lane.root / "source.py").write_text("# real changed implementation\n", encoding="utf-8")
+    _first_refusal_packet(lane.cycle())
+    source_record = _first_refusal_record(lane)
+    assert source_record["source_contract"] != changed_record["source_contract"]
+    assert source_record["source_refusals"] == 1
+
+
+@pytest.mark.parametrize("hold_when", ["before_producer", "during_producer"])
+def test_operator_hold_precedes_first_prerequisite_packet_and_followup_actions(
+    lane: SimpleNamespace, monkeypatch: pytest.MonkeyPatch, hold_when: str,
+) -> None:
+    _install_first_refusal_requirements(lane)
+    original_board = lane.board.read_text()
+    hold = lane.root / "operator.hold"
+    if hold_when == "before_producer":
+        hold.touch()
+    else:
+        def run(argv: list[str], **kwargs: Any) -> int:
+            result = lane.run(argv, **kwargs)
+            if argv[-1] == "gate.py":
+                hold.touch()
+            return result
+        monkeypatch.setattr(lane_resume, "_run_argv", run)
+    assert lane.cycle()["phase"] == "operator_hold"
+    assert [argv[-1] for argv in lane.calls] == ([] if hold_when == "before_producer" else ["gate.py"])
+    assert not (lane.root / "attempts.gates.json").exists()
+    assert not list(lane.root.glob("gate-recovery-*.json"))
+    assert hold.exists() and lane.board.read_text() == original_board
+
+
+@pytest.mark.parametrize("during_cooldown", [False, True])
+def test_first_prerequisite_packet_does_not_hide_later_ready_sibling(
+    lane: SimpleNamespace, during_cooldown: bool,
+) -> None:
+    _install_first_refusal_requirements(lane)
+    if during_cooldown:
+        for _ in range(3):
+            lane.cycle()
+    with lane.board.open("a", encoding="utf-8") as stream:
+        stream.write("\n## TEST-070 Useful repair\n- Status: pending\n- Depends on:\n"
+                     "- Deterministic command: python3 repair.py\n- Validation: python3 validate.py\n")
+    gate_calls = sum(argv[-1] == "gate.py" for argv in lane.calls)
+    result = lane.cycle()
+    assert result["advanced_task_id"] == "TEST-070"
+    assert sum(argv[-1] == "gate.py" for argv in lane.calls) == gate_calls + (0 if during_cooldown else 1)
+    tasks = dict(parse_todo_task_fields(lane.board.read_text(), task_header_prefix="## TEST-"))
+    assert set(tasks) == {"TEST-010", "TEST-040", "TEST-060", "TEST-070"}
+    assert tasks["TEST-060"]["status"] == "pending"
+    assert tasks["TEST-070"]["status"] == "completed"
+    packet = json.loads((lane.root / "gate-recovery-TEST-060.json").read_text())
+    assert packet["prerequisite_recovery"]["status"] == "recovery_required"
+
+
+def test_first_secondary_validation_refusal_exposes_typed_prerequisites(
+    lane: SimpleNamespace, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _install_first_refusal_requirements(lane)
+    original_board = lane.board.read_text()
+    def run(argv: list[str], **_kwargs: Any) -> int:
+        lane.calls.append(list(argv))
+        return 75 if argv[-1] == "validate.py" else 0
+    monkeypatch.setattr(lane_resume, "_run_argv", run)
+    packet = _first_refusal_packet(lane.cycle())
+    assert packet["withheld_stage"] == "validation"
+    assert packet["dependency_validations"] == []
+    assert [argv[-1] for argv in lane.calls] == ["gate.py", "validate.py"]
+    saved = _first_refusal_record(lane)
+    assert saved["source_refusals"] == 1 and saved["withheld_stage"] == "validation"
+    assert lane.board.read_text() == original_board
+
+
+@pytest.mark.parametrize("shape", ["65_untyped_gaps", "257_untyped_artifacts"])
+def test_large_ordinary_diagnostics_preserve_legacy_first_refusal(lane: SimpleNamespace, shape: str) -> None:
+    if shape == "65_untyped_gaps":
+        report = json.loads(lane.report.read_text())
+        report.update(
+            schema="fixture/ordinary-report@1",
+            gaps=[{"message": f"ordinary observation {number}"} for number in range(65)],
+        )
+        lane.report.write_text(json.dumps(report), encoding="utf-8")
+    else:
+        # The fixture already exposes coverage.json and four source artifacts.
+        # These 252 additional ordinary reports make exactly 257 artifacts.
+        names = [f"ordinary-{number}.json" for number in range(252)]
+        for number, name in enumerate(names):
+            (lane.root / name).write_text(json.dumps({
+                "schema": "fixture/ordinary-report@1", "decision": "NO_GO",
+                "reasons": [f"ordinary observation {number}"],
+            }), encoding="utf-8")
+        old = "- Predicted files: coverage.json\n"
+        new = "- Predicted files: " + ", ".join(["coverage.json", *names]) + "\n"
+        original = lane.board.read_text()
+        assert original.count(old) == 1
+        lane.board.write_text(original.replace(old, new), encoding="utf-8")
+        blocks = dict(parse_todo_task_fields(lane.board.read_text(), task_header_prefix="## TEST-"))
+        _, data = gate_recovery.gate_evidence(
+            "TEST-060", blocks, repo_root=lane.root, todo_path=lane.board, log_path=lane.root / "lane.log",
+        )
+        assert len(data["artifacts"]) == 257
+    original_board = lane.board.read_text()
+    result = lane.cycle()
+    assert result["state"] == "healthy" and result["phase"] == "gate_withheld"
+    assert result["gate_recovery_needed"] is False
+    assert result["repair_packet"] == ""
+    assert result["work_complete"] is result["completion_authority"] is False
+    assert not list(lane.root.glob("gate-recovery-*.json"))
+    assert [argv[-1] for argv in lane.calls] == ["gate.py"]
+    saved = _first_refusal_record(lane)
+    assert saved["source_refusals"] == saved["unchanged_probes"] == 1
+    assert not saved.get("dependencies_revalidated") and not saved.get("repair_attempted")
+    assert lane.board.read_text() == original_board

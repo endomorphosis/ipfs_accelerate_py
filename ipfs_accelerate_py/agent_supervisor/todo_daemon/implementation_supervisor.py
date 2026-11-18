@@ -25,7 +25,6 @@ from dataclasses import asdict, dataclass, field, replace
 from datetime import datetime, timezone
 from hashlib import sha1, sha256
 from pathlib import Path
-from ipfs_accelerate_py.agent_supervisor.task_sources.taskboard_store import ProjectionDeltaCheckpointStore
 from typing import Any, Callable, Mapping, Sequence
 
 from ...agent_implementation_route import (
@@ -510,6 +509,29 @@ SELECTION_DISPOSITION_IDLE_REASON_PREFIX = "disposition_idle:"
 # --- restored PROVIDER_CAPACITY_BACKOFF_IDLE_REASON ---
 
 PROVIDER_CAPACITY_BACKOFF_IDLE_REASON = "provider_capacity_backoff"
+
+
+_DISPOSITION_SELECTION_PRIORITY = {
+    "closed_deterministic": 0,
+    "residual_llm_authorized": 1,
+    "abstain_review": 2,
+    "defer_capability": 3,
+}
+_DISPOSITION_IDLE_CLASSES = frozenset(
+    {"abstain_review", "defer_capability"}
+)
+_QUIESCENT_EMPTY_BACKLOG_IDLE_REASONS = frozenset(
+    {"no_shard_selectable_ready_tasks", "no_tasks_found"}
+)
+_QUIESCENT_POLICY_IDLE_REASONS = frozenset(
+    {
+        "all_selectable_ready_tasks_reached_max_task_attempts",
+        "all_selectable_ready_tasks_deferred_by_resource_claim",
+        "all_selectable_ready_tasks_deprioritized_as_off_mission",
+        "no_eligible_ready_tasks_after_selection_filters",
+        PROVIDER_CAPACITY_BACKOFF_IDLE_REASON,
+    }
+)
 
 
 # --- restored IMPLEMENTATION_RETRY_DEFERRED_IDLE_PREFIX ---

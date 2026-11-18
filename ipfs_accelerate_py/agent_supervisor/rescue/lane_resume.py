@@ -31,7 +31,7 @@ from urllib.parse import unquote, urlsplit
 from .command_processes import CommandProcessTree
 from .storage_pressure import MINIMUM_FREE_BYTES, StorageGuard, is_storage_pressure, persist_text, publish_emergency_status, open_command_log, check_storage_capacity
 import tempfile
-from .gate_recovery import GATE_REPEAT_LIMIT, GateRecovery, gate_evidence, gate_source_contract, _is_source_path
+from .gate_recovery import GATE_REPEAT_LIMIT, GateRecovery, gate_evidence, gate_source_contract, _is_source_path, prerequisite_recovery_plan
 from .vdg_pre_command_recovery import RecoveryPolicyError, recovery_commands, recovery_contract, recovery_environment
 from . import semantic_recovery
 
@@ -2158,14 +2158,20 @@ def run_resume_cycle(
             delay_ms = max(0, int(record["next_retry_at_ms"]) - int(record["last_seen_ms"]))
             record["next_retry_at_ms"] = int(time.time() * 1000) + delay_ms
             gate_recovery.store(task_id, record)
-        packet = str(gate_recovery.packet(task_id, record, evidence)) if repeated else ""
+        # Typed missing inputs are actionable on the first refusal. Keep the
+        # repeated-refusal thresholds above for probes, repair and cooldown.
+        prerequisite_needed = prerequisite_recovery_plan(task_id, evidence) is not None
+        recovery_needed = repeated or prerequisite_needed
+        packet = str(gate_recovery.packet(task_id, record, evidence)) if recovery_needed else ""
+        reason = ("gate_fixed_point" if repeated else "prerequisite_recovery"
+                  if prerequisite_needed else "gate_withheld")
         return {
-            "state": "degraded" if repeated else "healthy",
-            "phase": "gate_recovery_needed" if repeated else "gate_withheld",
+            "state": "degraded" if recovery_needed else "healthy",
+            "phase": "gate_recovery_needed" if recovery_needed else "gate_withheld",
             "active_task_id": task_id, "terminal_reason": "",
-            "backpressure_reasons": [f"{task_id}:gate_fixed_point" if repeated else f"{task_id}:gate_withheld"],
+            "backpressure_reasons": [f"{task_id}:{reason}"],
             "gate_evidence_fingerprint": fingerprint, "repair_packet": packet,
-            "gate_recovery_needed": repeated,
+            "gate_recovery_needed": recovery_needed,
             "next_retry_at_ms": record["next_retry_at_ms"],
             "evidence_changed": record["unchanged_probes"] == 1,
             "busy": False, "work_complete": False, "completion_authority": False,

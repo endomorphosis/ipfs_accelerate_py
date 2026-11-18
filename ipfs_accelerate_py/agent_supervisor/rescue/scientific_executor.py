@@ -92,6 +92,200 @@ class SourceAdmissionDeferred(ExecutorHold):
     """An immutable negative; this carries no health or execution credit."""
 
 
+class ResourceCapacityDeferred(ExecutorHold):
+    """A closed native-ancestry admission negative, never a new grant."""
+
+
+def resource_capacity_terminal(terminal, request_ref, request, cycle_root, *, captured_owner):
+    """Accept only current original storage admission before its first record.
+
+    Root and phase native grants existed in this family. Their source-bound
+    original owner must have released and observed them absent; the CLI's
+    zero-native pregrant classifier is deliberately not reused here.
+    """
+    h=health_owner();root=Path(cycle_root)
+    terminal_fields={
+        'absolute_resource_operation_deadline_closed',
+        'child_launch_attempted',
+        'child_reaped',
+        'child_returncode',
+        'cleanup_errors',
+        'completed',
+        'control_effects',
+        'database_preimage_before_grants',
+        'elapsed_seconds',
+        'error',
+        'error_type',
+        'external_file_growth_enforcement',
+        'original_native_compute_closed',
+        'owner_birth',
+        'owner_boot_id',
+        'owner_pid',
+        'partial_or_failed_control_must_be_reconciled',
+        'received_signals',
+        'request_sha256',
+        'reservation',
+        'resource_capacity_observation',
+        'resource_deadline_profile',
+        'resource_profile',
+        'schema',
+        'source_READ_closed',
+        'storage_admission_capacity_refusal',
+        'storage_status',
+        'task_completion_authority_granted_by_resource_owner',
+    }
+    need(type(terminal)is dict and set(terminal)==terminal_fields
+         and terminal.get('schema')=='legal-ir-original-native-control-terminal/v1'
+         and terminal.get('request_sha256')==request_ref['sha256'] and terminal.get('completed')is False
+         and terminal.get('error_type')=='DaemonResourceError'
+         and terminal.get('error')=='storage reservation capacity exceeded'
+         and terminal.get('control_effects')=='not_started' and terminal.get('storage_status')=='not_entered'
+         and terminal.get('child_launch_attempted')is False and terminal.get('child_reaped')is False
+         and 'child_returncode'in terminal and terminal['child_returncode']is None
+         and terminal.get('source_READ_closed')is True
+         and terminal.get('original_native_compute_closed')is True
+         and terminal.get('absolute_resource_operation_deadline_closed')is True
+         and terminal.get('task_completion_authority_granted_by_resource_owner')is False
+         and terminal.get('resource_profile')=='original_orchestration_parented_disk_sampled_birth_bound_descendants'
+         and terminal.get('external_file_growth_enforcement')=='polled_size_caps_and_original_conservative_precharge_not_sandbox'
+         and terminal.get('partial_or_failed_control_must_be_reconciled')is True
+         and terminal.get('cleanup_errors')==[] and terminal.get('received_signals')==[],
+         'resource_capacity_terminal_not_exact_closed_negative')
+    deadline=terminal['resource_deadline_profile']
+    need(type(deadline)is dict and set(deadline)=={'work_seconds','stopped_cleanup_reserve_seconds',
+         'native_lifetime_seconds','absolute_clock_shared_by_all_resource_operations'}
+         and all(type(deadline[key])is int and deadline[key]==value for key,value in
+             dict(work_seconds=240,stopped_cleanup_reserve_seconds=60,native_lifetime_seconds=300).items())
+         and deadline['absolute_clock_shared_by_all_resource_operations']is True,
+         'resource_capacity_original_deadline_profile_changed')
+    need(not any(key in terminal for key in ('execution_request','process_spawn_receipts',
+         'sampled_process_custody_final','sampled_process_custody','external_precharge',
+         'external_before','external_after','external_output_parent_identities','parent_capacity_handoff',
+         'database_preimage_observed','database_postimage','allowed_subprocess_events',
+         'prechild_failure_receipt','prechild_storage_close_method')),
+         'resource_capacity_terminal_has_later_storage_or_process_effects')
+    need(request.get('schema')=='legal-ir-original-native-control-request/v1'
+         and request.get('purpose')=='native_control_metadata'
+         and request.get('request_id')=='scientific-executor:'+root.name
+         and request_ref['path']==str(root/'request.json')
+         and all(type(request.get(k))is int and request[k]==v for k,v in
+             dict(cpu_slots=1,memory_mb=1536,child_process_slots=8,storage_bytes=384*1024**2,timeout_seconds=300).items())
+         and request.get('resource_ledger')==str(ORIGINAL_RESOURCE_LEDGER),
+         'resource_capacity_original_native_envelope_changed')
+    state=terminal.get('reservation')
+    need(type(state)is dict and set(state)=={'schema','reservation_id','scheduler_lane','workload',
+         'status','ledger_path','roots','storage_limit_bytes','record','resource_lease','cleanup_error',
+         'enforcement','profile','last_local_usage','authority','external_file_growth_monitored'}
+         and state['schema']=='daemon-resource-reservations-v1'
+         and state['profile']=='parented-phase-sampled/v1'
+         and state['scheduler_lane']=='orchestration' and state['workload']=='canonical_parented_phase'
+         and state['authority']=='one_actual_child_of_existing_phase_no_additional_host_root'
+         and state['enforcement']=='cooperative_admission_and_polled_usage_not_kernel_quota'
+         and state['external_file_growth_monitored']is False and state['last_local_usage']is None
+         and state.get('status')=='not_entered'
+         and state.get('record')is None and state.get('resource_lease')is None
+         and state.get('cleanup_error')is None and state.get('ledger_path')==request['resource_ledger']
+         and type(state['storage_limit_bytes'])is int and state['storage_limit_bytes']==GLOBAL_RETAINED_BYTES
+         and type(terminal.get('elapsed_seconds'))in(int,float)
+         and 0<=terminal['elapsed_seconds']<request['timeout_seconds'],
+         'resource_capacity_record_absence_or_closed_deadline_unproved')
+    preimage=terminal.get('database_preimage_before_grants');expected=request.get('database_preimage')
+    need(type(preimage)is dict and set(preimage)=={'path','bytes','sha256'}
+         and type(expected)is dict and type(preimage['bytes'])is int and type(expected.get('bytes'))is int
+         and preimage==expected,'resource_capacity_database_preimage_differs')
+    observation=terminal.get('resource_capacity_observation')
+    numbers=('observed_apparent_bytes','outstanding_full_reservations_bytes',
+        'additional_requested_bytes','charged_bytes','limit_bytes','minimum_filesystem_free_bytes',
+        'storage_capacity_deficit_bytes','filesystem_free_deficit_bytes')
+    need(type(observation)is dict and set(observation)==set(numbers)|{
+         'schema','scope','storage_capacity_exceeded','filesystem_free_insufficient'}
+         and observation['schema']=='daemon-resource-capacity-observation/v1'
+         and observation['scope']=='named_roots_only_apparent_bytes'
+         and all(h._integer(observation[key],0)for key in numbers),
+         'resource_capacity_observation_shape_or_numeric_types')
+    observed,outstanding,additional=(observation[key]for key in numbers[:3])
+    charged,limit,free=(observation[key]for key in numbers[3:6])
+    need(additional==request['storage_bytes'] and limit==GLOBAL_RETAINED_BYTES
+         and charged==observed+outstanding+additional
+         and observation['storage_capacity_exceeded']is(charged>limit)
+         and observation['filesystem_free_insufficient']is(free<outstanding+additional)
+         and (observation['storage_capacity_exceeded']or observation['filesystem_free_insufficient'])
+         and observation['storage_capacity_deficit_bytes']==max(0,charged-limit)
+         and observation['filesystem_free_deficit_bytes']==max(0,outstanding+additional-free),
+         'resource_capacity_observation_arithmetic_or_deficit')
+    witness=terminal.get('storage_admission_capacity_refusal')
+    need(type(witness)is dict and set(witness)=={'schema','stage','request_sha256','owner_pid',
+         'owner_birth','owner_boot_id','orchestration_lease_ids','root','phase','native_ancestry_closed',
+         'storage_record_created','storage_native_lease_created','child_launch_attempted',
+         'external_charge_created','task_completion_authority'}
+         and witness['schema']=='original-orchestration-storage-admission-refusal/v1'
+         and witness['stage']=='parented_storage_open_before_record'
+         and witness['request_sha256']==request_ref['sha256']
+         and type(witness['owner_pid'])is int
+         and witness['native_ancestry_closed']is True
+         and all(witness[key]is False for key in ('storage_record_created','storage_native_lease_created',
+             'child_launch_attempted','external_charge_created','task_completion_authority')),
+         'resource_capacity_native_family_witness_missing_or_unknown')
+    row_keys={'lease_id','parent_lease_id','owner_pid','lane','cpu_slots','memory_mb',
+        'child_process_slots','released'}
+    for item in (witness['root'],witness['phase']):
+        need(type(item)is dict and set(item)==row_keys
+             and type(item['lease_id'])is str and len(item['lease_id'])==32
+             and all(character in '0123456789abcdef'for character in item['lease_id'])
+             and type(item['owner_pid'])is int and item['owner_pid']==terminal.get('owner_pid')
+             and item['lane']=='orchestration' and item['released']is True
+             and all(type(item[key])is int and item[key]==value for key,value in
+                 dict(cpu_slots=1,memory_mb=1536,child_process_slots=8).items()),
+             'resource_capacity_original_orchestration_grant_shape')
+    first,second=witness['root'],witness['phase']
+    need(first['parent_lease_id']is None and second['parent_lease_id']==first['lease_id']
+         and first['lease_id']!=second['lease_id']
+         and type(witness['orchestration_lease_ids'])is list
+         and witness['orchestration_lease_ids']==[first['lease_id'],second['lease_id']],
+         'resource_capacity_original_root_phase_join')
+    boot=Path('/proc/sys/kernel/random/boot_id').read_text().strip()
+    need(h._integer(terminal.get('owner_pid'),2)
+         and type(terminal.get('owner_birth'))is str
+         and witness['owner_pid']==terminal['owner_pid']
+         and witness['owner_birth']==terminal['owner_birth']
+         and witness['owner_boot_id']==terminal.get('owner_boot_id')==boot
+         and captured_owner.get('pid')==terminal['owner_pid']
+         and captured_owner.get('boot_id')==boot and h._integer(captured_owner.get('birth_ticks'),1)
+         and terminal['owner_birth']==str(captured_owner['birth_ticks'])
+         and h._definitely_dead_identity(captured_owner,dict(boot_id=boot)),
+         'resource_capacity_original_owner_not_joined_or_still_live')
+    attempt=h._path(request['attempt_directory'])
+    need(root in attempt.parents and attempt.is_dir()and not attempt.is_symlink()
+         and attempt.lstat().st_uid==os.geteuid()and stat.S_IMODE(attempt.lstat().st_mode)==0o700
+         and not any(attempt.iterdir())
+         and not any(os.path.lexists(root/name)for name in
+             ('terminal.json','cycle-proof.json','closed.json','native-diagnostic.json')),
+         'resource_capacity_attempt_has_positive_or_unknown_effects')
+    return terminal
+
+
+def resource_capacity_deferral(profile, request_ref, request, root, kind, process, cycle_fields, returncode):
+    h=health_owner()
+    need(kind=='genuine_scoped_idle'and type(returncode)is int and returncode!=0
+         and type(process)is subprocess.Popen and type(process.returncode)is int
+         and process.returncode==returncode and process.poll()==returncode
+         and process.pid==cycle_fields['owner_observation']['pid'],
+         'resource_capacity_deferral_requires_original_reaped_idle_owner')
+    terminal=original_terminal(h._raw(root/'owner.stdout'),request_ref)
+    resource_capacity_terminal(terminal,request_ref,request,root,captured_owner=cycle_fields['owner_observation'])
+    need(cycle_fields['owner_observation']['argv']==[profile['unit']['argv'][0],'-B',profile['owner_source']['path'],
+         '--request',request_ref['path'],'--expected-request-sha256',request_ref['sha256']]
+         and request['source_sha256'].get(profile['owner_source']['path'])==profile['owner_source']['sha256']
+         and request['source_sha256'].get(profile['driver_source']['path'])==profile['driver_source']['sha256'],
+         'resource_capacity_original_owner_source_argv')
+    negative=put(root/'capacity-terminal-negative.json',terminal)
+    return put(root/'capacity-deferred.json',dict(schema='agent-supervisor/scientific-resource-capacity-deferred@1',
+        request_ref=request_ref,terminal_ref=negative,original_wait_returncode=returncode,
+        sequence=cycle_fields['sequence'],captured_owner=cycle_fields['owner_observation'],
+        process=cycle_fields['process'],recorded_at=time.time(),health_sequence_advanced=False,
+        health_or_task_completion_authority=False,automatic_retry_of_original_request=False))
+
+
 def source_admission_PID_absent(pid):
     """Only an actual missing proc entry means absent; unreadable is UNKNOWN."""
     try: (Path('/proc')/str(pid)).lstat()
@@ -2803,11 +2997,20 @@ def run_cycle(config, profile_ref, profile, template_ref, kind, sequence, stop, 
                     pass
                 else:
                     raise SourceAdmissionDeferred(witness['path'])
+                try:
+                    witness=resource_capacity_deferral(profile,request_ref,request,root,kind,process,
+                        h.cycle_start_fields(handle),original_returncode)
+                except Exception:
+                    # An optional capacity diagnostic cannot replace unknown custody.
+                    pass
+                else:
+                    raise ResourceCapacityDeferred(witness['path'])
             if (original_returncode != 0 and kind == 'genuine_scoped_idle'
                     and not stop.is_set() and capacity_continuation_ref is not None):
                 try:
                     witness = closed_capacity_deferral(profile, request_ref, h._document(request_ref),
-                        root, kind, process, h.cycle_start_fields(handle), original_returncode)
+                        root, kind, process, h.cycle_start_fields(handle), original_returncode,
+                        continuation_ref=capacity_continuation_ref)
                 except Exception:
                     # Unknown/entered/non-capacity failures retain original hold.
                     pass
@@ -2843,7 +3046,7 @@ def run_cycle(config, profile_ref, profile, template_ref, kind, sequence, stop, 
             raise
         put(root / 'closed.json', {'cycle_proof_ref': proof_ref, 'receipt_ref': receipt_ref})
         return receipt_ref
-    except (SourceAdmissionDeferred,CatalogueRaceDeferred,CapacityAdmissionDeferred):
+    except (SourceAdmissionDeferred, CatalogueRaceDeferred, ResourceCapacityDeferred, CapacityAdmissionDeferred):
         raise
     except BaseException as exc:
         # A signal is handed to the original owner, which owns cancellation and
@@ -3151,7 +3354,7 @@ def serve(config_ref, stop, *, recovery_ref=None, generation_ref=None, catalogue
         retained_census_refs = []
         catalogue_parser = None
         need(catalogue_parser_ref is None or (recovery_ref is not None
-             and h._document(recovery_ref).get("schema") in (CATALOGUE_RACE_SCHEMA,CLOSED_CAPACITY_SCHEMA)),
+             and h._document(recovery_ref).get("schema") in (CATALOGUE_RACE_SCHEMA,CLOSED_CAPACITY_SCHEMA,CLOSED_CAPACITY_V2_SCHEMA)),
              "catalogue_parser_requires_explicit_closed_race_mode")
         need(recovery_ref is None or generation_ref is None,'generation_recovery_modes_crossed')
         if generation_ref is not None:
@@ -3166,7 +3369,7 @@ def serve(config_ref, stop, *, recovery_ref=None, generation_ref=None, catalogue
         else:
             opening_identity = require_main_process(profile_ref, profile)
             kind = h._document(recovery_ref).get('schema')
-            if kind == CLOSED_CAPACITY_SCHEMA:
+            if kind in (CLOSED_CAPACITY_SCHEMA, CLOSED_CAPACITY_V2_SCHEMA):
                 need(catalogue_parser_ref is not None and catalogue_parser_ref == catalogue_parser_reference(profile),
                      'closed_capacity_explicit_catalogue_parser_required')
                 reconciled_count, retained_census_refs = reconcile_closed_capacity_continuation(
@@ -3250,7 +3453,7 @@ def serve(config_ref, stop, *, recovery_ref=None, generation_ref=None, catalogue
                     return HOLD_EXIT
                 # A closed negative spends its physical position. The next
                 # original observation uses a fresh request; health stays put.
-            except SourceAdmissionDeferred as deferred:
+            except (SourceAdmissionDeferred, ResourceCapacityDeferred) as deferred:
                 if capacity_continuation:
                     consecutive_closed_negatives += 1
                     if consecutive_closed_negatives >= MAX_CONSECUTIVE_CLOSED_NEGATIVES:
@@ -3261,8 +3464,10 @@ def serve(config_ref, stop, *, recovery_ref=None, generation_ref=None, catalogue
                 failed_cycle_number = cycle_number
                 cycle_number += 1
                 if consecutive_admission_failures >= MAX_CONSECUTIVE_SOURCE_ADMISSION_DEFERRALS:
-                    persistent_hold(root, Path(str(deferred)).parent, 'source_admission_consecutive_defer_bound')
-                    _recovery_failure(root, failed_cycle_number, sequence, 'source_admission_consecutive_defer_bound')
+                    reason=('resource_capacity_consecutive_defer_bound'
+                        if isinstance(deferred,ResourceCapacityDeferred)else 'source_admission_consecutive_defer_bound')
+                    persistent_hold(root, Path(str(deferred)).parent, reason)
+                    _recovery_failure(root, failed_cycle_number, sequence, reason)
                     return HOLD_EXIT
                 # Negative physical attempt consumed; no health sequence/publication.
             except CapacityAdmissionDeferred as deferred:
@@ -3286,7 +3491,7 @@ def serve(config_ref, stop, *, recovery_ref=None, generation_ref=None, catalogue
 
 
 
-def _closed_capacity_terminal_metadata(terminal, request_ref, request, profile, intent, cycle_root):
+def _closed_capacity_terminal_metadata(terminal, request_ref, request, profile, intent, cycle_root, *, source_generation=None):
     """Recognize one narrow pre-entry capacity refusal, granting no continuation.
 
     Pure DATA consistency only. An original caller must additionally prove the
@@ -3294,6 +3499,7 @@ def _closed_capacity_terminal_metadata(terminal, request_ref, request, profile, 
     and missing positive cycle evidence. No existing recovery mode calls this
     helper; the separate one-use counter-preserving protocol is still required.
     """
+    limit = GLOBAL_RETAINED_BYTES if source_generation is None else _source_generation_record(source_generation)['policy']['limit_bytes']
     root = Path(cycle_root)
     parts = root.name.split('-')
     integer = lambda value: type(value) is int and 0 <= value <= 2**63 - 1
@@ -3370,7 +3576,7 @@ def _closed_capacity_terminal_metadata(terminal, request_ref, request, profile, 
          and reservation.get('external_file_growth_monitored') is False
          and reservation.get('authority') == 'one_actual_child_of_existing_phase_no_additional_host_root'
          and reservation.get('ledger_path') == request['resource_ledger']
-         and reservation.get('storage_limit_bytes') == GLOBAL_RETAINED_BYTES
+         and type(reservation.get('storage_limit_bytes')) is int and reservation.get('storage_limit_bytes') == limit
          and type(reservation.get('reservation_id')) is str
          and len(reservation['reservation_id']) == 32
          and set(reservation['reservation_id']) <= set('0123456789abcdef')
@@ -3389,7 +3595,7 @@ def _closed_capacity_terminal_metadata(terminal, request_ref, request, profile, 
     need(type(capacity) is dict and all(integer(capacity.get(key)) for key in numbers)
          and capacity.get('schema') == 'daemon-resource-capacity-observation/v1'
          and capacity.get('scope') == 'named_roots_only_apparent_bytes'
-         and capacity['limit_bytes'] == GLOBAL_RETAINED_BYTES
+         and capacity['limit_bytes'] == limit
          and capacity['additional_requested_bytes'] == request['storage_bytes']
          and capacity['charged_bytes'] == capacity['observed_apparent_bytes']
              + capacity['outstanding_full_reservations_bytes'] + capacity['additional_requested_bytes']
@@ -3470,29 +3676,33 @@ def _closed_capacity_unit_projection(profile):
     return _catalogue_race_unit_projection(argv, profile['main_entrypoint']['path'])
 
 
-def _closed_capacity_ledger(request, terminal):
+def _closed_capacity_ledger(request, terminal, *, source_generation=None):
     """Read-only absence proof; does not reserve space or assert fresh census."""
     h = health_owner(); path = Path(request['resource_ledger'])
+    limit = GLOBAL_RETAINED_BYTES if source_generation is None else _source_generation_record(source_generation)['policy']['limit_bytes']
     before = h.descriptor(path, maximum=16*1024**2); ledger = h._decode(h._bound(before, 16*1024**2))
     h._keys(ledger, {'schema', 'roots', 'limit_bytes', 'reservations'}, 'closed_capacity_ledger_shape')
     need(ledger['schema'] == 'daemon-resource-reservations-v1'
-         and ledger['limit_bytes'] == GLOBAL_RETAINED_BYTES
+         and type(ledger['limit_bytes']) is int and ledger['limit_bytes'] == limit
          and ledger['roots'] == terminal['reservation']['roots']
          and type(ledger['reservations']) is dict and len(ledger['reservations']) <= 4096
          and all(type(row) is dict and row.get('reservation_id') == key
              and row.get('status') in ('reserved', 'active', 'retained', 'released')
-             and h._integer(row.get('storage_bytes'), 0, GLOBAL_RETAINED_BYTES)
+             and h._integer(row.get('storage_bytes'), 0, limit)
              for key, row in ledger['reservations'].items())
          and terminal['reservation']['reservation_id'] not in ledger['reservations']
          and h.descriptor(path, maximum=16*1024**2) == before, 'closed_capacity_unknown_or_present_parented_record')
     for row in ledger['roots']:
+        h._keys(row, {'path', 'device', 'inode'}, 'closed_capacity_root_identity_shape')
+        need(type(row['path']) is str and h._integer(row['device'], 0) and h._integer(row['inode'], 1),
+             'closed_capacity_root_identity_type')
         info = h._path(row['path']).lstat()
         need(stat.S_ISDIR(info.st_mode) and (info.st_dev, info.st_ino) == (row['device'], row['inode']),
              'closed_capacity_original_root_identity_changed')
     return before, ledger
 
 
-def _closed_capacity_negative(value, prior, *, startup=True):
+def _closed_capacity_negative(value, prior, *, startup=True, source_generation=None):
     h = health_owner(); intent = h._document(value['failed_intent_ref'])
     request_ref = value['failed_request_ref']; request = h._document(request_ref)
     cycle = Path(request_ref['path']).parent
@@ -3541,7 +3751,7 @@ def _closed_capacity_negative(value, prior, *, startup=True):
     if startup:
         need(h.database_descriptor(request['database_preimage']['path']) == request['database_preimage'],
              'closed_capacity_original_database_preimage_changed')
-    ledger_ref, ledger = _closed_capacity_ledger(request, terminal)
+    ledger_ref, ledger = _closed_capacity_ledger(request, terminal, source_generation=source_generation)
     return cycle, request, terminal, recognition, ledger_ref, ledger
 
 
@@ -3600,7 +3810,7 @@ def _closed_capacity_cleanup(value, terminal):
     return observation
 
 
-def _closed_capacity_preflight(value, profile, request, ledger_ref, ledger):
+def _closed_capacity_preflight(value, profile, request, ledger_ref, ledger, *, source_generation=None):
     """Check a fresh original-owner observation; this is never a storage grant.
 
     No standalone issuer is supplied here. The original owner adapter must emit
@@ -3608,6 +3818,9 @@ def _closed_capacity_preflight(value, profile, request, ledger_ref, ledger):
     The observation projects the unchanged432MiB full proof/attempt reserve;
     the next original Popen still admits its unchanged384MiB attempt at220GB.
     """
+    record = None if source_generation is None else _source_generation_record(source_generation)
+    if record is not None: request = record['request']
+    limit = GLOBAL_RETAINED_BYTES if record is None else record['policy']['limit_bytes']
     h = health_owner(); pre = h._document(value['capacity_preflight_ref'])
     h._keys(pre, {'schema', 'checked_at', 'max_age_seconds', 'ledger_ref', 'accounting',
         'roots', 'resource_source_ref', 'source_READ_closed', 'ledger_lock_closed',
@@ -3632,13 +3845,13 @@ def _closed_capacity_preflight(value, profile, request, ledger_ref, ledger):
          ('observed_apparent_bytes', 'outstanding_full_reservations_bytes', 'additional_requested_bytes',
           'charged_bytes', 'limit_bytes', 'minimum_filesystem_free_bytes'))
          and accounting.get('scope') == 'named_roots_only_apparent_bytes'
-         and accounting['limit_bytes'] == GLOBAL_RETAINED_BYTES
+         and accounting['limit_bytes'] == limit
          and accounting['additional_requested_bytes'] == REUSE_CYCLE_RESERVE_BYTES
          and accounting['charged_bytes'] == accounting['observed_apparent_bytes']
              + accounting['outstanding_full_reservations_bytes'] + accounting['additional_requested_bytes']
          and accounting['outstanding_full_reservations_bytes'] == sum(
              row['storage_bytes'] for row in ledger['reservations'].values() if row['status'] != 'released')
-         and accounting['charged_bytes'] <= GLOBAL_RETAINED_BYTES
+         and accounting['charged_bytes'] <= limit
          and accounting['minimum_filesystem_free_bytes'] >= accounting['outstanding_full_reservations_bytes']
              + accounting['additional_requested_bytes'], 'closed_capacity_preflight_cap_not_restored')
     return pre
@@ -3648,7 +3861,736 @@ CLOSED_CAPACITY_HISTORY_KEYS = CLOSED_CAPACITY_KEYS-{
     'recorded_at', 'expires_at', 'manager_before', 'capacity_preflight_ref', 'current_native_ref'}
 
 
-def _closed_capacity_history(value, profile_ref, profile, config, *, startup=True):
+
+# Explicit source-only successor approval. This is a technical source epoch,
+# not a third execution generation or a reset of the consumed catalogue grant.
+CLOSED_CAPACITY_V2_SCHEMA = 'agent-supervisor/scientific-closed-capacity-continuation@2'
+CLOSED_CAPACITY_V2_ACK_SCHEMA = 'agent-supervisor/scientific-closed-capacity-consumption@2'
+SOURCE_GENERATION_SCHEMA = 'agent-supervisor/scientific-source-generation-approval@1'
+SOURCE_GENERATION_SPEC_SCHEMA = 'agent-supervisor/scientific-source-generation-spec@1'
+SOURCE_GENERATION_SPEC_KEYS = frozenset({'schema', 'authorization', 'profile_ref',
+    'prior_profile_ref', 'prior_profile_snapshot_ref', 'preparation_spec_ref',
+    'historical_source_witness_ref', 'source_commitment_ref',
+    'template_transition_ref', 'storage_policy_approval_ref'})
+SOURCE_GENERATION_KEYS = frozenset({'schema', 'authorization', 'spec_ref', 'profile_ref',
+    'recorded_at', 'expires_at', 'manager_before', 'spent_cycle_count',
+    'next_cycle_number', 'generation_number', 'max_generations', 'max_cycles',
+    'remaining_cycles', 'max_proof_bytes', 'dispatch_authority',
+    'execution_budget_created', 'hold_removal_authorized'})
+CLOSED_CAPACITY_V2_KEYS = CLOSED_CAPACITY_KEYS | {'source_generation_authorization_ref'}
+CURRENT_RETAINED_POLICY_BYTES = 250_000_000_000
+_SOURCE_GENERATION_CONTEXTS = {}
+
+
+def _source_generation_canonical(value):
+    return (json.dumps(value, sort_keys=True, separators=(',', ':'), allow_nan=False)+'\n').encode()
+
+
+def _source_generation_same(left, right):
+    # Python equality alone accepts True==1 and 1.0==1 in metadata joins.
+    return _source_generation_canonical(left) == _source_generation_canonical(right)
+
+
+def _source_generation_frozen(reference):
+    h = health_owner(); h._keys(reference, {'path', 'bytes', 'sha256'}, 'source_generation_descriptor_shape')
+    need(type(reference['path']) is str and h._integer(reference['bytes'], 1, h.MAX_JSON)
+         and type(reference['sha256']) is str and len(reference['sha256']) == 64
+         and set(reference['sha256']) <= set('0123456789abcdef'), 'source_generation_descriptor_type')
+    path = Path(reference['path']); before = path.lstat()
+    raw = h._bound(reference); info = path.lstat()
+    fields = ('st_dev', 'st_ino', 'st_mode', 'st_uid', 'st_gid', 'st_nlink', 'st_size', 'st_mtime_ns', 'st_ctime_ns')
+    need(tuple(getattr(before, key) for key in fields) == tuple(getattr(info, key) for key in fields),
+         'source_generation_control_changed_during_read')
+    need(stat.S_ISREG(info.st_mode) and info.st_uid == os.geteuid() and info.st_nlink == 1
+         and stat.S_IMODE(info.st_mode) == 0o400, 'source_generation_control_not_frozen_private')
+    return raw
+
+
+def _source_generation_source_inventory(reference, profile):
+    """The explicit @3 contract includes the actual new Main AND health role.
+
+    All files in its declared frozen package closure are selected, qualified and
+    counted. This does not loosen the existing exact-five @2 contract.
+    """
+    h = health_owner(); source = h._decode(_source_generation_frozen(reference))
+    h._keys(source, {'schema', 'source_root', 'source_commit', 'source_tree', 'source_inventory',
+        'source_operation_plan', 'source_qualification', 'catalogue_parser', 'main_entrypoint',
+        'health_module', 'runtime_activation_or_task_authority'}, 'source_generation_commitment_shape')
+    root = Path(source['source_root']); main = profile['main_entrypoint']; health = profile['health_module']
+    parser = catalogue_parser_reference(profile)
+    need(source['schema'] == 'agent-supervisor/scientific-producer-source-commitment@3'
+         and source['runtime_activation_or_task_authority'] is False
+         and root == Path(main['path']).parents[3]
+         and main['path'] == str(root/'ipfs_accelerate_py/agent_supervisor/rescue/scientific_executor.py')
+         and health['path'] == str(root/'ipfs_accelerate_py/agent_supervisor/rescue/native_executor_health.py')
+         and all(_source_generation_same(source[key], selected) for key, selected in
+                 (('main_entrypoint', main), ('health_module', health), ('catalogue_parser', parser)))
+         and all(type(source[k]) is str and len(source[k]) == 40
+                 and set(source[k]) <= set('0123456789abcdef') for k in ('source_commit', 'source_tree')),
+         'source_generation_actual_Main_health_package_required')
+    inventory = h._decode(_source_generation_frozen(source['source_inventory']))
+    h._keys(inventory, {'schema', 'source_root', 'source_commit', 'source_tree', 'file_count', 'files'},
+            'source_generation_inventory_shape')
+    rows = inventory['files']; selected = {pin['path']: pin for pin in profile['source_descriptors']
+                                            if root in Path(pin['path']).parents}
+    required = {str(root/name) for name in ('ipfs_accelerate_py/__init__.py',
+        'ipfs_accelerate_py/agent_supervisor/__init__.py',
+        'ipfs_accelerate_py/agent_supervisor/rescue/__init__.py')}
+    required.update((main['path'], health['path'], parser['path']))
+    need(inventory['schema'] == 'legal-ir-scientific-source-inventory/v1'
+         and all(inventory[k] == source[k] for k in ('source_root', 'source_commit', 'source_tree'))
+         and type(rows) is list and h._integer(inventory['file_count'], 6, 512)
+         and inventory['file_count'] == len(rows) == len(selected)
+         and required <= set(selected), 'source_generation_complete_package_population')
+    seen = set()
+    for row in rows:
+        h._keys(row, {'path', 'bytes', 'sha256', 'mode'}, 'source_generation_inventory_row')
+        pin = {key: row[key] for key in ('path', 'bytes', 'sha256')}
+        need(type(pin['path']) is str and pin['path'] in selected and pin['path'] not in seen
+             and _source_generation_same(pin, selected[pin['path']])
+             and type(row['mode']) is int and row['mode'] == 0o400
+             and Path(pin['path']).suffix == '.py', 'source_generation_inventory_unknown_or_duplicate_source')
+        _source_generation_frozen(pin); seen.add(pin['path'])
+    need(seen == set(selected), 'source_generation_inventory_missing_source')
+    _source_generation_frozen(source['source_operation_plan'])
+    _source_generation_qualification(source['source_qualification'], profile, selected)
+    return source, selected
+
+
+
+def _source_generation_qualification(reference, profile, selected):
+    """The new technical epoch requires the CURRENT canonical owned-v5 SDK.
+
+    The old v1 reader remains a separately named archival reader. This is not a
+    coercion of v5 receipts into its old17/focused-observer schema. Qualification
+    must have been produced by the existing canonical validation owner and its
+    original genuine-wait/Source@2 path; this function only rechecks that DATA.
+    """
+    import xml.etree.ElementTree as ET
+    from collections import Counter
+    from ipfs_accelerate_py.agent_supervisor.rescue import repair_candidate_owners as owner
+    h = health_owner(); value = h._decode(_source_generation_frozen(reference))
+    h._keys(value, {'schema', 'qualification_profile', 'qualification_owner_source_ref',
+        'policy_ref', 'plan_ref', 'request_ref', 'terminal_ref', 'parent_source_closeout_ref',
+        'invocation_root', 'owning_test_root', 'required_raw_subjects', 'source_inventory_subjects', 'owning_test_sources',
+        'expected_function_case_counts', 'runtime_activation_or_task_authority'},
+        'source_generation_current_v5_qualification_shape')
+    need(value['schema'] == 'agent-supervisor/scientific-source-generation-current-v5-qualification@1'
+         and value['qualification_profile'] in ('closed_v5_current_Source', 'closed_v5_current_immutable_Source')
+         and value['runtime_activation_or_task_authority'] is False,
+         'source_generation_current_v5_profile_required')
+    owner_ref = value['qualification_owner_source_ref']; h._bound(owner_ref)
+    actual_reader_ref = owner.descriptor(Path(owner.__file__).absolute())
+    need(all(function.__globals__ is vars(owner) and function.__code__.co_filename == actual_reader_ref['path']
+                 for function in (owner.verify_validation_evidence, owner.verify_v5_parent_source_closeout)),
+         'source_generation_existing_v5_SDK_source_required')
+    h._bound(value['policy_ref'])  # Exact descriptor shape/type/byte identity before SDK path/SHA use.
+    sdk_witness = owner.authenticate_archived_v5_sdk_source(value['policy_ref'])
+    try:
+        source_data = owner.archived_v5_sdk_source_data(sdk_witness)
+        need(_source_generation_same(owner_ref, source_data['producer_ref'])
+             and source_data['same_source_generation_bytes_authenticated'] is True
+             and source_data['current_producer_verified'] is source_data['current_engine_verified'] is False,
+             'source_generation_original_incoming_SDK_or_source_generation_changed')
+        policy = source_data['policy']
+        immutable_source = 'source_qualification' in policy['validation']
+        need((value['qualification_profile'] == 'closed_v5_current_immutable_Source') == immutable_source,
+             'source_generation_v5_qualification_profile_policy_mismatch')
+        plan = h._document(value['plan_ref'])
+        request = h._document(value['request_ref']); terminal = h._document(value['terminal_ref'])
+        invocation = h._path(value['invocation_root'])
+        control = owner.checked_control_release(policy, current_owner=False)  # DATA, bound by sdk_witness above.
+        immutable_scope = owner.checked_source_qualification(policy, control) if immutable_source else None
+        maintained = control['root']
+        need(value['owning_test_root'] == str(maintained), 'source_generation_actual_immutable_owning_test_root_required')
+        validation = owner.checked_validation_profile(policy, control)
+        need(_source_generation_same(value['request_ref'], owner.original_execution_request(invocation))
+             and _source_generation_same(request, owner.validation_execution_request(policy, plan, value['plan_ref'])),
+             'source_generation_original_v5_worker_request_publication_differs')
+        h._keys(request, {'schema', 'argv', 'cwd', 'selected_checks', 'source_sha256',
+            'timeout_seconds', 'storage_bytes', 'memory_mb', 'cpu_slots', 'child_process_slots',
+            'attempt_directory', 'outputs', 'declared_external_writable_paths', 'process_scope',
+            'scheduler_state_path', 'expected_scheduler_policy_sha256', 'roots', 'ordinary_scratch_profile'},
+            'source_generation_current_v5_original_request_shape')
+        need(request['selected_checks'] == plan['selected_checks'] == validation['selected_checks']
+             and request['cwd'] == plan['candidate_root']
+             and request['attempt_directory'] == plan['attempt_directory']
+             and all(type(request[key]) is int and request[key] == validation[key] for key in
+                     ('cpu_slots', 'memory_mb', 'storage_bytes', 'timeout_seconds', 'child_process_slots'))
+             and request['scheduler_state_path'] == validation['scheduler_state_path']
+             and request['expected_scheduler_policy_sha256'] == validation['expected_scheduler_policy_sha256']
+             and request['outputs'] == {name: str(Path(request['attempt_directory'])/name)
+                                        for name in ('pytest', 'tmp', 'cache', 'db', 'exports', 'logs')}
+             and type(request['source_sha256']) is dict and 0 < len(request['source_sha256']) <= 256,
+             'source_generation_current_v5_original_request_projection')
+        need(owner._v5_ordinary_validation(policy)
+             and request['schema'] == 'owned-validation-request/v5' and len(request) == 18
+             and request['ordinary_scratch_profile'] == {'schema':'owned-validation-ordinary-scratch-live/v1'}
+             and request['declared_external_writable_paths'] == []
+             and request['process_scope'] == 'sampled_birth_bound_descendants'
+             and request['roots'] == [str(root) for root in ORIGINAL_NAMED_ROOTS]
+             and _source_generation_same(owner_ref, next(pin for pin in policy['source_descriptors']
+                                                          if pin['path'] == owner_ref['path']))
+             and value['plan_ref']['path'] == str(invocation/'validation-plan.json'),
+             'source_generation_original_current_v5_request_or_SDK_policy_changed')
+        # These existing validators own genuine Popen/wait, native/storage/process
+        # closure, original typed deadline/Source@2 custody, full source guard, raw
+        # candidate execution, all natural phases, JUnit and the original seal.
+        summary = owner.verify_validation_evidence(policy, plan, value['request_ref'], terminal, invocation)
+        archived = owner.verify_archived_v5_parent_source_closeout(sdk_witness, value['request_ref'], invocation,
+                                                                  value['parent_source_closeout_ref'], summary)
+        need(archived['historical_evidence_verified'] is True
+             and archived['current_producer_verified'] is archived['current_engine_verified'] is False
+             and archived['new_original_process_or_native_execution_performed'] is False,
+             'source_generation_incoming_parent_not_archived_DATA_only')
+        parent = archived['original_parent_source_closeout']
+        custody = parent['parent_source_custody']
+        source_roots = [str(h._path(policy['datasets_root'])), str(h._path(plan['candidate_root']))]
+        need(source_roots[0] == str(ORIGINAL_NAMED_ROOTS[0].parents[1])
+             and source_roots[1] == str(Path(profile['main_entrypoint']['path']).parents[3])
+             and custody['source_closed'] is True and custody['native_closed'] is True,
+             'source_generation_original_current_v5_not_closed')
+        for receipt, root in zip(custody['source_receipts'], source_roots):
+            h._keys(receipt, {'schema_version', 'canonical_root', 'cooperative', 'lock_path', 'mode', 'waited_seconds'},
+                    'source_generation_current_v5_Source_receipt_shape')
+            need(receipt['schema_version'] == 'autoencoder-source-lease/v1'
+                 and receipt['canonical_root'] == root and receipt['cooperative'] is True and receipt['mode'] == 'read'
+                 and receipt['lock_path'] == str(Path(root)/'workspace/control-plane/source-leases/source.lock')
+                 and h._number(receipt['waited_seconds']) and receipt['waited_seconds'] >= 0,
+                 'source_generation_current_v5_two_original_Source_roots_required')
+        subjects = value['required_raw_subjects']; package = value['source_inventory_subjects']
+        tests = value['owning_test_sources']
+        datasets = ORIGINAL_NAMED_ROOTS[0].parents[1]
+        paths = [str(datasets/relative) for relative in (
+            'ipfs_datasets_py/logic/backends/process.py',
+            'ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_daemon_resources.py',
+            'ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_resource_recovery.py',
+            'ipfs_datasets_py/optimizers/logic_theorem_optimizer/parented_phase_resources.py',
+            'scripts/ops/legal_ir/run_owned_validation.py')]
+        selected_profile = {pin['path']:pin for pin in profile['source_descriptors']}
+        need(all(path in selected_profile for path in paths), 'source_generation_v5_missing_canonical_R_role')
+        expected_roles = [profile['main_entrypoint'], profile['health_module']]+[selected_profile[path] for path in paths]
+        need(type(subjects) is list and len(subjects) == 7 and len({pin['path'] for pin in subjects}) == 7
+             and sorted(_source_generation_canonical(pin) for pin in subjects)
+                  == sorted(_source_generation_canonical(pin) for pin in expected_roles)
+             and type(package) is list and len(package) == len(selected)
+             and {pin['path'] for pin in package} == set(selected)
+             and type(tests) is list and 1 <= len(tests) <= 16
+             and len({pin['path'] for pin in tests}) == len(tests),
+             'source_generation_v5_exact_roles_package_and_owning_tests_required')
+        attempt = h._path(request['attempt_directory'])
+        report_ref = h.descriptor(attempt/'exports/trusted-validation.json'); report = h._document(report_ref)
+        for pin in subjects + package + tests:
+            h._bound(pin)
+            need(plan['source_pins'].get(pin['path']) == pin['sha256']
+                 and (pin['path'] not in request['source_sha256'] or request['source_sha256'][pin['path']] == pin['sha256']),
+                 'source_generation_v5_qualified_source_generation_differs')
+            if pin['path'] in selected:
+                need(_source_generation_same(selected[pin['path']], pin),
+                     'source_generation_v5_other_package_source')
+        # The seventh role is the ORIGINAL R CLI parent, not a child import. Its
+        # genuine PID/birth/argv/wait + Source@2 custody are owned by the existing
+        # SDK. That SDK checks classifier globals/co_filename under Source READ;
+        # this is parent-source provenance, NOT a persisted child compile trace.
+        parent_cli = selected_profile[paths[-1]]
+        child_subjects = [pin for pin in subjects if pin['path'] != parent_cli['path']]
+        wait = h._document(h.descriptor(invocation/'runner-wait.json'))
+        expected_argv = [policy['python'], '-I', '-B', parent_cli['path'], '--request', value['request_ref']['path'],
+            '--expected-request-sha256', value['request_ref']['sha256'], '--resource-ledger', validation['resource_ledger']]
+        required_bodies = plan['required_candidate_bodies']
+        if immutable_source:
+            need(immutable_scope is not None and plan['required_candidate_bodies'] == []
+                 and plan.get('source_qualification') == immutable_scope['profile']
+                 and plan.get('required_source_bodies') == immutable_scope['required_source_bodies']
+                 and immutable_scope['root'] == Path(profile['main_entrypoint']['path']).parents[3],
+                 'source_generation_v5_immutable_source_body_scope_changed')
+            required_bodies = plan['required_source_bodies']
+        need(len(child_subjects) == 6 and wait['argv'] == expected_argv
+             and request['source_sha256'].get(parent_cli['path']) == parent_cli['sha256']
+             and _source_generation_same(parent_cli, next(pin for pin in policy['source_descriptors']
+                                                           if pin['path'] == parent_cli['path']))
+             and terminal['reservation']['ledger_path'] == validation['resource_ledger'] == str(ORIGINAL_RESOURCE_LEDGER)
+             and all(report['executed_source_buffers'].get(pin['path']) == pin['sha256'] for pin in child_subjects + tests)
+             and all(profile[role]['path'] in required_bodies for role in ('main_entrypoint', 'health_module'))
+             and report['collected_cases'] == owner.expected_natural_nodes(plan),
+             'source_generation_v5_six_child_bodies_or_original_parent_provenance_missing')
+        # Bind exact current owning test functions and counts, not a pooled suite
+        # count from CLI68, health242 or the old Owner128 source generation.
+        counts = value['expected_function_case_counts']; index = {pin['path']: pin for pin in tests}
+        need(type(counts) is dict and 1 <= len(counts) <= 256
+             and all(type(node) is str and node.count('::') == 1 and node.partition('::')[0] in index
+                     and node.partition('::')[2].isidentifier() and h._integer(number, 1, 1024)
+                     for node, number in counts.items()), 'source_generation_v5_owning_function_contract')
+        import ast
+        declared = set()
+        for pin in tests:
+            source = ast.parse(h._bound(pin))
+            declared.update(pin['path']+'::'+node.name for node in source.body
+                            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name.startswith('test_'))
+        need(set(counts) == declared and {pin['path'] for pin in validation['trusted_tests']} == set(index),
+             'source_generation_v5_every_declared_owning_function_required')
+        nodes = owner.expected_natural_nodes(plan)
+        actual = Counter(node.split('[',1)[0] for node in nodes)
+        need(dict(actual) == counts, 'source_generation_v5_actual_function_population_differs')
+        xml_ref = h.descriptor(attempt/'exports/test-results.xml'); tree = ET.fromstring(h._bound(xml_ref))
+        junit_functions = Counter()
+        for case in tree.findall('.//testcase'):
+            stem = case.get('classname', '').rsplit('.', 1)[-1]; name = case.get('name', '').split('[',1)[0]
+            matching = [path+'::'+name for path in index if Path(path).stem == stem and path+'::'+name in counts]
+            need(len(matching) == 1 and len(list(case)) == 0,
+                 'source_generation_v5_JUnit_function_or_nonpassing_case')
+            junit_functions[matching[0]] += 1
+        need(dict(junit_functions) == counts, 'source_generation_v5_JUnit_function_population_differs')
+        owned = h._document(h.descriptor(attempt/'logs/result.json'))
+        execution = h._document(h.descriptor(attempt/'logs/execution.json'))
+        need(type(owned['returncode']) is int and type(execution['returncode']) is int
+             and owned['returncode'] == execution['returncode'] == 0,
+             'source_generation_v5_owned_returncode_type')
+        reservation = terminal['reservation']; record = reservation['record']
+        need(type(reservation['storage_limit_bytes']) is int
+             and reservation['storage_limit_bytes'] == CURRENT_RETAINED_POLICY_BYTES
+             and record['final_accounting']['limit_bytes'] == CURRENT_RETAINED_POLICY_BYTES,
+             'source_generation_v5_original_source_250GB_not_qualified')
+        # The SDK checks each seal row. Also require the complete actual file
+        # population, original FD/inode reads, and released ordinary byte total.
+        durability_ref = h.descriptor(attempt/'logs/validation-durability.json')
+        durability = h._document(durability_ref); rows = durability['files']
+        need(type(rows) is list and 0 < len(rows) <= 20000
+             and len({row['path'] for row in rows}) == len(rows)
+             and record['attempt_directory']['path'] == str(attempt), 'source_generation_v5_seal_population')
+        observed = {str(path.relative_to(attempt)) for path in _bounded_proof_walk(attempt,
+            max_entries=40002, max_directories=20001, max_pending=20001) if path.is_file()}
+        need(observed == {row['path'] for row in rows}|{'logs/validation-durability.json'},
+             'source_generation_v5_unsealed_ordinary_file')
+        for row in rows: _catalogue_race_owned_artifact(record['attempt_directory'], row)
+        need(sum(row['bytes'] for row in rows) + durability_ref['bytes']
+             == record['final_attempt_bytes'] == record['final_total_charged_bytes']
+             and h._integer(record['final_attempt_bytes'], 1, record['storage_bytes']),
+             'source_generation_v5_released_ordinary_byte_count')
+        return value
+    finally:
+        owner.close_archived_v5_sdk_source(sdk_witness)
+
+
+def _source_generation_v1_qualification(reference, profile, selected):
+    """Bind actual original OWNED closure, raw source execution and durability.
+
+    A passed boolean or a previous source generation's cases are insufficient.
+    This reader does not run tests and supplies no current execution authority.
+    """
+    import xml.etree.ElementTree as ET
+    h = health_owner(); accepted = h._decode(_source_generation_frozen(reference))
+    h._keys(accepted, {'schema', 'original_root_closeout', 'plan', 'request', 'scope', 'observation',
+        'required_raw_subjects', 'source_inventory_subjects', 'runtime_activation_or_task_authority'},
+        'source_generation_qualification_shape')
+    need(accepted['schema'] == 'scientific-source-generation-original-qualification/v1'
+         and accepted['runtime_activation_or_task_authority'] is False,
+         'source_generation_qualification_not_source_only')
+    for field in ('original_root_closeout', 'plan', 'request', 'scope', 'observation'):
+        h._bound(accepted[field])
+    root = h._document(accepted['original_root_closeout']); plan = h._document(accepted['plan'])
+    request = h._document(accepted['request']); scope = h._document(accepted['scope'])
+    observation = h._document(accepted['observation'])
+    need(_source_generation_same(root['plan'], accepted['plan'])
+         and _source_generation_same(root['request'], accepted['request'])
+         and _source_generation_same(plan['request'], accepted['request'])
+         and _source_generation_same(plan['scope'], accepted['scope'])
+         and type(root['returncode']) is int and root['returncode'] == 0 and root.get('failure') is None
+         and root['cleanup_errors'] == root['received_signals'] == []
+         and all(root[key] is True for key in ('completed', 'child_reaped', 'source_READ_closed',
+             'source_custody_closed', 'original_native_compute_closed', 'original_CLI_exit_observed',
+             'source_pins_unchanged', 'installed_tools_unchanged')),
+         'source_generation_original_closed_root_required')
+    need(type(request) is dict and len(request) == 17 and request['schema'] == 'owned-validation-request/v1'
+         and request['declared_external_writable_paths'] == []
+         and h._integer(scope['expected_cases'], 1, 10000)
+         and type(scope['expected_phases']) is int
+         and scope['expected_phases'] == 3*scope['expected_cases']
+         and type(scope['selected_checks']) is list
+         and len(scope['selected_checks']) == len(set(scope['selected_checks'])) == scope['expected_cases']
+         and observation['schema'] == 'scientific-executor-focused-observation/v1'
+         and observation['passed'] is True and observation['error'] is None and observation['guard_denials'] == []
+         and type(observation['case_count']) is int and observation['case_count'] == scope['expected_cases']
+         and type(observation['phase_count']) is int and observation['phase_count'] == scope['expected_phases']
+         and observation['selected_checks'] == scope['selected_checks']
+         and observation['pytest_selected_checks'] == scope['selector_contract']['pytest_selectors']
+         and type(observation['JUnit']) is dict and set(observation['JUnit']) == {'tests', 'failures', 'errors', 'skipped'}
+         and all(type(number) is int and number >= 0 for number in observation['JUnit'].values())
+         and observation['JUnit'] == dict(tests=scope['expected_cases'], failures=0, errors=0, skipped=0)
+         and [(row['nodeid'], row['when'], row['outcome']) for row in observation['phases']] == [
+             (node, when, 'passed') for node in scope['selected_checks'] for when in ('setup', 'call', 'teardown')],
+         'source_generation_exact_natural_qualification_required')
+    subjects = accepted['required_raw_subjects']
+    need(type(subjects) is list and len(subjects) == 7
+         and len({pin['path'] for pin in subjects}) == 7
+         and all(any(_source_generation_same(role, pin) for pin in subjects)
+                 for role in (profile['main_entrypoint'], profile['health_module']))
+         and type(accepted['source_inventory_subjects']) is list
+         and len(accepted['source_inventory_subjects']) == len(selected)
+         and {pin['path'] for pin in accepted['source_inventory_subjects']} == set(selected),
+         'source_generation_seven_role_and_package_qualification_required')
+    # Exact logical source refs bind ALL package dependencies. The seven raw
+    # roles additionally require genuine compile and execution observations.
+    for pin in accepted['source_inventory_subjects'] + subjects:
+        h._bound(pin)
+        need(_source_generation_same(scope['sources'].get(pin['path']), pin)
+             and request['source_sha256'].get(pin['path']) == pin['sha256'],
+             'source_generation_qualification_source_bytes_changed')
+        if pin['path'] in selected:
+            need(_source_generation_same(selected[pin['path']], pin),
+                 'source_generation_qualification_other_package_bytes')
+    for pin in subjects:
+        need(observation['raw_compiled_sources'].get(pin['path']) == pin['sha256']
+             and pin['path'] in observation['executed_raw_paths'],
+             'source_generation_raw_role_not_compiled_and_executed')
+    terminal = root['owner_terminal']; reservation = terminal['reservation']; record = reservation['record']
+    need(reservation['status'] == record['status'] == 'released'
+         and record['artifacts_durable_asserted'] is True and record['attempt_exceeded_reservation'] is False
+         and record['validation_request_sha256'] == accepted['request']['sha256']
+         and record['external_charges'] == {} and record['final_external_charged_bytes'] == 0
+         and reservation['resource_lease']['released'] is True
+         and reservation['process_observation']['live_processes'] == 0
+         and reservation['process_observation']['tracking_error'] == ''
+         and reservation['process_observation']['out_of_group_live_identities'] == [],
+         'source_generation_original_native_storage_process_not_closed')
+    attempt = Path(request['attempt_directory']); owned = h._decode(h._raw(attempt/'logs/result.json'))
+    execution = h._decode(h._raw(attempt/'logs/execution.json'))
+    need(h.descriptor(attempt/'exports/focused-qualification-result.json') == accepted['observation']
+         and terminal['result'] == str(attempt/'logs/result.json')
+         and h._document(root['stdout']) == terminal
+         and owned['schema'] == execution['schema'] == 'owned-validation-result/v1'
+         and owned['completed'] is execution['completed'] is True
+         and type(owned['returncode']) is int and type(execution['returncode']) is int
+         and owned['returncode'] == execution['returncode'] == 0
+         and owned['request_sha256'] == execution['request_sha256'] == accepted['request']['sha256']
+         and owned['executed_checks'] == execution['executed_checks'] == request['selected_checks'],
+         'source_generation_actual_owned_result_join')
+    durability_raw = h._raw(attempt/'logs/validation-durability.json'); durability = h._decode(durability_raw)
+    need(durability['schema'] == 'owned-validation-durability/v1'
+         and durability['request_sha256'] == accepted['request']['sha256']
+         and durability['reservation_id'] == record['reservation_id']
+         and record['attempt_directory']['path'] == str(attempt)
+         and type(durability['files']) is list and 0 < len(durability['files']) <= 20000
+         and len({row['path'] for row in durability['files']}) == len(durability['files']),
+         'source_generation_original_OWNED_manifest_required')
+    observed = {str(path.relative_to(attempt)) for path in _bounded_proof_walk(attempt,
+        max_entries=40002, max_directories=20001, max_pending=20001) if path.is_file()}
+    need(observed == {row['path'] for row in durability['files']} | {'logs/validation-durability.json'},
+         'source_generation_complete_durable_population')
+    junit_raw = None; bound_artifacts = {}
+    for row in durability['files']:
+        raw = _catalogue_race_owned_artifact(record['attempt_directory'], row)
+        bound_artifacts[row['path']] = raw
+        if row['path'] == 'exports/test-results.xml': junit_raw = raw
+    need(bound_artifacts.get('exports/focused-qualification-result.json') == h._bound(accepted['observation'])
+         and bound_artifacts.get('logs/result.json') == h._raw(attempt/'logs/result.json')
+         and bound_artifacts.get('logs/execution.json') == h._raw(attempt/'logs/execution.json')
+         and sum(row['bytes'] for row in durability['files']) + len(durability_raw)
+             == record['final_attempt_bytes'] == record['final_total_charged_bytes']
+         and h._integer(record['final_attempt_bytes'], 1, record['storage_bytes']) and junit_raw is not None,
+         'source_generation_manifest_original_byte_count_join')
+    junit = ET.fromstring(junit_raw)
+    need({key: sum(int(suite.get(key, '0')) for suite in junit.findall('.//testsuite'))
+          for key in ('tests', 'failures', 'errors', 'skipped')} == observation['JUnit'],
+         'source_generation_actual_JUnit_join')
+    return accepted
+
+
+def _source_generation_template_transition(reference, replacements, prior, profile, oldconfig, config):
+    """Normalize only the five explicit source slots in unissued template DATA."""
+    h = health_owner(); certificate = h._decode(_source_generation_frozen(reference))
+    h._keys(certificate, {'schema', 'prior_template_ref', 'template_ref', 'replacements',
+        'runtime_activation_or_task_authority'}, 'source_generation_template_transition_shape')
+    need(certificate['schema'] == 'agent-supervisor/scientific-idle-source-template-transition@1'
+         and certificate['runtime_activation_or_task_authority'] is False
+         and _source_generation_same(certificate['replacements'], replacements)
+         and _source_generation_same(certificate['prior_template_ref'], oldconfig['idle_template_ref'])
+         and _source_generation_same(certificate['template_ref'], config['idle_template_ref']),
+         'source_generation_template_transition_join')
+    old = h._document(certificate['prior_template_ref']); new = h._document(certificate['template_ref'])
+    validate_template(old, prior, 'genuine_scoped_idle'); validate_template(new, profile, 'genuine_scoped_idle')
+    oldroot, newroot = Path(old['seed_root']), Path(new['seed_root'])
+    need(oldroot != newroot and oldroot not in newroot.parents and newroot not in oldroot.parents
+         and not any(newroot.glob('cycle-*')), 'source_generation_template_not_distinct_unissued_DATA')
+    projected = relocate(new, newroot, oldroot)
+    for key in ('request_ref', 'plan_ref'): projected[key] = old[key]
+    need(_source_generation_same(projected, old), 'source_generation_template_shape_changed')
+    oldplan = h._document(old['plan_ref']); newplan = h._document(new['plan_ref'])
+    oldrequest = h._document(old['request_ref']); newrequest = h._document(new['request_ref'])
+    inverse = {row['after_ref']['path']: row for row in replacements}
+    def restore_map(mapping):
+        need(type(mapping) is dict, 'source_generation_template_source_map_shape')
+        result = dict(mapping)
+        for path, row in inverse.items():
+            need(result.get(path) == row['after_ref']['sha256'], 'source_generation_template_missing_current_source')
+            result[path] = row['before_ref']['sha256']
+        return result
+    projected_plan = relocate(newplan, newroot, oldroot)
+    metadata = projected_plan['native_metadata_cli']
+    metadata['source_sha256'] = restore_map(metadata['source_sha256'])
+    pins = metadata['project_import_plan']['source_pins']; seen = set()
+    for index, pin in enumerate(pins):
+        row = inverse.get(pin['path'])
+        if row:
+            need(pin['path'] not in seen and _source_generation_same(pin, row['after_ref']),
+                 'source_generation_template_source_descriptor_changed')
+            pins[index] = row['before_ref']; seen.add(pin['path'])
+    need(seen == set(inverse) and _source_generation_same(projected_plan, oldplan),
+         'source_generation_template_native_plan_changed')
+    projected_request = relocate(newrequest, newroot, oldroot)
+    projected_request['source_sha256'] = restore_map(projected_request['source_sha256'])
+    need(projected_request['source_sha256'].pop(old['plan_ref']['path'], None) == new['plan_ref']['sha256'],
+         'source_generation_template_selected_plan_join')
+    projected_request['source_sha256'][old['plan_ref']['path']] = old['plan_ref']['sha256']
+    need(projected_request['argv'][projected_request['argv'].index('--plan-sha256')+1] == new['plan_ref']['sha256'],
+         'source_generation_template_plan_argv_join')
+    projected_request['argv'][projected_request['argv'].index('--plan-sha256')+1] = old['plan_ref']['sha256']
+    need(_source_generation_same(projected_request, oldrequest), 'source_generation_template_native_request_changed')
+    for ref in (certificate['template_ref'], new['request_ref'], new['plan_ref']): _source_generation_frozen(ref)
+    return newrequest
+
+
+def _source_generation_storage_policy(reference, profile, replacements):
+    """Require explicit current policy approval DATA, never infer it from 220GB."""
+    import ast
+    h = health_owner(); value = h._decode(_source_generation_frozen(reference))
+    h._keys(value, {'schema', 'authorization', 'limit_bytes', 'prior_limit_bytes', 'ledger_path',
+        'named_roots', 'resource_source_ref', 'authorization_evidence_ref',
+        'execution_budget_created', 'hold_removal_authorized'}, 'source_generation_storage_policy_shape')
+    resource = next(row['after_ref'] for row in replacements
+                    if Path(row['after_ref']['path']).name == 'autoencoder_daemon_resources.py')
+    need(value['schema'] == 'agent-supervisor/scientific-current-storage-policy-approval@1'
+         and value['authorization'] == 'explicit_existing_user_250GB_policy_source_generation_only'
+         and type(value['limit_bytes']) is int and value['limit_bytes'] == CURRENT_RETAINED_POLICY_BYTES
+         and type(value['prior_limit_bytes']) is int and value['prior_limit_bytes'] == GLOBAL_RETAINED_BYTES
+         and value['ledger_path'] == str(ORIGINAL_RESOURCE_LEDGER)
+         and value['named_roots'] == [str(root) for root in ORIGINAL_NAMED_ROOTS]
+         and _source_generation_same(value['resource_source_ref'], resource)
+         and resource in profile['source_descriptors']
+         and value['execution_budget_created'] is value['hold_removal_authorized'] is False,
+         'source_generation_current_policy_not_explicit_bound_250GB')
+    # This evidence ref must be supplied by the genuine authorized operator.
+    # No issuer is fabricated from a current constant, a ledger, or peer prose.
+    _source_generation_frozen(value['authorization_evidence_ref'])
+    body = ast.parse(h._bound(resource))
+    limits = [node.value.value for node in body.body if isinstance(node, ast.Assign)
+        and any(isinstance(target, ast.Name) and target.id == 'MAX_STORAGE_BYTES' for target in node.targets)
+        and isinstance(node.value, ast.Constant) and type(node.value.value) is int]
+    need(limits == [CURRENT_RETAINED_POLICY_BYTES], 'source_generation_resource_policy_source_not_250GB')
+    return value
+
+
+def _source_generation_review(spec_ref, profile_ref, profile, config):
+    """Check coherent current source/config/template and old witness DATA only."""
+    h = health_owner(); spec = h._decode(_source_generation_frozen(spec_ref))
+    h._keys(spec, SOURCE_GENERATION_SPEC_KEYS, 'source_generation_spec_shape')
+    need(spec['schema'] == SOURCE_GENERATION_SPEC_SCHEMA
+         and spec['authorization'] == 'approve_technical_source_generation_without_execution_budget'
+         and _source_generation_same(spec['profile_ref'], profile_ref)
+         and _source_generation_same(h._profile(profile_ref), profile), 'source_generation_spec_authority')
+    comparison = prepare_idle_source_replacement(spec['preparation_spec_ref'])
+    need(_source_generation_same(comparison['prior_profile_ref'], spec['prior_profile_ref'])
+         and _source_generation_same(comparison['prior_profile_snapshot_ref'], spec['prior_profile_snapshot_ref'])
+         and comparison['changed_source_count'] == 5 and comparison['raw_inverse_verified'] is True,
+         'source_generation_prior_comparison_join')
+    prior = h._decode(_source_generation_frozen(spec['prior_profile_snapshot_ref']))
+    stage = h._profile(comparison['profile_ref']); replacements = comparison['replacements']
+    source, selected = _source_generation_source_inventory(spec['source_commitment_ref'], profile)
+    for key in prior:
+        if key not in ('unit', 'main_entrypoint', 'health_module', 'receipt_path', 'source_descriptors'):
+            need(_source_generation_same(stage[key], profile[key]), 'source_generation_non_source_scope_changed')
+    need(profile['main_entrypoint'] != prior['main_entrypoint'] and profile['health_module'] != prior['health_module']
+         and profile['receipt_path'] != prior['receipt_path']
+         and Path(profile['proof_root']) in Path(profile['receipt_path']).parents,
+         'source_generation_new_Main_health_and_receipt_required')
+    argv = profile['unit']['argv']; oldargv = prior['unit']['argv']
+    need(all(argv.count(flag) == oldargv.count(flag) == 1 and argv.index(flag)+1 < len(argv)
+             for flag in ('--config', '--config-sha256')), 'source_generation_unit_config_pair')
+    config_ref = next(pin for pin in profile['source_descriptors'] if pin['path'] == argv[argv.index('--config')+1])
+    # The old config is selected by the original unit, not an extra authority field.
+    oldconfig_ref = next(pin for pin in prior['source_descriptors'] if pin['path'] == oldargv[oldargv.index('--config')+1])
+    oldconfig = h._document(oldconfig_ref)
+    _source_generation_frozen(config_ref)
+    need(argv[argv.index('--config-sha256')+1] == config_ref['sha256']
+         and oldargv[oldargv.index('--config-sha256')+1] == oldconfig_ref['sha256']
+         and oldconfig['profile_path'] == spec['prior_profile_ref']['path']
+         and _source_generation_same(h._document(config_ref), config)
+         and config['profile_path'] == profile_ref['path']
+         and oldconfig['execution_templates'] == config['execution_templates'] == []
+         and all(_source_generation_same(oldconfig[key], config[key]) for key in
+                 ('catalogue', 'poll_seconds', 'max_cycles', 'max_proof_bytes'))
+         and config['max_cycles'] == 10000 and config['max_proof_bytes'] == 1024**3,
+         'source_generation_dispatch_or_remaining_budget_changed')
+    for key in ('name', 'interpreter', 'working_directory'):
+        need(_source_generation_same(prior['unit'][key], profile['unit'][key]), 'source_generation_unit_scope_changed')
+    expected_env = dict(prior['unit']['environment'])
+    expected_env['PYTHONPATH'] = source['source_root']+os.pathsep+expected_env['PYTHONPATH']
+    need(_source_generation_same(expected_env, profile['unit']['environment']),
+         'source_generation_current_package_not_explicit_first_PYTHONPATH')
+    def project_argv(selected_profile):
+        items = list(selected_profile['unit']['argv'])
+        for flag in ('--catalogue-parser-source', '--catalogue-parser-sha256'):
+            need(items.count(flag) == 1, 'source_generation_unit_parser_slot')
+            items[items.index(flag)+1] = '<explicit-current-parser>'
+        return _closed_capacity_unit_projection(dict(selected_profile, unit=dict(selected_profile['unit'], argv=items)))
+    need(project_argv(prior) == project_argv(profile), 'source_generation_unit_non_source_argument_changed')
+    # Preserve the stage's complete 423-slot ordering. Only append the explicit
+    # new package closure and new config; no existing source may disappear.
+    stagepins = stage['source_descriptors']; current = profile['source_descriptors']
+    need(_source_generation_same(current[:len(stagepins)], stagepins)
+         and len(current) == len(stagepins)+len(selected)+1
+         and {pin['path'] for pin in current[len(stagepins):]} == set(selected)|{config_ref['path']},
+         'source_generation_unlisted_source_added_removed_or_reordered')
+    request = _source_generation_template_transition(spec['template_transition_ref'], replacements,
+                                                    prior, profile, oldconfig, config)
+    policy = _source_generation_storage_policy(spec['storage_policy_approval_ref'], profile, replacements)
+    # All seven named raw roles are exact current Main/health plus these five R
+    # replacement bodies; arbitrary extra raw subjects cannot qualify them.
+    qualification = h._document(source['source_qualification'])
+    expected_roles = [profile['main_entrypoint'], profile['health_module']]+[row['after_ref'] for row in replacements]
+    need(sorted(_source_generation_canonical(pin) for pin in qualification['required_raw_subjects'])
+         == sorted(_source_generation_canonical(pin) for pin in expected_roles),
+         'source_generation_qualification_not_exact_seven_current_roles')
+    witness_value = h._decode(_source_generation_frozen(spec['historical_source_witness_ref']))
+    need(_source_generation_same(witness_value['profile_ref'], spec['prior_profile_ref'])
+         and _source_generation_same(witness_value['profile_snapshot_ref'], spec['prior_profile_snapshot_ref']),
+         'source_generation_historical_witness_other_profile')
+    witness = h.authenticate_historical_source_witness(spec['historical_source_witness_ref'])
+    try:
+        need(_source_generation_same(h._document(spec_ref), spec)
+             and _source_generation_same(h._profile(profile_ref), profile),
+             'source_generation_source_or_profile_changed_during_review')
+        return dict(spec=spec, prior=prior, oldconfig=oldconfig, replacements=replacements,
+                    request=request, policy=policy, source=source, witness=witness)
+    except BaseException:
+        h.close_historical_source_witness(witness); raise
+
+
+def _source_generation_path(profile):
+    return Path(profile['proof_root'])/'closed-capacity-source-generation-approval-cycle-00000200.json'
+
+
+class _SourceGenerationContext:
+    __slots__ = ('_token',)
+
+
+def _source_generation_context(reference, profile_ref, profile, config, *, live_clock=True):
+    h = health_owner(); approval = h._decode(_source_generation_frozen(reference))
+    h._keys(approval, SOURCE_GENERATION_KEYS, 'source_generation_approval_shape')
+    need(approval['schema'] == SOURCE_GENERATION_SCHEMA
+         and approval['authorization'] == 'one_technical_source_generation_for_same_closed200_continuation'
+         and reference['path'] == str(_source_generation_path(profile))
+         and _source_generation_same(approval['profile_ref'], profile_ref)
+         and type(approval['spent_cycle_count']) is int and approval['spent_cycle_count'] == 200
+         and type(approval['next_cycle_number']) is int and approval['next_cycle_number'] == 201
+         and type(approval['generation_number']) is int and approval['generation_number'] == 2
+         and type(approval['max_generations']) is int and approval['max_generations'] == 2
+         and type(approval['max_cycles']) is int and approval['max_cycles'] == config['max_cycles'] == 10000
+         and type(approval['remaining_cycles']) is int and approval['remaining_cycles'] == 9800
+         and type(approval['max_proof_bytes']) is int and approval['max_proof_bytes'] == config['max_proof_bytes'] == 1024**3
+         and approval['dispatch_authority'] is approval['execution_budget_created'] is approval['hold_removal_authorized'] is False,
+         'source_generation_approval_not_same_budget_once_only')
+    if live_clock: _closed_capacity_clock(approval, profile)
+    else:
+        need(h._number(approval['recorded_at']) and h._number(approval['expires_at'])
+             and 0 < approval['expires_at']-approval['recorded_at'] <= min(300, profile['max_age_seconds']),
+             'source_generation_original_clock_malformed')
+    manager = approval['manager_before']
+    need(manager.get('Id') == profile['unit']['name'] and manager.get('MainPID') == '0'
+         and manager.get('ActiveState') in ('inactive', 'failed'), 'source_generation_approval_not_issued_without_Main')
+    record = _source_generation_review(approval['spec_ref'], profile_ref, profile, config)
+    handle = _SourceGenerationContext(); handle._token = object()
+    _SOURCE_GENERATION_CONTEXTS[handle._token] = dict(record, approval=approval, reference=dict(reference))
+    return handle
+
+
+def _source_generation_record(context):
+    need(type(context) is _SourceGenerationContext and getattr(context, '_token', None) in _SOURCE_GENERATION_CONTEXTS,
+         'source_generation_context_not_authenticated')
+    return _SOURCE_GENERATION_CONTEXTS[context._token]
+
+
+def _close_source_generation_context(context):
+    record = _SOURCE_GENERATION_CONTEXTS.pop(context._token, None)
+    if record is not None: health_owner().close_historical_source_witness(record['witness'])
+
+
+def authorize_closed_capacity_source_generation(spec_ref, output):
+    """Explicit operator Source-version approval only; never dispatch or rearm.
+
+    Required authorization_evidence_ref must be supplied by the genuine operator.
+    This function neither constructs that approval input nor claims it exists.
+    A partial approval occupies its O_EXCL slot permanently; no expiry renewal.
+    """
+    h = health_owner(); spec = h._decode(_source_generation_frozen(spec_ref))
+    h._keys(spec, SOURCE_GENERATION_SPEC_KEYS, 'source_generation_spec_shape')
+    profile_ref = spec['profile_ref']; profile = h._profile(profile_ref); argv = profile['unit']['argv']
+    config_ref = next(pin for pin in profile['source_descriptors'] if pin['path'] == argv[argv.index('--config')+1])
+    config, selected_ref, selected_profile = load_configuration(config_ref)
+    need(_source_generation_same(selected_ref, profile_ref) and _source_generation_same(selected_profile, profile)
+         and argv.count(CLOSED_CAPACITY_FLAG) == 1
+         and argv[argv.index(CLOSED_CAPACITY_FLAG)+1] == str(_closed_capacity_paths(profile)[0])
+         and h._path(str(output)) == _source_generation_path(profile), 'source_generation_issue_path_or_mode')
+    root = Path(profile['proof_root']); info = root.lstat()
+    need(stat.S_ISDIR(info.st_mode) and info.st_uid == os.geteuid() and stat.S_IMODE(info.st_mode) == 0o700,
+         'source_generation_proof_root_not_private')
+    with os.fdopen(os.open(root/'scientific-executor.lock', os.O_RDWR|os.O_NOFOLLOW), 'rb') as lock:
+        info = os.fstat(lock.fileno())
+        need(stat.S_ISREG(info.st_mode) and info.st_uid == os.geteuid() and info.st_nlink == 1
+             and stat.S_IMODE(info.st_mode) == 0o600, 'source_generation_executor_lock_unsafe')
+        fcntl.flock(lock, fcntl.LOCK_EX|fcntl.LOCK_NB)
+        need(not any(os.path.lexists(path) for path in (_source_generation_path(profile), *_closed_capacity_paths(profile))),
+             'source_generation_or_capacity_issue_slot_spent')
+        manager = h._manager(profile['unit']['name'])
+        need(manager.get('Id') == profile['unit']['name'] and manager.get('MainPID') == '0'
+             and manager.get('ActiveState') in ('inactive', 'failed'), 'source_generation_issue_requires_no_Main')
+        record = _source_generation_review(spec_ref, profile_ref, profile, config)
+        try:
+            now = time.time(); value = dict(schema=SOURCE_GENERATION_SCHEMA,
+                authorization='one_technical_source_generation_for_same_closed200_continuation',
+                spec_ref=spec_ref, profile_ref=profile_ref, recorded_at=now,
+                expires_at=now+min(300, profile['max_age_seconds']), manager_before=manager,
+                spent_cycle_count=200, next_cycle_number=201, generation_number=2, max_generations=2,
+                max_cycles=10000, remaining_cycles=9800, max_proof_bytes=1024**3,
+                dispatch_authority=False, execution_budget_created=False, hold_removal_authorized=False)
+            need(h._manager(profile['unit']['name']) == manager, 'source_generation_manager_changed_during_issue')
+            reference = put(Path(output), value); Path(output).chmod(0o400)
+            return reference
+        finally:
+            h.close_historical_source_witness(record['witness'])
+
+
+def _closed_capacity_schema_keys(value, *, history=False):
+    schema = value.get('schema') if type(value) is dict else None
+    if schema == CLOSED_CAPACITY_V2_SCHEMA:
+        keys = CLOSED_CAPACITY_V2_KEYS
+    else:
+        keys = CLOSED_CAPACITY_KEYS
+    return keys-{'recorded_at', 'expires_at', 'manager_before', 'capacity_preflight_ref', 'current_native_ref'} if history else keys
+
+
+def _closed_capacity_source_context(value, profile, config=None, *, live_clock=True):
+    if value.get('schema') != CLOSED_CAPACITY_V2_SCHEMA: return None
+    h = health_owner(); profile_ref = value['profile_ref']
+    if config is None:
+        argv = profile['unit']['argv']
+        config = h._document(next(pin for pin in profile['source_descriptors'] if pin['path'] == argv[argv.index('--config')+1]))
+    context = _source_generation_context(value['source_generation_authorization_ref'], profile_ref, profile,
+                                         config, live_clock=live_clock)
+    record = _source_generation_record(context)
+    try:
+        need(_source_generation_same(value['prior_profile_ref'], record['spec']['prior_profile_ref'])
+             and _source_generation_same(value['prior_profile_snapshot_ref'], record['spec']['prior_profile_snapshot_ref'])
+             and _source_generation_same(value['source_commitment_ref'], record['spec']['source_commitment_ref'])
+             and (not live_clock or (_source_generation_same(value['recorded_at'], record['approval']['recorded_at'])
+                  and _source_generation_same(value['expires_at'], record['approval']['expires_at']))),
+             'closed_capacity_source_generation_approval_other_history_or_clock')
+        return context
+    except BaseException:
+        _close_source_generation_context(context); raise
+
+
+def _closed_capacity_history(value, profile_ref, profile, config, *, startup=True, source_generation=None):
     """Validate pinned historical DATA, granting no issuance or current health.
 
     Explicit consumer mode permits distinct later physical positions and a new
@@ -3656,8 +4598,10 @@ def _closed_capacity_history(value, profile_ref, profile, config, *, startup=Tru
     additionally requires no later positions, absent new receipt and the same
     original200 DB preimage. Only the full startup validator issues/claims.
     """
-    h = health_owner(); h._keys(value, CLOSED_CAPACITY_HISTORY_KEYS, 'closed_capacity_history_shape')
-    need(value['schema'] == CLOSED_CAPACITY_SCHEMA
+    h = health_owner(); h._keys(value, _closed_capacity_schema_keys(value, history=True), 'closed_capacity_history_shape')
+    source_record = None if source_generation is None else _source_generation_record(source_generation)
+    need((value['schema'] == CLOSED_CAPACITY_SCHEMA and source_record is None
+          or value['schema'] == CLOSED_CAPACITY_V2_SCHEMA and source_record is not None)
          and value['authorization'] == 'continue_distinct_physical_cycle_after_closed_preentry_capacity_refusal'
          and value['profile_ref'] == profile_ref and h._profile(profile_ref) == profile,
          'closed_capacity_grant_authority')
@@ -3676,17 +4620,27 @@ def _closed_capacity_history(value, profile_ref, profile, config, *, startup=Tru
          and (not startup or not os.path.lexists(profile['receipt_path'])),
          'closed_capacity_counter_or_health_epoch_reset')
     for key in ('task_scope', 'max_age_seconds', 'max_cycle_seconds', 'cycle_contract',
-                'health_module', 'driver_source', 'owner_source', 'catalogue'):
+                'driver_source', 'owner_source', 'catalogue'):
         need(prior[key] == profile[key], 'closed_capacity_original_backend_or_scope_changed')
-    need(all(pin in profile['source_descriptors'] for pin in prior['source_descriptors'])
-         and all(prior['unit'][k] == profile['unit'][k] for k in
-             ('name', 'interpreter', 'working_directory', 'environment'))
-         and _closed_capacity_unit_projection(prior) == _closed_capacity_unit_projection(profile),
-         'closed_capacity_source_removed_or_unit_authority_changed')
-    need(oldconfig['execution_templates'] == config['execution_templates'] == []
-         and all(oldconfig[k] == config[k] for k in ('catalogue', 'idle_template_ref', 'poll_seconds', 'max_cycles', 'max_proof_bytes'))
-         and value['max_cycles'] == config['max_cycles'] > 200
-         and value['max_proof_bytes'] == config['max_proof_bytes'], 'closed_capacity_dispatch_or_budget_changed')
+    need(source_record is not None or prior['health_module'] == profile['health_module'],
+         'closed_capacity_original_backend_or_scope_changed')
+    if source_record is None:
+        need(all(pin in profile['source_descriptors'] for pin in prior['source_descriptors'])
+             and all(prior['unit'][k] == profile['unit'][k] for k in
+                 ('name', 'interpreter', 'working_directory', 'environment'))
+             and _closed_capacity_unit_projection(prior) == _closed_capacity_unit_projection(profile),
+             'closed_capacity_source_removed_or_unit_authority_changed')
+        need(oldconfig['execution_templates'] == config['execution_templates'] == []
+             and all(oldconfig[k] == config[k] for k in ('catalogue', 'idle_template_ref', 'poll_seconds', 'max_cycles', 'max_proof_bytes'))
+             and value['max_cycles'] == config['max_cycles'] > 200
+             and value['max_proof_bytes'] == config['max_proof_bytes'], 'closed_capacity_dispatch_or_budget_changed')
+    else:
+        need(_source_generation_same(source_record['prior'], prior)
+             and _source_generation_same(source_record['oldconfig'], oldconfig)
+             and value['max_cycles'] == config['max_cycles'] == 10000
+             and value['max_proof_bytes'] == config['max_proof_bytes'] == 1024**3
+             and type(value['generation_number']) is int and type(value['max_generations']) is int,
+             'closed_capacity_source_generation_original_scope_or_budget_changed')
     identity = value['prior_main_identity']; h._stored_identity(identity, value['prior_profile_ref'], prior)
     boot = Path('/proc/sys/kernel/random/boot_id').read_text().strip()
     need(h._definitely_dead_identity(identity, dict(boot_id=boot)), 'closed_capacity_prior_Main_live_or_unknown')
@@ -3745,20 +4699,37 @@ def _closed_capacity_history(value, profile_ref, profile, config, *, startup=Tru
              and proof['sequence'] == intent['sequence'] == number-162
              and proof['request_ref'] == intent['request_ref'], 'closed_capacity_historical_positive_join')
         native = h._document(proof['native_diagnostic_ref'])
-        h._cycle(proof_ref, prior, identity, h._native(native, prior, now=proof['finished_at']),
-                 now=proof['finished_at'], monotonic_ns=proof['finished_monotonic_ns'])
+        if source_record is None:
+            h._cycle(proof_ref, prior, identity, h._native(native, prior, now=proof['finished_at']),
+                     now=proof['finished_at'], monotonic_ns=proof['finished_monotonic_ns'])
+        else:
+            archived = h.verify_historical_cycle(value['prior_profile_ref'], proof_ref, identity,
+                                                  source_witness=source_record['witness'])
+            need(archived['historical_evidence_verified'] is True
+                 and archived['verified'] is archived['current_executor_verified'] is False,
+                 'closed_capacity_historical_cycle_not_data_only')
     receipt = h._document(value['prior_health_receipt_ref'])
     need(value['prior_health_receipt_ref']['path'] == prior['receipt_path']
          and receipt['sequence'] == 37 and receipt['cycle_proof_ref']['path'] == str(cycles[199][0]/'cycle-proof.json'),
          'closed_capacity_old37_canonical_health_changed')
     proof = h._document(receipt['cycle_proof_ref']); native = h._document(proof['native_diagnostic_ref'])
-    h._receipt(value['prior_health_receipt_ref'], value['prior_profile_ref'], prior,
-        h._native(native, prior, now=receipt['observed_at']), identity,
-        now=receipt['observed_at'], monotonic_ns=receipt['observed_monotonic_ns'])
-    cycle, request, terminal, recognition, ledger_ref, ledger = _closed_capacity_negative(value, prior, startup=startup)
+    if source_record is None:
+        h._receipt(value['prior_health_receipt_ref'], value['prior_profile_ref'], prior,
+            h._native(native, prior, now=receipt['observed_at']), identity,
+            now=receipt['observed_at'], monotonic_ns=receipt['observed_monotonic_ns'])
+    else:
+        archived = h.verify_historical_receipt(value['prior_profile_ref'], value['prior_health_receipt_ref'],
+                                               identity, source_witness=source_record['witness'])
+        need(archived['historical_evidence_verified'] is True
+             and archived['verified'] is archived['current_executor_verified'] is False,
+             'closed_capacity_historical_receipt_not_data_only')
+    cycle, request, terminal, recognition, ledger_ref, ledger = _closed_capacity_negative(value, prior, startup=startup, source_generation=source_generation)
     need(str(cycle) == str(cycles[200][0]), 'closed_capacity_failed_cycle_outside_census')
     _closed_capacity_cleanup(value, terminal)
-    catalogue_race_source_inventory(value['source_commitment_ref'], profile, catalogue_parser_reference(profile))
+    if source_record is None:
+        catalogue_race_source_inventory(value['source_commitment_ref'], profile, catalogue_parser_reference(profile))
+    else:
+        _source_generation_source_inventory(value['source_commitment_ref'], profile)
     check_proof_budget(root, config['max_proof_bytes'], reserve_bytes=REUSE_CYCLE_RESERVE_BYTES,
                        reserve_files=REUSE_CYCLE_RESERVE_FILES)
     # Preserve historical producer artifacts at their original private 0600
@@ -3777,31 +4748,40 @@ def _closed_capacity_history(value, profile_ref, profile, config, *, startup=Tru
 
 
 def _validate_closed_capacity_continuation(value, profile_ref, profile, config):
-    h = health_owner(); h._keys(value, CLOSED_CAPACITY_KEYS, 'closed_capacity_grant_shape')
+    h = health_owner(); h._keys(value, _closed_capacity_schema_keys(value), 'closed_capacity_grant_shape')
     _closed_capacity_clock(value, profile)
     _, ack_path = _closed_capacity_paths(profile)
     need(not os.path.lexists(ack_path), 'closed_capacity_authorization_already_claimed')
     manager = value['manager_before']
     need(manager.get('Id') == profile['unit']['name'] and manager.get('MainPID') == '0'
          and manager.get('ActiveState') in ('failed', 'inactive'), 'closed_capacity_not_issued_without_Main')
-    history = _closed_capacity_history({key:value[key] for key in CLOSED_CAPACITY_HISTORY_KEYS},
-                                      profile_ref, profile, config, startup=True)
-    _closed_capacity_preflight(value, profile, history['request'], history['ledger_ref'], history['ledger'])
-    fresh = h._document(value['current_native_ref']); h._native(fresh, profile)
-    need(select_template(config, profile, fresh)[1] == 'genuine_scoped_idle', 'closed_capacity_current_scope_not_quiet')
-    for field in ('capacity_preflight_ref', 'current_native_ref'):
-        need(not Path(value[field]['path']).lstat().st_mode & 0o222, 'closed_capacity_fresh_control_not_frozen')
-    return history['spent_cycle_count'], history['retained_census_refs']
+    context = _closed_capacity_source_context(value, profile, config)
+    try:
+        history = _closed_capacity_history({key:value[key] for key in _closed_capacity_schema_keys(value, history=True)},
+                                          profile_ref, profile, config, startup=True, source_generation=context)
+        _closed_capacity_preflight(value, profile, history['request'], history['ledger_ref'], history['ledger'],
+                                   source_generation=context)
+        fresh = h._document(value['current_native_ref']); h._native(fresh, profile)
+        need(select_template(config, profile, fresh)[1] == 'genuine_scoped_idle', 'closed_capacity_current_scope_not_quiet')
+        for field in ('capacity_preflight_ref', 'current_native_ref'):
+            need(not Path(value[field]['path']).lstat().st_mode & 0o222, 'closed_capacity_fresh_control_not_frozen')
+        return history['spent_cycle_count'], history['retained_census_refs']
+    finally:
+        if context is not None: _close_source_generation_context(context)
 
 
 def _closed_capacity_final_freshness(value, profile):
     h = health_owner(); _closed_capacity_clock(value, profile)
-    request = h._document(value['failed_request_ref'])
-    terminal = original_terminal(h._bound(value['failed_stdout_ref']), value['failed_request_ref'])
-    ledger_ref, ledger = _closed_capacity_ledger(request, terminal)
-    _closed_capacity_preflight(value, profile, request, ledger_ref, ledger)
-    h._native(h._document(value['current_native_ref']), profile)
-    _closed_capacity_clock(value, profile)
+    context = _closed_capacity_source_context(value, profile)
+    try:
+        request = h._document(value['failed_request_ref'])
+        terminal = original_terminal(h._bound(value['failed_stdout_ref']), value['failed_request_ref'])
+        ledger_ref, ledger = _closed_capacity_ledger(request, terminal, source_generation=context)
+        _closed_capacity_preflight(value, profile, request, ledger_ref, ledger, source_generation=context)
+        h._native(h._document(value['current_native_ref']), profile)
+        _closed_capacity_clock(value, profile)
+    finally:
+        if context is not None: _close_source_generation_context(context)
 
 
 def authorize_closed_capacity_continuation(spec_ref, output):
@@ -3812,7 +4792,7 @@ def authorize_closed_capacity_continuation(spec_ref, output):
     no expiry renewal, replacement, same-path retry or automatic reissue exists.
     """
     h = health_owner(); spec = h._document(spec_ref)
-    h._keys(spec, CLOSED_CAPACITY_KEYS-{'recorded_at', 'expires_at', 'manager_before'}, 'closed_capacity_spec_shape')
+    h._keys(spec, _closed_capacity_schema_keys(spec)-{'recorded_at', 'expires_at', 'manager_before'}, 'closed_capacity_spec_shape')
     profile = h._profile(spec['profile_ref']); argv = profile['unit']['argv']
     need(argv.count(CLOSED_CAPACITY_FLAG) == 1, 'closed_capacity_explicit_unit_mode_required')
     grant_path, ack_path = _closed_capacity_paths(profile)
@@ -3832,8 +4812,16 @@ def authorize_closed_capacity_continuation(spec_ref, output):
         manager = h._manager(profile['unit']['name'])
         need(manager.get('MainPID') == '0' and manager.get('ActiveState') in ('failed', 'inactive'),
              'closed_capacity_issue_requires_no_Main')
-        now = time.time(); value = dict(spec, recorded_at=now,
-            expires_at=now+min(300, profile['max_age_seconds']), manager_before=manager)
+        now = time.time()
+        if spec['schema'] == CLOSED_CAPACITY_V2_SCHEMA:
+            approval = h._decode(_source_generation_frozen(spec['source_generation_authorization_ref']))
+            need(_source_generation_same(manager, approval['manager_before']),
+                 'closed_capacity_manager_changed_since_source_approval')
+            # This is the source approval's ORIGINAL finite window, not a newly
+            # issued execution budget or renewed expiry for any previous grant.
+            value = dict(spec, recorded_at=approval['recorded_at'], expires_at=approval['expires_at'], manager_before=manager)
+        else:
+            value = dict(spec, recorded_at=now, expires_at=now+min(300, profile['max_age_seconds']), manager_before=manager)
         _validate_closed_capacity_continuation(value, profile_ref, profile, config)
         _closed_capacity_final_freshness(value, profile)
         need(h._manager(profile['unit']['name']) == manager, 'closed_capacity_manager_changed_during_issue')
@@ -3868,7 +4856,8 @@ def reconcile_closed_capacity_continuation(reference, profile_ref, profile, conf
     spent, retained = _validate_closed_capacity_continuation(value, profile_ref, profile, config)
     _closed_capacity_final_freshness(value, profile)
     need(require_main_process(profile_ref, profile) == opening_identity, 'closed_capacity_Main_changed_before_claim')
-    ack = dict(schema=CLOSED_CAPACITY_ACK_SCHEMA, state='claimed_before_first_original_owner',
+    ack = dict(schema=(CLOSED_CAPACITY_V2_ACK_SCHEMA if value.get('schema') == CLOSED_CAPACITY_V2_SCHEMA
+                       else CLOSED_CAPACITY_ACK_SCHEMA), state='claimed_before_first_original_owner',
         continuation_ref=reference, consuming_main_identity=opening_identity,
         profile_ref=profile_ref, new_receipt_path=profile['receipt_path'],
         prior_main_identity=value['prior_main_identity'], prior_health_receipt_ref=value['prior_health_receipt_ref'],
@@ -3880,11 +4869,15 @@ def reconcile_closed_capacity_continuation(reference, profile_ref, profile, conf
         max_consecutive_closed_negatives=MAX_CONSECUTIVE_CLOSED_NEGATIVES,
         issued_at=value['recorded_at'], expires_at=value['expires_at'], claimed_at=time.time(),
         health_credit_for_failed_cycle=False, old_health_republished=False, original_request_replayed=False)
+    if value.get('schema') == CLOSED_CAPACITY_V2_SCHEMA:
+        ack['source_generation_authorization_ref'] = value['source_generation_authorization_ref']
+        ack['remaining_cycle_budget_before_first_owner'] = 9800
+        ack['execution_budget_created'] = False
     put(ack_path, ack); ack_path.chmod(0o400)
     return spent, retained
 
 
-def closed_capacity_deferral(profile, request_ref, request, root, kind, process, cycle_fields, returncode):
+def closed_capacity_deferral(profile, request_ref, request, root, kind, process, cycle_fields, returncode, *, continuation_ref=None):
     """Future transient deferral only after this live original Popen was reaped."""
     h = health_owner()
     need(kind == 'genuine_scoped_idle' and type(returncode) is int and returncode != 0
@@ -3892,29 +4885,212 @@ def closed_capacity_deferral(profile, request_ref, request, root, kind, process,
          'closed_capacity_deferral_requires_real_reaped_idle_owner')
     intent = h._document(h.descriptor(root/'intent.json'))
     terminal = original_terminal(h._raw(root/'owner.stdout'), request_ref)
-    recognition = _closed_capacity_terminal_metadata(terminal, request_ref, request, profile, intent, root)
-    captured = cycle_fields['owner_observation']; boot = Path('/proc/sys/kernel/random/boot_id').read_text().strip()
-    need(captured['pid'] == process.pid == terminal['owner_pid']
-         and str(captured['birth_ticks']) == terminal['owner_birth'] and captured['boot_id'] == terminal['owner_boot_id'] == boot
-         and h._definitely_dead_identity(captured, dict(boot_id=boot))
-         and captured['argv'] == [profile['unit']['argv'][0], '-B', profile['owner_source']['path'],
-             '--request', request_ref['path'], '--expected-request-sha256', request_ref['sha256']]
-         and not any(os.path.lexists(root/name) for name in ('terminal.json', 'cycle-proof.json', 'closed.json', 'native-diagnostic.json')),
-         'closed_capacity_deferral_owner_or_positive_evidence_unknown')
-    need(h.database_descriptor(request['database_preimage']['path']) == request['database_preimage'],
-         'closed_capacity_deferral_database_changed')
-    _closed_capacity_ledger(request, terminal)
-    negative_ref = put(root/'capacity-terminal-negative.json', terminal)
-    return put(root/'capacity-deferred.json', dict(schema='agent-supervisor/scientific-closed-capacity-deferred@1',
-        request_ref=request_ref, terminal_ref=negative_ref, recognition=recognition,
-        original_wait_returncode=returncode, captured_owner=captured, process=cycle_fields['process'],
-        attempted_health_sequence=cycle_fields['sequence'], recorded_at=time.time(),
-        health_sequence_advanced=False, health_or_task_completion_authority=False,
-        automatic_retry_of_original_request=False))
+    context = None
+    if continuation_ref is not None:
+        grant = h._document(continuation_ref)
+        if grant.get('schema') == CLOSED_CAPACITY_V2_SCHEMA:
+            grant_path, ack_path = _closed_capacity_paths(profile)
+            claim = h._document(h.descriptor(ack_path))
+            need(continuation_ref['path'] == str(grant_path)
+                 and claim['schema'] == CLOSED_CAPACITY_V2_ACK_SCHEMA
+                 and _source_generation_same(claim['continuation_ref'], continuation_ref)
+                 and _source_generation_same(claim['consuming_main_identity'], require_main_process(grant['profile_ref'], profile))
+                 and type(intent['cycle_number']) is int and intent['cycle_number'] >= 201
+                 and _source_generation_same(claim['source_generation_authorization_ref'],
+                                             grant['source_generation_authorization_ref']), 'closed_capacity_future_source_policy_not_claimed_by_actual_Main')
+            context = _closed_capacity_source_context(grant, profile, live_clock=False)
+    try:
+        recognition = _closed_capacity_terminal_metadata(terminal, request_ref, request, profile, intent, root,
+                                                         source_generation=context)
+    except BaseException:
+        if context is not None: _close_source_generation_context(context)
+        raise
+    try:
+        captured = cycle_fields['owner_observation']; boot = Path('/proc/sys/kernel/random/boot_id').read_text().strip()
+        need(captured['pid'] == process.pid == terminal['owner_pid']
+             and str(captured['birth_ticks']) == terminal['owner_birth'] and captured['boot_id'] == terminal['owner_boot_id'] == boot
+             and h._definitely_dead_identity(captured, dict(boot_id=boot))
+             and captured['argv'] == [profile['unit']['argv'][0], '-B', profile['owner_source']['path'],
+                 '--request', request_ref['path'], '--expected-request-sha256', request_ref['sha256']]
+             and not any(os.path.lexists(root/name) for name in ('terminal.json', 'cycle-proof.json', 'closed.json', 'native-diagnostic.json')),
+             'closed_capacity_deferral_owner_or_positive_evidence_unknown')
+        need(h.database_descriptor(request['database_preimage']['path']) == request['database_preimage'],
+             'closed_capacity_deferral_database_changed')
+        _closed_capacity_ledger(request, terminal, source_generation=context)
+        negative_ref = put(root/'capacity-terminal-negative.json', terminal)
+        return put(root/'capacity-deferred.json', dict(schema='agent-supervisor/scientific-closed-capacity-deferred@1',
+            request_ref=request_ref, terminal_ref=negative_ref, recognition=recognition,
+            original_wait_returncode=returncode, captured_owner=captured, process=cycle_fields['process'],
+            attempted_health_sequence=cycle_fields['sequence'], recorded_at=time.time(),
+            health_sequence_advanced=False, health_or_task_completion_authority=False,
+            automatic_retry_of_original_request=False))
+    finally:
+        if context is not None: _close_source_generation_context(context)
 
+
+def prepare_idle_source_replacement(spec_ref):
+    """Compare five current R sources; issue no handover or runtime authority.
+
+    Historical profile bytes are DATA: their former canonical sources need not
+    still be current. Only the proposed profile passes the actual current-source
+    reader. Config/template/history joins and original runtime qualification
+    remain unresolved; this function never consumes a hold or authorization.
+    """
+    h = health_owner()
+    value = h._document(spec_ref)
+    h._keys(value, {'schema', 'prior_profile_ref', 'prior_profile_snapshot_ref',
+                   'profile_ref', 'replacements'}, 'idle_source_preparation_spec_shape')
+    need(value['schema'] == 'agent-supervisor/scientific-idle-source-preparation@1',
+         'idle_source_preparation_schema')
+    frozen = {}
+    for reference in (spec_ref, value['prior_profile_snapshot_ref'], value['profile_ref']):
+        h._bound(reference)
+        info = Path(reference['path']).lstat()
+        need(stat.S_ISREG(info.st_mode) and info.st_nlink == 1 and
+             info.st_uid == os.geteuid() and not info.st_mode & 0o222,
+             'idle_source_preparation_control_not_frozen')
+        frozen[reference['path']] = tuple(getattr(info, key) for key in
+            ('st_dev', 'st_ino', 'st_mode', 'st_uid', 'st_gid', 'st_nlink',
+             'st_size', 'st_mtime_ns', 'st_ctime_ns'))
+    prior_raw = h._bound(value['prior_profile_snapshot_ref'])
+    need(value['prior_profile_snapshot_ref']['path'] != value['prior_profile_ref']['path']
+         and _same_payload(value['prior_profile_snapshot_ref'], value['prior_profile_ref'])
+         and h._bound(value['prior_profile_ref']) == prior_raw,
+         'idle_source_preparation_original_snapshot_join')
+    prior = h._decode(prior_raw)
+    profile = h._profile(value['profile_ref'])
+    h._keys(prior, set(profile), 'idle_source_preparation_prior_profile_shape')
+    canonical = lambda item: (json.dumps(item, sort_keys=True, separators=(',', ':'),
+                                         allow_nan=False) + '\n').encode()
+    need(all(canonical(prior[key]) == canonical(profile[key])
+             for key in profile if key != 'source_descriptors'),
+         'idle_source_preparation_non_source_field_changed')
+    before = prior['source_descriptors']; after = profile['source_descriptors']
+    need(type(before) is list and len(before) == len(after),
+         'idle_source_preparation_source_population_changed')
+    source_root = ORIGINAL_NAMED_ROOTS[0].parents[1]
+    expected = {str(source_root / relative) for relative in (
+        'ipfs_datasets_py/logic/backends/process.py',
+        'ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_daemon_resources.py',
+        'ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_resource_recovery.py',
+        'ipfs_datasets_py/optimizers/logic_theorem_optimizer/parented_phase_resources.py',
+        'scripts/ops/legal_ir/run_owned_validation.py')}
+    rows = value['replacements']
+    need(type(rows) is list and len(rows) == 5, 'idle_source_preparation_exact_five_required')
+    slots = []; paths = set()
+    inverse = dict(profile); inverse['source_descriptors'] = list(after)
+    for row in rows:
+        h._keys(row, {'slot', 'before_ref', 'after_ref'}, 'idle_source_preparation_row_shape')
+        h._keys(row['before_ref'], {'path', 'bytes', 'sha256'},
+                'idle_source_preparation_before_descriptor_shape')
+        previous = row['before_ref']
+        need(type(previous['path']) is str and type(previous['bytes']) is int
+             and 0 < previous['bytes'] <= h.MAX_SOURCE
+             and type(previous['sha256']) is str and len(previous['sha256']) == 64
+             and set(previous['sha256']) <= set('0123456789abcdef'),
+             'idle_source_preparation_before_descriptor_bounds')
+        slot = row['slot']
+        need(type(slot) is int and 0 <= slot < len(before) and slot not in slots,
+             'idle_source_preparation_slot')
+        need(canonical(row['before_ref']) == canonical(before[slot]) and
+             canonical(row['after_ref']) == canonical(after[slot]),
+             'idle_source_preparation_source_row_join')
+        path = row['before_ref']['path']
+        need(path == row['after_ref']['path'] and path in expected and path not in paths
+             and row['before_ref']['sha256'] != row['after_ref']['sha256'],
+             'idle_source_preparation_exact_canonical_paths')
+        slots.append(slot); paths.add(path); inverse['source_descriptors'][slot] = before[slot]
+    need(slots == sorted(slots) and paths == expected and
+         all(canonical(left) == canonical(right) for index, (left, right) in
+             enumerate(zip(before, after)) if index not in slots),
+         'idle_source_preparation_unlisted_source_or_order_changed')
+    need(canonical(inverse) == prior_raw, 'idle_source_preparation_raw_inverse_changed')
+    need(h._document(spec_ref) == value and
+         h._bound(value['prior_profile_snapshot_ref']) == prior_raw and
+         h._bound(value['prior_profile_ref']) == prior_raw and
+         h._profile(value['profile_ref']) == profile,
+         'idle_source_preparation_changed_during_read')
+    for path, stamp in frozen.items():
+        info = Path(path).lstat()
+        need(tuple(getattr(info, key) for key in
+             ('st_dev', 'st_ino', 'st_mode', 'st_uid', 'st_gid', 'st_nlink',
+              'st_size', 'st_mtime_ns', 'st_ctime_ns')) == stamp,
+             'idle_source_preparation_control_changed')
+    return dict(schema='agent-supervisor/scientific-idle-source-comparison@1',
+        spec_ref=dict(spec_ref), prior_profile_ref=dict(value['prior_profile_ref']),
+        prior_profile_snapshot_ref=dict(value['prior_profile_snapshot_ref']),
+        profile_ref=dict(value['profile_ref']), replacements=rows,
+        source_count=len(after), changed_source_count=5, raw_inverse_verified=True,
+        current_source_profile_validated=True, coherent_handover_validated=False,
+        config_template_history_unresolved=True, runtime_qualified=False,
+        activation_ready=False, dispatch_ready=False, hold_removal_authorized=False,
+        authority_granted=False)
+
+
+def _prepare_idle_source_main(argv=None):
+    """Print a bounded comparison; do not enter a service or issue authority."""
+    parser = argparse.ArgumentParser(description='Prepare an idle source comparison only.')
+    parser.add_argument('operation', choices=['prepare-idle-source-replacement'])
+    parser.add_argument('--spec', required=True)
+    parser.add_argument('--spec-sha256', required=True)
+    args = parser.parse_args(argv)
+    try:
+        need(sys.dont_write_bytecode and __debug__, 'preparation_requires_B_and_assertions')
+        os.environ['IPFS_ACCEL_SKIP_CORE'] = '1'
+        if __package__ in (None, ''):
+            producer_root = str(Path(__file__).resolve().parents[3])
+            if producer_root in os.environ.get('PYTHONPATH', '').split(os.pathsep):
+                sys.path.insert(0, producer_root)
+        h = health_owner()
+        reference = h.descriptor(args.spec)
+        need(reference['sha256'] == args.spec_sha256, 'idle_source_preparation_cli_digest')
+        result = prepare_idle_source_replacement(reference)
+        need(type(result) is dict and all(result.get(key) is False for key in (
+            'coherent_handover_validated', 'runtime_qualified', 'activation_ready',
+            'dispatch_ready', 'hold_removal_authorized', 'authority_granted')),
+            'idle_source_preparation_cli_authority')
+        raw = json.dumps(result, sort_keys=True, separators=(',', ':'), allow_nan=False).encode()
+        need(len(raw) <= h.MAX_JSON, 'idle_source_preparation_cli_output_bound')
+        print(raw.decode())
+        return 0
+    except Exception as exc:
+        print(json.dumps({'schema': 'agent-supervisor/scientific-executor-held@1',
+            'reason': str(exc)[:4096], 'automatic_retry_admitted': False}), file=sys.stderr)
+        return HOLD_EXIT
+
+
+
+def _source_generation_authorize_main(argv=None):
+    parser = argparse.ArgumentParser(description='Issue explicit one-shot source-only approval, without a service action.')
+    parser.add_argument('operation', choices=['authorize-closed-capacity-source-generation'])
+    parser.add_argument('--spec', required=True); parser.add_argument('--spec-sha256', required=True)
+    parser.add_argument('--output', required=True)
+    args = parser.parse_args(argv)
+    try:
+        need(sys.dont_write_bytecode and __debug__, 'source_generation_authorizer_requires_B_and_assertions')
+        os.environ['IPFS_ACCEL_SKIP_CORE'] = '1'
+        if __package__ in (None, ''):
+            producer_root = str(Path(__file__).resolve().parents[3])
+            if producer_root in os.environ.get('PYTHONPATH', '').split(os.pathsep): sys.path.insert(0, producer_root)
+        h = health_owner(); reference = h.descriptor(args.spec)
+        need(reference['sha256'] == args.spec_sha256, 'source_generation_authorizer_cli_digest')
+        result = authorize_closed_capacity_source_generation(reference, args.output)
+        print(json.dumps(dict(schema='agent-supervisor/scientific-source-generation-issued@1',
+            source_generation_authorization_ref=result, dispatch_authority=False,
+            execution_budget_created=False, hold_removal_authorized=False), sort_keys=True))
+        return 0
+    except Exception as exc:
+        print(json.dumps(dict(schema='agent-supervisor/scientific-executor-held@1',
+            reason=str(exc)[:4096], automatic_retry_admitted=False)), file=sys.stderr)
+        return HOLD_EXIT
 
 
 def main(argv=None):
+    selected = sys.argv[1:] if argv is None else argv
+    if selected and selected[0] == 'authorize-closed-capacity-source-generation':
+        return _source_generation_authorize_main(selected)
+    if (selected := sys.argv[1:] if argv is None else argv) and selected[0] == 'prepare-idle-source-replacement':
+        return _prepare_idle_source_main(selected)
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('operation', choices=['serve'])
     parser.add_argument('--config', required=True)

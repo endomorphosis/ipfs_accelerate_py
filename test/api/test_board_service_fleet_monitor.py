@@ -1432,3 +1432,283 @@ def test_task_source_failure_report_bounds_reason_without_exception_payload(conf
     assert result["status"] == "task_source_unavailable"
     assert result["reason"] == "Native task source is unavailable: " + reason[:128]
     assert result["healthy"] is False and result["restart_eligible"] is False
+
+
+_DEPENDENCY_SERVICE_V1 = "ipfs-legal-ir-retained-capacity-recovery.service"
+_DEPENDENCY_TIMER_V1 = "ipfs-legal-ir-retained-capacity-recovery.timer"
+
+
+def _dependency_binding_v1():
+    return {"service": _DEPENDENCY_SERVICE_V1, "timer": _DEPENDENCY_TIMER_V1,
+            "max_runtime_seconds": 300, "max_idle_seconds": 180}
+
+
+def _dependency_states_v1():
+    return {
+        _DEPENDENCY_SERVICE_V1: {"Id": _DEPENDENCY_SERVICE_V1, "LoadState": "loaded",
+            "Type": "oneshot", "ActiveState": "inactive", "SubState": "dead",
+            "Result": "success", "ExecMainStatus": "0",
+            "ExecMainStartTimestampMonotonic": "900000000",
+            "ExecMainExitTimestampMonotonic": "940000000", "Triggers": ""},
+        _DEPENDENCY_TIMER_V1: {"Id": _DEPENDENCY_TIMER_V1, "LoadState": "loaded",
+            "ActiveState": "active", "SubState": "waiting", "Triggers": _DEPENDENCY_SERVICE_V1}}
+
+
+def _stub_dependency_queries_v1(monkeypatch, states, *, failure=None):
+    calls = []
+    monkeypatch.setattr(fleet.time, "monotonic", lambda: 1000.0)
+
+    def run(argv, **kwargs):
+        assert argv[:3] == ["systemctl", "--user", "show"]
+        assert argv[-1] in states and argv[3] == "--no-pager" and argv[-2] == "--"
+        assert kwargs["text"] is kwargs["capture_output"] is True
+        assert kwargs["check"] is False and 0 < kwargs["timeout"] <= 3
+        calls.append(argv[-1])
+        if failure == "timeout":
+            raise subprocess.TimeoutExpired(argv, kwargs["timeout"])
+        if failure == "os_error":
+            raise OSError("declared unit query unavailable")
+        body = "\n".join(key + "=" + value for key, value in states[argv[-1]].items()) + "\n"
+        if failure == "duplicate": body += "Id=" + argv[-1] + "\n"
+        return subprocess.CompletedProcess(argv, 1 if failure == "nonzero" else 0, body, "")
+
+    monkeypatch.setattr(fleet.lane_monitor.subprocess, "run", run)
+    return calls
+
+
+def test_failed_dependency_oneshot_cannot_hide_as_healthy_idle(config, monkeypatch):
+    # This invokes the existing aggregation path even on the pre-fix source:
+    # old behavior ignores the declared failed dependency and returns healthy.
+    stub_health(config, monkeypatch)
+    config["dependency_services"] = [_dependency_binding_v1()]
+    states = _dependency_states_v1()
+    states[_DEPENDENCY_SERVICE_V1].update(ActiveState="failed", SubState="failed",
+        Result="exit-code", ExecMainStatus="2")
+    calls = _stub_dependency_queries_v1(monkeypatch, states)
+    result = fleet.monitor_fleet(config, apply=True)
+    assert result["healthy"] is False
+    assert {issue["code"] for issue in result["issues"]} == {"dependency_service_unhealthy"}
+    assert result["lane_count"] == result["healthy_lane_count"] == 2
+    assert result["dependency_services"]["action_authority"] is False
+    assert result["dependency_services"]["automatic_source_repin_authorized"] is False
+    assert calls == [_DEPENDENCY_SERVICE_V1, _DEPENDENCY_TIMER_V1]
+    assert all(row["health"]["action"] == "none" for row in result["lanes"])
+
+
+@pytest.mark.parametrize("active,timer,status", [
+    ("inactive", "waiting", "scheduled_idle"),
+    ("activating", "running", "in_progress"),
+    ("active", "waiting", "in_progress")])
+def test_dependency_oneshot_and_timer_normal_lifecycles_are_observations(monkeypatch, active, timer, status):
+    states = _dependency_states_v1()
+    states[_DEPENDENCY_SERVICE_V1].update(ActiveState=active,
+        SubState="dead" if active == "inactive" else "start")
+    states[_DEPENDENCY_TIMER_V1]["SubState"] = timer
+    _stub_dependency_queries_v1(monkeypatch, states)
+    result = fleet.dependency_services_diagnostics([_dependency_binding_v1()], deadline_monotonic=1005.0)
+    assert result["available"] is True and result["issues"] == []
+    assert result["services"][0]["healthy"] is True
+    assert result["services"][0]["status"] == status
+    assert result["services"][0]["action"] == "none"
+    assert result["completion_authority"] is result["action_authority"] is False
+
+
+@pytest.mark.parametrize("case", ["failed", "nonzero_exit", "stopped_timer", "wrong_timer_target",
+    "missing_start", "runtime_exceeded", "future_start", "wrong_service_type", "wrong_unit", "not_loaded"])
+def test_dependency_service_contradictions_never_become_idle(monkeypatch, case):
+    states = _dependency_states_v1()
+    service, timer = states[_DEPENDENCY_SERVICE_V1], states[_DEPENDENCY_TIMER_V1]
+    if case == "failed": service.update(ActiveState="failed", Result="exit-code")
+    elif case == "nonzero_exit": service["ExecMainStatus"] = "2"
+    elif case == "stopped_timer": timer["ActiveState"] = "inactive"
+    elif case == "wrong_timer_target": timer["Triggers"] = "unrelated.service"
+    elif case in {"missing_start", "runtime_exceeded", "future_start"}:
+        service.update(ActiveState="activating", SubState="start")
+        service["ExecMainStartTimestampMonotonic"] = {
+            "missing_start": "", "runtime_exceeded": "699000000", "future_start": "1001000000"}[case]
+    elif case == "wrong_service_type": service["Type"] = "simple"
+    elif case == "wrong_unit": service["Id"] = "other.service"
+    else: service["LoadState"] = "not-found"
+    _stub_dependency_queries_v1(monkeypatch, states)
+    result = fleet.dependency_services_diagnostics([_dependency_binding_v1()], deadline_monotonic=1005.0)
+    assert result["available"] is False
+    assert result["issues"][0]["code"] == "dependency_service_unhealthy"
+    assert result["services"][0]["healthy"] is False
+    assert result["action_authority"] is result["automatic_source_repin_authorized"] is False
+
+
+@pytest.mark.parametrize("case", ["empty", "missing_timer", "boolean_budget", "raised_budget", "duplicate", "extra"])
+def test_dependency_bindings_are_closed_and_finite_before_queries(monkeypatch, case):
+    bindings = [_dependency_binding_v1()]
+    if case == "empty": bindings = []
+    elif case == "missing_timer": bindings[0].pop("timer")
+    elif case == "boolean_budget": bindings[0]["max_runtime_seconds"] = True
+    elif case == "raised_budget": bindings[0]["max_runtime_seconds"] = 301
+    elif case == "duplicate": bindings.append(dict(bindings[0]))
+    else: bindings[0]["repair_command"] = "never executable"
+    calls = _stub_dependency_queries_v1(monkeypatch, _dependency_states_v1())
+    result = fleet.dependency_services_diagnostics(bindings, deadline_monotonic=1005.0)
+    assert result["available"] is False and calls == []
+    assert result["issues"][0]["code"] == "dependency_service_binding_invalid"
+
+
+@pytest.mark.parametrize("failure", ["timeout", "os_error", "duplicate", "nonzero"])
+def test_dependency_query_failures_are_diagnostic_without_control_actions(monkeypatch, failure):
+    calls = _stub_dependency_queries_v1(monkeypatch, _dependency_states_v1(), failure=failure)
+    result = fleet.dependency_services_diagnostics([_dependency_binding_v1()], deadline_monotonic=1005.0)
+    assert result["available"] is False and result["issues"]
+    assert calls == [_DEPENDENCY_SERVICE_V1]
+    assert result["action_authority"] is False
+
+
+def test_unenrolled_fleet_adds_no_unit_queries_or_report_fields(config, monkeypatch):
+    stub_health(config, monkeypatch)
+    def unexpected(*args, **kwargs):
+        raise AssertionError("unenrolled default must add no unit query")
+    monkeypatch.setattr(fleet.lane_monitor.subprocess, "run", unexpected)
+    result = fleet.monitor_fleet(config)
+    assert result["healthy"] is True and "dependency_services" not in result
+    assert result["lane_count"] == 2
+
+
+def test_dependency_observation_uses_original_cycle_deadline_without_query_after_expiry(monkeypatch):
+    calls = _stub_dependency_queries_v1(monkeypatch, _dependency_states_v1())
+    result = fleet.dependency_services_diagnostics([_dependency_binding_v1()], deadline_monotonic=1000.0)
+    assert calls == [] and result["available"] is False
+    assert "deadline exhausted" in result["services"][0]["reason"]
+
+
+@pytest.mark.parametrize("case", ["no_start", "zero_exit", "stale_even_timer_waiting", "future_exit", "reversed", "missing_exit"])
+def test_dependency_idle_requires_fresh_ordered_successful_exit(monkeypatch, case):
+    states = _dependency_states_v1()
+    service = states[_DEPENDENCY_SERVICE_V1]
+    if case == "no_start": service["ExecMainStartTimestampMonotonic"] = "0"
+    elif case == "zero_exit": service["ExecMainExitTimestampMonotonic"] = "0"
+    elif case == "stale_even_timer_waiting":
+        service.update(ExecMainStartTimestampMonotonic="700000000", ExecMainExitTimestampMonotonic="719000000")
+    elif case == "future_exit": service["ExecMainExitTimestampMonotonic"] = "1001000000"
+    elif case == "reversed": service["ExecMainStartTimestampMonotonic"] = "950000000"
+    else: service.pop("ExecMainExitTimestampMonotonic")
+    _stub_dependency_queries_v1(monkeypatch, states)
+    result = fleet.dependency_services_diagnostics([_dependency_binding_v1()], deadline_monotonic=1005.0)
+    assert states[_DEPENDENCY_TIMER_V1]["ActiveState"] == "active"
+    assert states[_DEPENDENCY_TIMER_V1]["SubState"] == "waiting"
+    assert result["available"] is False and result["issues"][0]["code"] == "dependency_service_unhealthy"
+    assert result["services"][0]["healthy"] is False
+    assert result["action_authority"] is False
+
+
+@pytest.mark.parametrize("idle", [True, 0, 3601])
+def test_dependency_idle_freshness_bound_is_closed_before_query(monkeypatch, idle):
+    binding = _dependency_binding_v1();binding["max_idle_seconds"] = idle
+    calls = _stub_dependency_queries_v1(monkeypatch, _dependency_states_v1())
+    result = fleet.dependency_services_diagnostics([binding], deadline_monotonic=1005.0)
+    assert calls == [] and result["available"] is False
+    assert result["issues"][0]["code"] == "dependency_service_binding_invalid"
+
+
+# The existing v2 physical owner retains ordinary evidence after each case.
+# These older cases deliberately leave the observed FIFO/symlink in place while
+# asserting its rejection.  Remove only that exact admitted special entry after
+# the assertions, before the owner's strict tmp_path finalizer runs.
+_EARLY_OWNED_PHYSICAL_CLEANUP = {
+    **{f"test_fifo_paths_reject_without_waiting_for_peer[{kind}]":
+       ("fixture.fifo", "fifo", None, None)
+       for kind in ("json", "events", "append", "lane_lock", "fleet_lock")},
+    **{f"test_fifo_configuration_cli_returns_monitor_error_without_waiting[{name}]":
+       ("config.fifo", "fifo", None, None)
+       for name in ("board_service_monitor.py", "board_service_fleet_monitor.py")},
+    "test_fifo_action_path_with_reader_never_receives_monitor_bytes":
+       ("actions.fifo", "fifo", None, None),
+    **{f"test_symlink_io_paths_leave_target_untouched[{kind}]":
+       ("alias", "symlink", "foreign.json", "file")
+       for kind in ("json", "append", "lane_lock", "fleet_lock")},
+    "test_fifo_diagnostic_still_publishes_sibling_observations[event-1]":
+       ("state-0/lane_0_events.jsonl", "fifo", None, None),
+    "test_fifo_diagnostic_still_publishes_sibling_observations[merge-2]":
+       ("queue/pending/fixture.json", "fifo", None, None),
+    "test_fifo_fleet_observation_log_still_publishes_fresh_health":
+       ("fleet-health.json.actions.jsonl", "fifo", None, None),
+}
+
+
+def _unlink_exact_owned_physical_fixture(root, identity, relative, kind):
+    import stat
+
+    def directory_identity(info):
+        return info.st_dev, info.st_ino, info.st_uid, info.st_mode
+
+    def entry_identity(info):
+        return info.st_dev, info.st_ino, info.st_uid, info.st_mode, info.st_nlink
+
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
+    descriptors = []
+    try:
+        descriptor = os.open(root, flags)
+        descriptors.append(descriptor)
+        assert directory_identity(os.fstat(descriptor)) == identity
+        assert directory_identity(os.stat(root, follow_symlinks=False)) == identity
+        parts = relative.split("/")
+        assert all(part not in ("", ".", "..") for part in parts)
+        for part in parts[:-1]:
+            try:
+                named = os.stat(part, dir_fd=descriptor, follow_symlinks=False)
+            except FileNotFoundError:
+                return
+            assert stat.S_ISDIR(named.st_mode) and named.st_uid == os.geteuid()
+            child = os.open(part, flags, dir_fd=descriptor)
+            descriptors.append(child)
+            assert directory_identity(os.fstat(child)) == directory_identity(named)
+            assert directory_identity(os.stat(part, dir_fd=descriptor,
+                                             follow_symlinks=False)) == directory_identity(named)
+            descriptor = child
+        try:
+            observed = os.stat(parts[-1], dir_fd=descriptor, follow_symlinks=False)
+        except FileNotFoundError:
+            return
+        assert observed.st_uid == os.geteuid() and observed.st_nlink == 1
+        assert (stat.S_ISFIFO(observed.st_mode) if kind == "fifo"
+                else kind == "symlink" and stat.S_ISLNK(observed.st_mode))
+        assert entry_identity(os.stat(parts[-1], dir_fd=descriptor,
+                                      follow_symlinks=False)) == entry_identity(observed)
+        assert directory_identity(os.fstat(descriptors[0])) == identity
+        assert directory_identity(os.stat(root, follow_symlinks=False)) == identity
+        os.unlink(parts[-1], dir_fd=descriptor)
+        try:
+            os.stat(parts[-1], dir_fd=descriptor, follow_symlinks=False)
+        except FileNotFoundError:
+            pass
+        else:
+            raise AssertionError("admitted special fixture entry survived cleanup")
+    finally:
+        for descriptor in reversed(descriptors):
+            os.close(descriptor)
+
+
+@pytest.fixture(autouse=True)
+def _cleanup_early_owned_physical_fixtures(request):
+    slot = _EARLY_OWNED_PHYSICAL_CLEANUP.get(request.node.name)
+    profile = getattr(request.config, "_owned_physical_fixture_profile", None)
+    if slot is None or profile is None:
+        yield
+        return
+    _, separator, suffix = request.node.nodeid.partition("::")
+    assert separator and suffix and Path(request.node.path).is_absolute()
+    node = str(request.node.path) + "::" + suffix
+    value = json.loads(profile["raw"])
+    assert value["schema"] == "owned-validation-request/v2"
+    rows = value["physical_fixture_profile"]["cases"]
+    selected = [row for row in rows if row["nodeid"] == node]
+    assert len(selected) == 1 and node in profile["cases"]
+    relative, kind, target, target_kind = slot
+    assert selected[0]["entries"] == [{"path": relative, "kind": kind,
+                                       "target": target, "target_kind": target_kind}]
+    # Resolve the real owner fixture first: its strict directory finalizer is
+    # registered before this fixture's post-yield cleanup.
+    root = request.getfixturevalue("tmp_path")
+    case = profile["cases"][node]
+    assert root == case["path"]
+    try:
+        yield
+    finally:
+        _unlink_exact_owned_physical_fixture(root, case["identity"], relative, kind)

@@ -91,6 +91,204 @@ def _json(value: Any) -> str:
     return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
 
 
+_PREREQUISITE_STEPS = {
+    "MISSING_OWNER_POINTER": ("discover_registered_preparer", "verify_preparer_identity"),
+    "MISSING_RUNTIME_WITNESS": ("locate_approved_runtime_witness", "verify_runtime_identity"),
+    "MISSING_ARTIFACT_POINTER": ("resolve_retained_artifact_reference", "verify_artifact_identity"),
+    "INPUT_SERIALIZATION_ERROR": ("reconstruct_from_verified_bytes", "verify_exact_reference_transport"),
+    "LOSSLESS_CACHE_UNAVAILABLE": ("resolve_retained_artifact_reference", "verify_artifact_identity"),
+}
+_EXTERNAL_PREREQUISITES = {
+    "MISSING_EXECUTION_AUTHORITY": "A current execution admission from its existing authority.",
+    "MISSING_REVIEW": "An independent review from its existing review owner.",
+    "OPERATOR_HOLD": "An explicit release from the owner of the hold.",
+    "LOOKUP_BUDGET_EXHAUSTED": "A separately selected scope; preserve the spent budget.",
+    "MISSING_LOOKUP_SCOPE": "An existing bounded discovery scope and registered handler.",
+    "INVALID_PREREQUISITE_DIAGNOSTICS": "A complete bounded typed prerequisite declaration; no partial plan was admitted.",
+}
+_PREREQUISITE_ALIASES = {
+    "MISSING_APPROVED_HISTORICAL_RUNTIME_WITNESS": "MISSING_RUNTIME_WITNESS",
+    "MISSING_APPROVED_RUNTIME_WITNESS": "MISSING_RUNTIME_WITNESS",
+}
+MAX_PREREQUISITES = 16
+_PREREQUISITE_DIAGNOSTIC_FIELDS = {"prerequisite_requirements", "prerequisite_diagnostics_sha256"}
+
+
+def _declared_prerequisites(raw: str) -> list[Any]:
+    def unique(pairs):
+        value = {}
+        for key, item in pairs:
+            if key in value:
+                raise ValueError("duplicate prerequisite field")
+            value[key] = item
+        return value
+
+    def nonfinite(_value):
+        raise ValueError("nonfinite prerequisite field")
+
+    if len(raw.encode("utf-8")) > 32768:
+        raise ValueError("prerequisite declaration exceeds bound")
+    value = json.loads(raw, object_pairs_hook=unique, parse_constant=nonfinite)
+    if not isinstance(value, list):
+        raise ValueError("prerequisite declaration must be a list")
+    if len(value) > 64:
+        raise ValueError("prerequisite diagnostics exceed bound")
+    return value
+
+
+def _prerequisite(value: Any) -> dict[str, str]:
+    if not isinstance(value, dict) or not isinstance(value.get("code"), str):
+        raise ValueError("typed prerequisite code required")
+    if {"command", "argv", "shell", "script", "prompt", "instructions"}.intersection(value):
+        raise ValueError("diagnostics cannot supply a recovery command")
+    code = value["code"].upper()
+    if not re.fullmatch(r"[A-Z][A-Z0-9_]{0,95}", code):
+        raise ValueError("invalid prerequisite code")
+    code = _PREREQUISITE_ALIASES.get(code, code)
+    subject = value.get("subject", code)
+    if (not isinstance(subject, str) or not subject.strip()
+            or len(subject.encode("utf-8")) > 512
+            or any(ord(char) < 32 or ord(char) == 127 for char in subject)):
+        raise ValueError("bounded prerequisite subject required")
+    result = {"code": code, "subject": subject}
+    if "expected_sha256" in value:
+        digest = value["expected_sha256"]
+        if not isinstance(digest, str) or not re.fullmatch(r"[0-9a-f]{64}", digest):
+            raise ValueError("exact prerequisite digest required")
+        result["expected_sha256"] = digest
+    # Clocks, prose, commands and self-asserted approvals are not work or authority.
+    return result
+
+
+def _prerequisite_task_fields(task_id: str, fields: Mapping[str, Any]) -> dict[str, Any]:
+    """Keep declared requirements as bounded data, including rejected-input identity."""
+
+    result = dict(fields)
+    declared = fields.get("prerequisite_requirements")
+    if declared is not None and declared != "":
+        try:
+            normalized = sorted({_json(_prerequisite(item)) for item in _declared_prerequisites(declared)})
+            result["prerequisite_requirements"] = "[" + ",".join(normalized) + "]"
+        except (ValueError, TypeError, AttributeError, RecursionError):
+            result["prerequisite_requirements"] = _json([dict(
+                code="INVALID_PREREQUISITE_DIAGNOSTICS", subject=task_id)])
+            # Identify rejected Python text losslessly even when it has no
+            # valid UTF-8 encoding. This never admits those bytes as an artifact.
+            result["prerequisite_diagnostics_sha256"] = hashlib.sha256(
+                str(declared).encode("utf-8", errors="surrogatepass")).hexdigest()
+    return result
+
+
+def prerequisite_recovery_plan(task_id: str, evidence: Mapping[str, Any]) -> dict[str, Any] | None:
+    """Propose metadata work for typed missing inputs; never admit or run it.
+
+    Existing fenced task admission must bind each proposal to a selected scope,
+    its remaining budget and registered handler. Verification still requires
+    actual independent evidence; neither a proposal nor a child exit satisfies
+    the parent gate. Children deliberately do not depend on the blocked parent.
+    """
+
+    plan: dict[str, Any] = dict(
+        schema="ipfs_accelerate_py/agent-supervisor/prerequisite-recovery-plan@1",
+        parent_task_id=task_id, status="recovery_required", requirements=[], steps=[], recheck_after=[],
+        external_requirements=[], work_complete=False, completion_authority=False,
+        execution_authority=False, admission_granted=False, operator_hold_removal_allowed=False,
+        budget_reset_allowed=False,
+    )
+    has_typed_input = False
+    try:
+        values = []
+        fields = (evidence.get("tasks") or {}).get(task_id) or {}
+        declared = fields.get("prerequisite_requirements")
+        if declared is not None and declared != "":
+            has_typed_input = True
+            values.extend(_declared_prerequisites(declared))
+        artifacts = evidence.get("artifacts") or {}
+        if not isinstance(artifacts, Mapping):
+            raise ValueError("prerequisite artifacts must be a mapping")
+        typed_artifacts = 0
+        for artifact in artifacts.values():
+            if not isinstance(artifact, dict):
+                continue
+            if artifact.get("passed") is True or str(artifact.get("decision", "")).upper() == "GO":
+                continue
+            gaps = artifact.get("gaps", [])
+            typed = "prerequisite" in str(artifact.get("schema", "")).lower()
+            if typed:
+                has_typed_input = True
+                typed_artifacts += 1
+                if typed_artifacts > 256:
+                    raise ValueError("prerequisite diagnostics exceed bound")
+            if not isinstance(gaps, list):
+                if typed:
+                    raise ValueError("typed prerequisite gaps must be a list")
+                continue
+            if len(gaps) > 64:
+                if typed:
+                    raise ValueError("prerequisite diagnostics exceed bound")
+                # Ordinary diagnostics do not opt in through their size. Their
+                # legacy packet/threshold behavior belongs to the original gate.
+                continue
+            matched = False
+            for gap in gaps:
+                if isinstance(gap, dict):
+                    code = gap.get("code")
+                    if not isinstance(code, str):
+                        if typed:
+                            raise ValueError("typed prerequisite code required")
+                        continue
+                    code = _PREREQUISITE_ALIASES.get(code.upper(), code.upper())
+                    if typed or code in _PREREQUISITE_STEPS or code in _EXTERNAL_PREREQUISITES:
+                        has_typed_input = True
+                        matched = True
+                        values.append(gap)
+                elif typed:
+                    raise ValueError("typed prerequisite object required")
+                if len(values) > 64:
+                    raise ValueError("prerequisite diagnostics exceed bound")
+            if matched and not typed:
+                typed_artifacts += 1
+                if typed_artifacts > 256:
+                    raise ValueError("prerequisite diagnostics exceed bound")
+        requirements = {_json(item): item for item in map(_prerequisite, values)}
+        if len(requirements) > MAX_PREREQUISITES:
+            raise ValueError("prerequisite count exceeds bound")
+    except (ValueError, TypeError, AttributeError, RecursionError):
+        if not has_typed_input:
+            return None
+        plan.update(status="external_dependency", external_requirements=[dict(
+            code="INVALID_PREREQUISITE_DIAGNOSTICS", subject=task_id,
+            required_input="A complete bounded typed prerequisite declaration; no partial plan was admitted.")])
+        return plan
+    if not requirements:
+        return None
+    plan["requirements"] = [item for _, item in sorted(requirements.items())]
+    prefix = task_id.partition("-")[0]
+    if not re.fullmatch(r"[A-Za-z][A-Za-z0-9]*", prefix):
+        prefix = "REC"
+    for key, requirement in sorted(requirements.items()):
+        code = requirement["code"]
+        if code not in _PREREQUISITE_STEPS:
+            plan["external_requirements"].append({**requirement, "required_input":
+                _EXTERNAL_PREREQUISITES.get(code, "An existing registered resolver for this typed requirement.")})
+            continue
+        identity = hashlib.sha256(_json({"parent": task_id, **requirement}).encode("utf-8")).hexdigest()
+        previous = []
+        for index, kind in enumerate(_PREREQUISITE_STEPS[code], 1):
+            identifier = f"{prefix}-PR-{identity}-{index}"
+            plan["steps"].append(dict(
+                task_id=identifier, kind=kind, depends_on=previous, requirement=dict(requirement),
+                purpose="control_metadata_analysis" if index == 1 else "metadata_validation",
+                requires_admission=True, scope_policy="inherit_selected_unit_only"))
+            previous = [identifier]
+        plan["recheck_after"].extend(previous)
+    if plan["external_requirements"]:
+        # A partial plan cannot authorize work around a global hold, unknown
+        # policy or spent scope. Other independently selected units may proceed.
+        plan.update(status="external_dependency", steps=[], recheck_after=[])
+    return plan
+
+
 def evidence_file_fingerprint(path: Path) -> str:
     """Fingerprint file meaning without treating regenerated JSON clocks as work."""
     try:
@@ -206,6 +404,11 @@ def gate_evidence(
     dependencies = dependency_closure(task_id, blocks)
     tasks = {key: {field: str((blocks.get(key) or {}).get(field) or "")
                    for field in _FIELDS} for key in [task_id, *dependencies]}
+    # Opt-in only: legacy task fingerprints and refusal ledgers stay unchanged.
+    for key, fields in list(tasks.items()):
+        declared = (blocks.get(key) or {}).get("prerequisite_requirements")
+        if declared is not None and declared != "":
+            tasks[key] = _prerequisite_task_fields(key, {**fields, "prerequisite_requirements": declared})
     artifacts: dict[str, Any] = {}
     scope: set[str] = set()
     excluded = {todo_path.resolve(), log_path.resolve()}
@@ -244,7 +447,12 @@ def gate_source_contract(evidence: Mapping[str, Any], command_contract: str) -> 
 
     sources = {path: value for path, value in (evidence.get("artifacts") or {}).items()
                if _is_source_path(Path(path))}
-    payload = {"tasks": evidence.get("tasks"), "sources": sources, "command_contract": command_contract}
+    tasks = evidence.get("tasks")
+    if isinstance(tasks, Mapping):
+        tasks = {task: {key: value for key, value in fields.items()
+                        if key not in _PREREQUISITE_DIAGNOSTIC_FIELDS}
+                 if isinstance(fields, Mapping) else fields for task, fields in tasks.items()}
+    payload = {"tasks": tasks, "sources": sources, "command_contract": command_contract}
     return hashlib.sha256(_json(payload).encode("utf-8")).hexdigest()
 
 
@@ -350,6 +558,16 @@ class GateRecovery:
             ],
             "work_complete": False, "completion_authority": False,
         }
+        if isinstance(evidence.get("tasks"), Mapping):
+            packet["tasks"] = {key: _prerequisite_task_fields(key, fields)
+                               for key, fields in evidence["tasks"].items()}
+        prerequisite_plan = prerequisite_recovery_plan(task_id, evidence)
+        if prerequisite_plan is not None:
+            packet["prerequisite_recovery"] = prerequisite_plan
+            packet["required_actions"].append(
+                "Route typed prerequisite proposals through existing fenced task admission and registered metadata handlers. "
+                "Continue a selected finite unit from verified lossless cache within its original cumulative budget; "
+                "do not request per-file approval or promote a proposal into runtime authority.")
         _write(path, packet)
         return path
 

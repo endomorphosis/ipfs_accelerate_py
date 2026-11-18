@@ -12,8 +12,10 @@ from __future__ import annotations
 import argparse
 import ast
 from collections import Counter
+import contextlib
 from contextlib import ExitStack
 import fcntl
+import dataclasses
 import hashlib
 import importlib
 import importlib.abc
@@ -29,6 +31,8 @@ import subprocess
 import sys
 import time
 import types
+import threading
+import weakref
 import xml.etree.ElementTree as ET
 
 if __package__ in (None, ""):
@@ -583,6 +587,163 @@ SOURCE_ADMISSION_DEFER_SCHEMA = "agent-supervisor/validation-source-admission-de
 SOURCE_ADMISSION_VERIFIED_SCHEMA = "agent-supervisor/verified-validation-source-admission-defer@1"
 
 
+
+LEDGER_BUSY_RETRY_SCHEMA = 'agent-supervisor/validation-ledger-busy-retry@1'
+LEDGER_BUSY_SCHEMA = 'agent-supervisor/closed-operational-ledger-busy@1'
+LEDGER_BUSY_VERIFIED_SCHEMA = 'agent-supervisor/verified-operational-ledger-busy@1'
+LEDGER_BUSY_CONTEXT_SCHEMA = 'agent-supervisor/validation-ledger-busy-generation@1'
+
+
+def checked_validation_ledger_busy_retry(value):
+    need(type(value) is dict and set(value) == {'schema','max_additional_invocations','cooldown_seconds',
+        'authorization_epoch_sha256','expires_at'} and value['schema'] == LEDGER_BUSY_RETRY_SCHEMA
+        and type(value['max_additional_invocations']) is int and value['max_additional_invocations'] == 2
+        and type(value['cooldown_seconds']) is int and value['cooldown_seconds'] == 60
+        and type(value['authorization_epoch_sha256']) is str and _SHA.fullmatch(value['authorization_epoch_sha256'])
+        and type(value['expires_at']) in (int,float) and math.isfinite(value['expires_at']) and value['expires_at'] > 0,
+        'exact explicit finite ledger-busy retry profile required')
+    return json_object(canonical(value))
+
+
+def ledger_busy_request_attempt_id(frozen, epoch_sha256, index):
+    need(type(index) is int and 1 <= index <= 2 and type(epoch_sha256) is str and _SHA.fullmatch(epoch_sha256)
+         and type(frozen['freeze_sha256']) is str and _SHA.fullmatch(frozen['freeze_sha256']),
+         'bounded original ledger-busy generation identity required')
+    return digest({'freeze_sha256':frozen['freeze_sha256'],'authorization_epoch_sha256':epoch_sha256,
+                   'validation_ledger_busy_generation':index})[:32]
+
+
+def validation_request_generation(policy, frozen, invocation=None, *, live=False):
+    """Fresh D request identity; the original frozen candidate is unchanged."""
+    original = frozen['binding']['attempt_id']
+    if 'source_qualification' in policy['validation']:
+        need(invocation is None or not (invocation/'ledger-busy-generation.json').exists(),
+             'immutable qualification cannot use repair retry generation')
+        return original
+    if invocation is None or not (invocation/'ledger-busy-generation.json').exists():
+        return original
+    profile = checked_validation_ledger_busy_retry(policy['validation']['validation_ledger_busy_retry'])
+    reference = descriptor(invocation/'ledger-busy-generation.json')
+    context = json_object(checked_descriptor(reference))
+    need(not Path(reference['path']).lstat().st_mode & 0o222
+         and set(context) == {'schema','index','authorization_epoch_sha256','expires_at','freeze_sha256',
+              'source_commitment','request_attempt_id','prior_operational_ref','spent_slot_ref'}
+         and context['schema'] == LEDGER_BUSY_CONTEXT_SCHEMA
+         and context['authorization_epoch_sha256'] == profile['authorization_epoch_sha256']
+         and type(context['expires_at']) in (int,float) and context['expires_at'] == profile['expires_at']
+         and context['freeze_sha256'] == frozen['freeze_sha256']
+         and context['source_commitment'] == frozen['source_commitment']
+         and context['request_attempt_id'] == ledger_busy_request_attempt_id(frozen,profile['authorization_epoch_sha256'],context['index']),
+         'ledger-busy request generation differs from the original frozen authority')
+    ticket = json_object(checked_descriptor(context['spent_slot_ref']))
+    need(not Path(context['spent_slot_ref']['path']).lstat().st_mode & 0o222
+         and Path(context['spent_slot_ref']['path']) == invocation.parent/('ledger-busy-slot-%02d.json' % context['index'])
+         and set(ticket)=={'schema','index','attempt_number','attempt_token','authorization_epoch_sha256',
+             'expires_at','freeze_sha256','source_commitment','request_attempt_id','invocation','prior_operational_ref','spent_at'}
+         and ticket['schema'] == 'agent-supervisor/spent-validation-ledger-busy-slot@1'
+         and type(ticket['attempt_number'])is int and ticket['attempt_number']==frozen['binding']['attempt_number']
+         and type(ticket['attempt_token'])is str and ticket['attempt_token']==frozen['binding']['attempt_id']
+         and all(canonical(ticket[k]) == canonical(context[k]) for k in ('index','authorization_epoch_sha256',
+             'expires_at','freeze_sha256','source_commitment','request_attempt_id','prior_operational_ref'))
+         and ticket['invocation'] == str(invocation) and type(ticket['spent_at']) in (int,float)
+         and math.isfinite(ticket['spent_at']) and 0 < ticket['spent_at'] < context['expires_at'],
+         'ledger-busy generation lacks its original immutable spent slot')
+    prior = json_object(checked_descriptor(context['prior_operational_ref']))
+    expected_previous = 'original-validate-invocation' if context['index'] == 1 else 'original-validate-ledger-busy-01'
+    need(invocation.name == 'original-validate-ledger-busy-%02d' % context['index']
+         and Path(prior['invocation_root']) == invocation.parent/expected_previous,
+         'ledger-busy generation chain is cyclic, forked or not the preceding original')
+    need(prior['schema'] == LEDGER_BUSY_SCHEMA and prior['binding'] == frozen['binding']
+         and prior['freeze_sha256'] == frozen['freeze_sha256'] and prior['source_commitment'] == frozen['source_commitment']
+         and prior['retry_authorized'] is False and prior['semantic_negative'] is False,
+         'ledger-busy generation lacks a same-candidate original operational disposition')
+    verify_v5_ledger_busy_closeout(policy,prior['request'],Path(prior['invocation_root']),prior['parent_source_closeout'])
+    if live:
+        need(time.time() < profile['expires_at'], 'original ledger-busy retry authorization expired')
+    return context['request_attempt_id']
+
+
+def _current_v5_cli_classifier(policy):
+    """Normally load the whole current pinned CLI; never an old body/extraction."""
+    path=Path(policy['datasets_root'])/'scripts/ops/legal_ir/run_owned_validation.py'
+    pin=next(pin for pin in policy['source_descriptors'] if pin['path']==str(path))
+    raw=checked_descriptor(pin);name='_repair_current_ledger_busy_classifier_DATA'
+    spec=importlib.util.spec_from_file_location(name,path)
+    need(spec is not None and type(spec.loader) is importlib.machinery.SourceFileLoader
+         and spec.origin==str(path), 'current original ledger-busy classifier file required')
+    module=importlib.util.module_from_spec(spec)
+    exec(_ORIGINAL_COMPILE(raw,str(path),'exec',dont_inherit=True),vars(module))
+    function=module.classify_owned_validation_source_custody
+    need(type(function) is types.FunctionType and function.__globals__ is vars(module)
+         and function.__code__.co_filename==str(path) and checked_descriptor(pin)==raw,
+         'current original ledger-busy classifier origin changed')
+    return function
+
+
+def verify_v5_ledger_busy_closeout(policy,request_pin,invocation,closeout_pin):
+    """Closed operational DATA only: no child/grant/record, never retry authority."""
+    value=json_object(checked_descriptor(closeout_pin));wait=json_object(ordinary_bytes(invocation/'runner-wait.json'))
+    terminal=json_object(wait['stdout'].encode());raw=checked_descriptor(request_pin);request=json_object(raw)
+    expected_argv=[policy['python'],'-I','-B',str(Path(policy['datasets_root'])/'scripts/ops/legal_ir/run_owned_validation.py'),
+        '--request',request_pin['path'],'--expected-request-sha256',request_pin['sha256'],
+        '--resource-ledger',policy['validation']['resource_ledger']]
+    need(wait['argv']==expected_argv,'operational ledger-busy original CLI argv differs')
+    life=terminal.get('source_custody_lifecycle',{})
+    need(life.get('schema')=='owned-validation-pre-grant-ledger-lock-refusal/v1'
+         and life.get('stage')=='owner_open_ledger_lock_refused_before_record'
+         and terminal.get('reservation',{}).get('status')=='not_entered',
+         'only the original pregrant ledger-lock refusal is operationally eligible')
+    verdict=_current_v5_cli_classifier(policy)(terminal,raw,expected_request_sha256=request_pin['sha256'],
+        owner_pid=wait['runner_identity']['pid'],owner_birth=wait['runner_identity']['birth'],
+        returncode=wait['returncode'],expected_resource_ledger=policy['validation']['resource_ledger'])
+    need(verdict=={'verdict':'proven_original_no_child_no_native_grant','source_custody_closed':True,
+                   'storage_release_authorized':False}, 'original ledger-busy no-grant classifier refused')
+    _verify_v5_parent_source_closeout(policy,request_pin,invocation,closeout_pin,None,_ledger_busy=True)
+    need(original_execution_request(invocation)==request_pin
+         and request==validation_execution_request(policy,json_object(ordinary_bytes(invocation/'validation-plan.json')),
+                                                   descriptor(invocation/'validation-plan.json')),
+         'operational ledger-busy original request publication differs')
+    roots=[Path(policy['datasets_root']),Path(request['cwd'])]
+    for receipt,root in zip(value['parent_source_custody']['source_receipts'],roots,strict=True):
+        need(type(receipt)is dict and set(receipt)=={'schema_version','canonical_root','cooperative','lock_path','mode','waited_seconds'}
+             and receipt['schema_version']=='autoencoder-source-lease/v1' and receipt['canonical_root']==str(root)
+             and receipt['cooperative']is True and receipt['mode']=='read'
+             and receipt['lock_path']==str(root/'workspace/control-plane/source-leases/source.lock')
+             and type(receipt['waited_seconds'])in(int,float) and math.isfinite(receipt['waited_seconds'])
+             and receipt['waited_seconds']>=0, 'operational ledger-busy original Source@2 receipt differs')
+    attempt=Path(request['attempt_directory']);need(attempt.is_dir() and not attempt.is_symlink(),
+                                                    'original no-grant attempt directory is unknown')
+    with os.scandir(attempt)as entries:
+        need(next(entries,None)is None,'pregrant ledger-busy attempt has unexpected outputs')
+    return {'request':request_pin,'parent_source_closeout':closeout_pin,
+        'source_closed':True,'native_closed':True,'storage_status':'not_entered',
+        'record_created':False,'native_grant_created':False,'productive_child_created':False,
+        'semantic_negative':False,'retry_authorized':False,'storage_release_authorized':False}
+
+
+def operational_ledger_busy_material(policy,frozen,request_pin,invocation,closeout_pin):
+    need("source_qualification" not in policy["validation"], "immutable qualification cannot enter repair operational_ledger_busy_material")
+    checked=verify_v5_ledger_busy_closeout(policy,request_pin,invocation,closeout_pin)
+    return {'schema':LEDGER_BUSY_SCHEMA,'reason':'pregrant_ledger_busy','binding':frozen['binding'],
+        'freeze_sha256':frozen['freeze_sha256'],'source_commitment':frozen['source_commitment'],
+        'invocation_root':str(invocation),'policy':descriptor(Path(json_object(ordinary_bytes(invocation/'validation-plan.json'))['policy']['path'])),
+        'plan':descriptor(invocation/'validation-plan.json'),**checked}
+
+
+def verify_operational_validation(args):
+    policy=checked_policy(args.policy,args.policy_sha256)
+    need("source_qualification" not in policy["validation"], "immutable qualification cannot enter repair verify_operational_validation")
+    frozen=frozen_candidate(args.freeze_path,args.source_commitment,args.candidate_root)
+    pin=descriptor(args.invocation_root/'operational-ledger-busy.json')
+    need(not Path(pin['path']).lstat().st_mode & 0o222,'original operational disposition must be immutable')
+    value=json_object(checked_descriptor(pin));request=original_execution_request(args.invocation_root)
+    actual=operational_ledger_busy_material(policy,frozen,request,args.invocation_root,
+                                           descriptor(args.invocation_root/'parent-source-closeout.json'))
+    need(canonical(value)==canonical(actual),'original operational ledger-busy disposition changed')
+    print(canonical({'schema':LEDGER_BUSY_VERIFIED_SCHEMA,'operational':pin,'disposition':actual,
+        'read_only':True,'retry_authorized':False,'storage_release_authorized':False}).decode(),flush=True)
+
+
 def checked_validation_admission_retry(value):
     need(type(value) is dict and set(value) == {"schema", "max_additional_invocations", "cooldown_seconds", "source_probe_timeout_seconds"}
          and value["schema"] == VALIDATION_ADMISSION_RETRY_SCHEMA
@@ -646,6 +807,7 @@ def require_validation_unstarted(policy, frozen, invocation):
 
 def probe_validation_source_admission(policy, args, frozen):
     """Original source READ eligibility only; close before any D admission."""
+    need("source_qualification" not in policy["validation"], "immutable qualification cannot enter repair probe_validation_source_admission")
     profile = checked_validation_admission_retry(policy["validation"]["validation_admission_retry"])
     invocation = args.invocation_root
     absent = require_validation_unstarted(policy, frozen, invocation)
@@ -774,18 +936,31 @@ def checked_validation_profile(value, control):
         "cpu_slots", "memory_mb", "storage_bytes", "timeout_seconds", "child_process_slots",
         "scheduler_state_path", "expected_scheduler_policy_sha256", "roots", "resource_ledger"}
     extra = {"external_fixture_profile", "normal_namespace_profiles", "expected_nodeids", "selector_case_counts"}
-    need(type(validation) is dict and set(validation) in (base_fields, base_fields | extra, base_fields | extra | {"validation_admission_retry"}), "closed finite validation profile required")
+    source_mode = base_fields | {"ordinary_scratch_profile", "source_qualification"}
+    v5 = type(validation) is dict and set(validation) in (base_fields | {"ordinary_scratch_profile"}, base_fields | {"ordinary_scratch_profile", "validation_ledger_busy_retry"}, source_mode)
+    need(type(validation) is dict and set(validation) in (base_fields, base_fields | extra, base_fields | extra | {"validation_admission_retry"}, base_fields | {"ordinary_scratch_profile"}, base_fields | {"ordinary_scratch_profile", "validation_ledger_busy_retry"}, source_mode), "closed finite validation profile required")
+    if "source_qualification" in validation:
+        checked_source_qualification(value, control)
     v3 = set(validation) in (base_fields | extra, base_fields | extra | {"validation_admission_retry"})
+    if "validation_ledger_busy_retry" in validation:
+        checked_validation_ledger_busy_retry(validation["validation_ledger_busy_retry"])
     if "validation_admission_retry" in validation:
         checked_validation_admission_retry(validation["validation_admission_retry"])
     for name, maximum in (("cpu_slots", 1), ("memory_mb", 2048),
-            ("storage_bytes", 67108864), ("timeout_seconds", 300), ("child_process_slots", 4 if v3 else 2)):
+            ("storage_bytes", 67108864), ("timeout_seconds", 300), ("child_process_slots", 4 if v3 or v5 else 2)):
         need(type(validation[name]) is int and 0 < validation[name] <= maximum, "finite public validation envelope required")
     if v3:
         need(all(validation[key] == wanted and type(validation[key]) is int for key, wanted in {
             "cpu_slots": 1, "memory_mb": 1536, "storage_bytes": 67108864, "timeout_seconds": 300, "child_process_slots": 4}.items()),
             "v3 requires the explicitly reviewed unchanged 64/32 bounded validation envelope")
         checked_v3_validation_worker(control)
+    if v5:
+        need(type(validation["ordinary_scratch_profile"]) is dict
+             and validation["ordinary_scratch_profile"] == _V5_ORDINARY_PROFILE
+             and all(type(validation[k]) is int and validation[k] == n for k, n in {
+                 "cpu_slots": 1, "memory_mb": 1536, "storage_bytes": 16777216,
+                 "timeout_seconds": 300, "child_process_slots": 4}.items()),
+             "explicit V5 ordinary 16MiB/300/1/1536/4 profile required")
     tests, checks = validation["trusted_tests"], validation["selected_checks"]
     checked_descriptor(validation["pytest_module"])
     need(type(validation["import_sources"]) is list and len(validation["import_sources"]) <= 4096,
@@ -917,6 +1092,20 @@ def original_external_validation_profile(policy, plan, request_pin, record):
         "original_receipts": receipts, "terminal_disposition": disposition}
 
 
+def _v5_lifecycle_owner_paths(datasets_root: Path) -> set[str]:
+    directory = datasets_root / "ipfs_datasets_py/optimizers/logic_theorem_optimizer"
+    return {str(datasets_root / "scripts/ops/legal_ir/run_owned_validation.py"),
+            *(str(directory / name) for name in ("validation_run_resources.py",
+                "autoencoder_daemon_resources.py", "resource_scheduler.py",
+                "existing_resource_scheduler.py", "proof_resource_safety.py"))}
+
+
+def _require_v5_lifecycle_source_pins(datasets_root: Path, pins: dict) -> None:
+    need(all(type(pins.get(path)) is str and _SHA.fullmatch(pins[path])
+             for path in _v5_lifecycle_owner_paths(datasets_root)),
+         "explicit original lifecycle owner source pins required")
+
+
 def validation_execution_request(policy, plan, plan_pin):
     """Bind the public original request to its immutable plan without a cycle."""
     v = policy["validation"]; attempt = Path(plan["attempt_directory"])
@@ -942,6 +1131,9 @@ def validation_execution_request(policy, plan, plan_pin):
             package / "optimizers/__init__.py", package / "__init__.py", package / "router_deps.py", package / "ipfs_backend_router.py",
             package / "logic/__init__.py", package / "logic/backends/process.py"]
         need(all(str(path) in request["source_sha256"] for path in required), "complete original public v3 control source pins required")
+    if "ordinary_scratch_profile" in plan:
+        request.update(schema="owned-validation-request/v5", ordinary_scratch_profile=dict(plan["ordinary_scratch_profile"]))
+        _require_v5_lifecycle_source_pins(Path(policy["datasets_root"]), request["source_sha256"])
     need(len(request["source_sha256"]) <= 256 and len(request["selected_checks"]) <= 256,
          "public original request source/selection caps remain unchanged")
     return request
@@ -978,6 +1170,25 @@ def checked_policy(path: Path, sha: str, *, current_owner=True) -> dict:
     declared = {node.name for node in ast.parse(checked_descriptor(recovery_pin)).body if isinstance(node, ast.FunctionDef)}
     need({"inspect_validation_reservation", "inspect_validation_disposition"} <= declared,
          "qualified public negative-storage observation API is unavailable")
+    if _v5_ordinary_validation(value):
+        cli_pin = next(pin for pin in sources if pin["path"] == str(d / "scripts/ops/legal_ir/run_owned_validation.py"))
+        functions = {n.name for n in ast.parse(checked_descriptor(cli_pin)).body if isinstance(n, ast.FunctionDef)}
+        need("inspect_owned_validation_productive_native_closed_v1" in functions,
+             "public V5 productive-native source inspector is unavailable")
+        need("inspect_owned_validation_no_child_native_closed_v5" in functions,
+             "public V5 acquired-no-child source inspector is unavailable")
+        directory = d / "ipfs_datasets_py/optimizers/logic_theorem_optimizer"
+        required_v5 = _v5_lifecycle_owner_paths(d)
+        required_v5.update(str(path) for path in (directory / "autoencoder_source_lease.py",
+            directory / "autoencoder_resource_recovery.py", directory / "runtime_telemetry.py", directory / "validation_pytest.py",
+            directory / "__init__.py", d / "ipfs_datasets_py/optimizers/__init__.py",
+            d / "ipfs_datasets_py/__init__.py", d / "ipfs_datasets_py/router_deps.py",
+            d / "ipfs_datasets_py/ipfs_backend_router.py", d / "ipfs_datasets_py/logic/__init__.py",
+            d / "ipfs_datasets_py/logic/backends/process.py"))
+        all_sources = [*sources, *value["validation"]["import_sources"]]
+        need(required_v5 <= {pin["path"] for pin in all_sources}, "complete V5 normal lifecycle control closure must be pinned")
+        need(all(pin["bytes"] <= 4 * 1024**2 for pin in [*all_sources, *value["validation"]["trusted_tests"]]),
+             "V5 source/test files must fit the unchanged 4MiB boundary")
     need(Path(value["python"]).is_absolute(), "exact Python executable required")
     checked_validation_profile(value, control)
     if "external_fixture_profile" in value["validation"]:
@@ -1004,11 +1215,38 @@ def frozen_candidate(path: Path, commitment: str, root: Path) -> dict:
     return value
 
 
+def _v5_control_namespace_profiles(policy):
+    """Project only the already authenticated immutable control declaration.
+
+    The public validate entry checks the complete policy first. Shape-only old
+    plan-builder callers without a control manifest keep the empty projection;
+    they still cannot pass checked_policy or acquire any original authority.
+    """
+    if 'manifest' not in policy['control_release']:
+        return []
+    return checked_control_release(policy, current_owner=False)['namespace_profiles']
+
+
+def _v5_validation_namespace_evidence(policy, plan, report):
+    """Bind saved V5 namespace DATA without changing legacy/V3 validation."""
+    if not _v5_ordinary_validation(policy):
+        return
+    profiles = _v5_control_namespace_profiles(policy)
+    need(canonical(plan.get('normal_namespace_profiles', [])) == canonical(profiles)
+         and canonical(report.get('declared_normal_namespace_profiles', [])) == canonical(profiles),
+         'original V5 immutable control namespace declaration differs')
+
+
 def validation_plan(policy, policy_pin, frozen, freeze_pin, root, invocation):
     binding = frozen["binding"]; v = policy["validation"]
-    attempt = Path(v["attempt_root"]) / binding["namespace"] / binding["board_id"] / binding["attempt_id"]
+    qualification = checked_source_qualification(policy)
+    if qualification is not None:
+        need(root == qualification["root"] and freeze_pin == qualification["snapshot_ref"]
+             and canonical(frozen) == canonical(qualification["snapshot"]), "immutable plan snapshot differs")
+    request_generation = validation_request_generation(policy, frozen, invocation, live=True)
+    attempt = Path(v["attempt_root"]) / binding["namespace"] / binding["board_id"] / request_generation
     tests = v["trusted_tests"]; v3 = "external_fixture_profile" in v
-    need(all(Path(pin["path"]) != root and root not in Path(pin["path"]).parents for pin in tests),
+    need(qualification is not None or all(Path(pin["path"]) != root and root not in Path(pin["path"]).parents for pin in tests),
          "original trusted tests must stay outside the mutable candidate")
     pins = {}
     for pin in [*policy["source_descriptors"], *tests, v["pytest_module"], *v["import_sources"],
@@ -1018,12 +1256,18 @@ def validation_plan(policy, policy_pin, frozen, freeze_pin, root, invocation):
     need(len(pins) <= 4096, "complete normal import manifest exceeds its original finite bound")
     controls = {pin["path"]: pin["sha256"] for pin in policy["source_descriptors"] + tests}
     controls[policy_pin["path"]] = policy_pin["sha256"]; controls[freeze_pin["path"]] = freeze_pin["sha256"]
-    required = [str(root / relative) for relative in frozen["changed_paths"] if relative.endswith(".py")]
-    need(required, "this finite validation profile requires an actually changed Python body")
+    required = [] if qualification is not None else [str(root / relative) for relative in frozen["changed_paths"] if relative.endswith(".py")]
+    need(qualification is not None or required, "this finite validation profile requires an actually changed Python body")
     plan = {"schema": WORK_SCHEMA, "policy": policy_pin, "freeze": freeze_pin,
         "source_commitment": frozen["source_commitment"], "candidate_root": str(root),
         "attempt_directory": str(attempt), "source_pins": pins, "original_public_control_pins": controls,
         "selected_checks": v["selected_checks"], "expected_cases": len(v["selected_checks"]), "required_candidate_bodies": required}
+    if qualification is not None:
+        plan.update(source_qualification=qualification["profile"], required_source_bodies=qualification["required_source_bodies"])
+        manifest_pin = policy["control_release"]["manifest"]
+        pins[manifest_pin["path"]] = manifest_pin["sha256"]
+        pins[freeze_pin["path"]] = freeze_pin["sha256"]
+        controls[manifest_pin["path"]] = manifest_pin["sha256"]
     if v3:
         prepared_pin, copies = trusted_validation_test_copies(policy, frozen, freeze_pin, root)
         by_path = {row["trusted"]["path"]: row["actual"]["path"] for row in copies}
@@ -1048,41 +1292,483 @@ def validation_plan(policy, policy_pin, frozen, freeze_pin, root, invocation):
         for row in copies:
             controls[row["actual"]["path"]] = row["actual"]["sha256"]
         controls[prepared_pin["path"]] = prepared_pin["sha256"]
+    if _v5_ordinary_validation(policy):
+        plan["ordinary_scratch_profile"] = dict(v["ordinary_scratch_profile"])
+        profiles = _v5_control_namespace_profiles(policy)
+        if profiles:
+            plan["normal_namespace_profiles"] = json_object(canonical({"profiles": profiles}))["profiles"]
+        # Source closure only: no V3 aliases or external fixture grants. The
+        # sole ordinary namespace is the existing sealed control declaration.
+        d = Path(policy["datasets_root"])
+        for pin in v["import_sources"]:
+            if d in Path(pin["path"]).parents:
+                controls[pin["path"]] = pin["sha256"]
+    generation_path = invocation/"ledger-busy-generation.json"
+    if generation_path.exists():
+        generation_pin = descriptor(generation_path)
+        pins[generation_pin["path"]] = generation_pin["sha256"]
+        controls[generation_pin["path"]] = generation_pin["sha256"]
+        ticket_pin = json_object(checked_descriptor(generation_pin))["spent_slot_ref"]
+        checked_descriptor(ticket_pin)
+        pins[ticket_pin["path"]] = ticket_pin["sha256"]
+        controls[ticket_pin["path"]] = ticket_pin["sha256"]
+    need(len(pins) <= 4096, "complete normal import manifest exceeds its original finite bound")
     need(len(controls) <= 253, "original public request control cap reached; no cap increase")
     return plan
 
 
-def original_runner_wait(policy, argv, cwd, timeout):
-    """Observe the actual Popen owned by the unchanged public engine helper."""
-    from ipfs_accelerate_py.agent_supervisor.todo_daemon import engine
-    source = descriptor(Path(engine.__file__).absolute())
-    need(source in policy["source_descriptors"], "original process owner source is not pinned")
-    actual = engine.subprocess.Popen
-    need(actual is _ORIGINAL_POPEN, "original process primitive was replaced before owner invocation")
-    records = []
-    def observed(command, *positional, **kwargs):
-        frame = sys._getframe(1)
-        need(frame.f_code is engine.run_command.__code__ and frame.f_globals is vars(engine)
-             and frame.f_code.co_filename == source["path"] and list(command) == argv
-             and kwargs.get("cwd") == str(cwd) and kwargs.get("start_new_session") is True,
-             "only the exact original owned runner launch may be observed")
-        process = actual(command, *positional, **kwargs)
-        # Record uncertainty without raising after spawn: the original engine
-        # must retain its actual process and perform its own stop/reap logic.
-        records.append((process, proc_identity(process.pid)))
-        return process
+
+
+_V5_ORDINARY_PROFILE = {"schema": "owned-validation-ordinary-scratch-live/v1"}
+_V5_PROOF_RESERVE_SECONDS = 20.0
+_V5_ENGINE_CLEANUP_SECONDS = 10.0  # Existing TERM5 plus final drain5, inside D.
+_V5_EXECUTION_FIELDS = ("schema", "completion_kind", "process_pid", "process_returncode",
+    "leader_waited", "output_capture", "work_deadline_monotonic", "cleanup_deadline_monotonic",
+    "observed_at_monotonic")
+
+def _v5_ordinary_validation(policy):
+    value = policy.get("validation")
+    return type(value) is dict and "ordinary_scratch_profile" in value
+
+
+class _V5ValidationSourceCustody:
+    """Source custody only; original engine retains all process cleanup."""
+    def __init__(self, policy, argv, cwd, timeout, context):
+        self.policy, self.argv, self.process = policy, list(argv), None
+        self.stack = ExitStack(); self.receipts = []; self.closed = False
+        self.started = time.monotonic(); self.deadline = self.started + timeout
+        self.identity = None; self.context = context; self.identity_error = None
+        self.engine_source = None; self.engine_returned = False; self.wait_ref = None
+        self.work_deadline = self.deadline - _V5_PROOF_RESERVE_SECONDS - _V5_ENGINE_CLEANUP_SECONDS
+        self.cleanup_deadline = self.deadline - _V5_PROOF_RESERVE_SECONDS
+        self.spawn_attempted = False; self.spawn_returned_at = None; self.identity_observed_at = None
+        self.execution_ref = None; self.execution_observation = None; self.engine = None
+        self.engine_started_at = None; self.engine_finished_at = None; self.engine_runner = None
+        self.process_count = 0; self.source_exit_finished_at = None
+        v = policy["validation"]
+        need(v["ordinary_scratch_profile"] == _V5_ORDINARY_PROFILE
+             and type(timeout) in (int, float) and math.isfinite(timeout) and timeout > 0
+             and type(context) is dict and set(context) == {"plan", "request_pin", "invocation", "frozen"},
+             "explicit original V5 validation custody context required")
+        self.request_pin = context["request_pin"]; self.request_path = Path(self.request_pin["path"])
+        self.raw = checked_descriptor(self.request_pin); self.request = json_object(self.raw)
+        self.d = Path(policy["datasets_root"]); self.cwd = Path(cwd)
+        self.cli_path = self.d / "scripts/ops/legal_ir/run_owned_validation.py"
+        self.ledger = Path(v["resource_ledger"])
+        need(self.argv == [policy["python"], "-I", "-B", str(self.cli_path), "--request",
+             str(self.request_path), "--expected-request-sha256", self.request_pin["sha256"],
+             "--resource-ledger", str(self.ledger)], "exact original V5 owner invocation required")
+        q = self.request
+        need(q["schema"] == "owned-validation-request/v5" and q["ordinary_scratch_profile"] == _V5_ORDINARY_PROFILE
+             and q["declared_external_writable_paths"] == [] and q["process_scope"] == "sampled_birth_bound_descendants"
+             and q["selected_checks"] == context["plan"]["selected_checks"]
+             and q["attempt_directory"] == context["plan"]["attempt_directory"]
+             and q["cwd"] == str(self.cwd) == context["plan"]["candidate_root"]
+             and all(q[k] == v[k] for k in ("cpu_slots", "memory_mb", "storage_bytes", "timeout_seconds",
+                 "child_process_slots", "scheduler_state_path", "expected_scheduler_policy_sha256", "roots")),
+             "V5 original request/context differs")
+        need(type(q["source_sha256"]) is dict and 0 < len(q["source_sha256"]) <= 256, "bounded V5 source pins required")
+        _require_v5_lifecycle_source_pins(self.d, q["source_sha256"])
+        self.cli_pin = next(p for p in policy["source_descriptors"] if p["path"] == str(self.cli_path))
+        need(q["source_sha256"].get(str(self.cli_path)) == self.cli_pin["sha256"], "current V5 CLI pin differs")
+        try:
+            # Source42 performs Git subprocesses: acquire before GLOBAL Popen interposition.
+            lease = public_source_lease(policy)
+            for root in (self.d, self.cwd):
+                # Source waits consume the one allowance before the full CLI window.
+                source_wait = self.launch_clock() - q["timeout_seconds"]
+                manager = lease(root, mode="read", timeout_seconds=source_wait)
+                held = self.stack.enter_context(manager)
+                self.receipts.append(held.to_dict())
+                if _reviewed_parent_policy(policy):
+                    _reviewed_parent_record_source_fd(self, manager, held)
+            self.launch_clock()
+            self.guard()
+            if _reviewed_parent_policy(policy):
+                _reviewed_parent_publish_source_observation(self)
+            name = "_repair_original_v5_source_custody_cli"
+            spec = importlib.util.spec_from_file_location(name, self.cli_path)
+            need(spec is not None and type(spec.loader) is importlib.machinery.SourceFileLoader
+                 and spec.origin == str(self.cli_path), "original canonical CLI loader required")
+            self.clock()
+            cli_raw = checked_descriptor(self.cli_pin)
+            need(type(_ORIGINAL_COMPILE) is types.BuiltinFunctionType
+                 and _ORIGINAL_COMPILE.__module__ == "builtins"
+                 and _ORIGINAL_COMPILE.__name__ == "compile", "original raw-source compiler required")
+            self.cli = importlib.util.module_from_spec(spec)
+            # Execute exactly authenticated canonical raw bytes, never a pyc.
+            exec(_ORIGINAL_COMPILE(cli_raw, str(self.cli_path), "exec", dont_inherit=True), vars(self.cli))
+            self.inspector = self.cli.inspect_owned_validation_productive_native_closed_v1
+            self.no_child = self.cli.inspect_owned_validation_no_child_native_closed_v5
+            self.no_grant = self.cli.classify_owned_validation_source_custody
+            need(type(self.cli) is types.ModuleType and self.cli.__file__ == str(self.cli_path)
+                 and self.cli.__spec__.origin == str(self.cli_path)
+                 and type(self.inspector) is types.FunctionType
+                 and self.inspector.__globals__ is vars(self.cli)
+                 and self.inspector.__code__.co_filename == str(self.cli_path)
+                 and self.inspector.__name__ == "inspect_owned_validation_productive_native_closed_v1",
+                 "original canonical productive-native inspector origin differs")
+            for function, expected_name in ((self.no_child, "inspect_owned_validation_no_child_native_closed_v5"),
+                    (self.no_grant, "classify_owned_validation_source_custody")):
+                need(type(function) is types.FunctionType and function.__globals__ is vars(self.cli)
+                     and function.__code__.co_filename == str(self.cli_path)
+                     and function.__name__ == expected_name, "original canonical no-child inspector origin differs")
+            self.guard()
+        except BaseException as original_error:
+            try:
+                self.stack.close(); self.closed = True
+            except BaseException as close_error:
+                self.hold(close_error)
+            raise original_error
+
+    def clock(self):
+        need(time.monotonic() < self.deadline, "original V5 source/native proof budget expired")
+
+    def launch_clock(self):
+        """Refuse before actual Popen unless the unchanged request window fits."""
+        self.clock()
+        remaining = self.work_deadline - time.monotonic()
+        need(remaining > 0, "original V5 worker window expired before launch")
+        need(remaining >= self.request["timeout_seconds"],
+             "original V5 full nominal request window does not fit before launch")
+        return remaining
+
+    def record_execution(self, completed, engine, records):
+        """Bounded observations only, persisted even when later proof is unknown."""
+        self.engine = engine; self.engine_finished_at = time.monotonic()
+        self.process_count = len(records)
+        exact_result = type(completed) is getattr(engine, "CommandResult", None)
+        observation = getattr(completed, "execution_observation", None) if exact_result else None
+        exact_observation = type(observation) is getattr(engine, "CommandExecutionObservation", None)
+        self.execution_observation = observation if exact_observation else None
+        # Never serialize arbitrary caller objects or a valid-looking stdout prefix.
+        def finite(value):
+            if type(value) not in (int, float):
+                return None
+            try:
+                return value if math.isfinite(value) else None
+            except OverflowError:
+                return None
+        observed = None
+        if exact_observation:
+            observed = {}
+            for name in _V5_EXECUTION_FIELDS:
+                value = getattr(observation, name, None)
+                observed[name] = (value if type(value) is bool or value is None else
+                    value if type(value) is str and len(value) <= 128 else finite(value))
+        process = self.process
+        identity = self.identity
+        bounded_identity = (dict(identity) if type(identity) is dict and set(identity) == {"pid", "birth"}
+            and type(identity["pid"]) is int and type(identity["birth"]) is str and len(identity["birth"]) <= 32 else None)
+        value = {"schema": "agent-supervisor/v5-runner-execution-observation@1", "request": self.request_pin,
+            "engine_source": self.engine_source, "exact_command_result": exact_result,
+            "exact_execution_observation": exact_observation, "execution_observation": observed,
+            "public_returncode": completed.returncode if exact_result and type(completed.returncode) is int else None,
+            "actual_process_pid": None if process is None else process.pid,
+            "actual_process_returncode": None if process is None else process.returncode,
+            "actual_Popen_returned": process is not None, "spawn_attempted": self.spawn_attempted,
+            "process_count": self.process_count, "runner_identity": bounded_identity,
+            "identity_observation_error": self.identity_error,
+            "engine_returned": self.engine_returned, "engine_started_at_monotonic": finite(self.engine_started_at),
+            "engine_finished_at_monotonic": finite(self.engine_finished_at),
+            "spawn_returned_at_monotonic": finite(self.spawn_returned_at),
+            "identity_observed_at_monotonic": finite(self.identity_observed_at),
+            "authority_deadline_monotonic": self.deadline, "work_deadline_monotonic": self.work_deadline,
+            "cleanup_deadline_monotonic": self.cleanup_deadline,
+            "requested_nominal_window_seconds": self.request["timeout_seconds"],
+            "window_scope": "CLI startup and scheduling consume this window; no inner SDK productive-time guarantee",
+            "source_closed": False, "native_closed": False,
+            "storage_release_authorized": False, "retry_authorized": False}
+        self.execution_ref = new_json(Path(self.context["invocation"]) / "runner-execution-observation.json", value)
+
+    def checked_execution(self, completed, witness):
+        engine = self.engine; observation = self.execution_observation; process = self.process
+        need(type(engine) is types.ModuleType and engine.run_command is self.engine_runner
+             and type(engine.run_command) is types.FunctionType
+             and engine.run_command.__globals__ is vars(engine)
+             and engine.run_command.__code__.co_filename == self.engine_source["path"]
+             and engine.__file__ == self.engine_source["path"], "original V5 engine emitter origin differs")
+        need(type(completed) is engine.CommandResult and type(completed.command) is tuple
+             and list(completed.command) == self.argv
+             and type(completed.returncode) is int and type(completed.stdout) is str and type(completed.stderr) is str,
+             "exact original V5 engine command result required")
+        need(type(observation) is engine.CommandExecutionObservation
+             and completed.execution_observation is observation
+             and observation.__class__.__module__ == engine.__name__
+             and dataclasses.is_dataclass(observation) and observation.__dataclass_params__.frozen
+             and tuple(field.name for field in dataclasses.fields(observation)) == _V5_EXECUTION_FIELDS,
+             "typed immutable original V5 execution observation is unknown")
+        need(observation.schema == "command-execution-observation/v1"
+             and type(observation.completion_kind) is str and observation.completion_kind in ("completed", "timeout")
+             and type(observation.output_capture) is str and observation.output_capture in ("complete", "incomplete", "unknown")
+             and type(observation.leader_waited) in (bool, type(None)), "closed V5 execution observation vocabulary required")
+        need(type(process) is _ORIGINAL_POPEN and process.args == self.argv and self.process_count == 1
+             and witness["actual_Popen_returned"] is True
+             and type(process.pid) is int and type(observation.process_pid) is int
+             and observation.process_pid == process.pid
+             and type(process.returncode) is int and type(observation.process_returncode) is int
+             and process.returncode == observation.process_returncode == witness["actual_process_returncode"]
+             and observation.leader_waited is True and witness["actual_process_waited"] is True,
+             "genuine original V5 same-Popen wait is unknown")
+        identity = witness["runner_identity"]
+        need(type(identity) is dict and set(identity) == {"pid", "birth"} and identity == self.identity
+             and type(identity["pid"]) is int and identity["pid"] == process.pid
+             and type(identity["birth"]) is str and 0 < len(identity["birth"]) <= 32
+             and identity["birth"].isascii() and identity["birth"].isdigit() and int(identity["birth"]) > 0,
+             "genuine original V5 process birth is unknown")
+        times = (self.engine_started_at, self.engine_finished_at, self.spawn_returned_at,
+            self.identity_observed_at, observation.observed_at_monotonic,
+            observation.work_deadline_monotonic, observation.cleanup_deadline_monotonic)
+        need(all(type(value) in (int, float) and math.isfinite(value) for value in times)
+             and self.started <= self.engine_started_at <= self.spawn_returned_at
+             <= self.identity_observed_at <= observation.observed_at_monotonic <= self.engine_finished_at
+             and observation.work_deadline_monotonic == self.work_deadline
+             and observation.cleanup_deadline_monotonic == self.cleanup_deadline,
+             "original V5 observation clock/deadline binding differs")
+        if observation.completion_kind == "completed":
+            need(completed.returncode == process.returncode, "original V5 completed public/actual code differs")
+        else:
+            need(completed.returncode == 124, "original V5 timeout public policy code differs")
+        return observation
+
+    def guard(self):
+        self.clock()
+        need(checked_descriptor(self.request_pin) == self.raw, "original V5 request changed")
+        for path, expected in self.request["source_sha256"].items():
+            self.clock()
+            need(type(path) is str and type(expected) is str and _SHA.fullmatch(expected)
+                 and hashlib.sha256(ordinary_bytes(Path(path), 4 * 1024**2)).hexdigest() == expected,
+                 "original V5 source changed")
+
+    def hold(self, error):
+        """No authority transfer: keep this actual Popen and Source stack reachable."""
+        value = {"schema": "agent-supervisor/v5-validation-source-custody-unknown@1",
+            "request": self.request_pin, "source_closed": self.closed, "native_closed": False,
+            "original_Popen_recorded": self.process is not None, "original_owner_identity": self.identity,
+            "actual_process_pid": None if self.process is None else self.process.pid,
+            "actual_process_returncode": None if self.process is None else self.process.returncode,
+            "identity_observation_error": self.identity_error, "engine_source": self.engine_source,
+            "engine_returned": self.engine_returned, "original_wait": self.wait_ref,
+            "execution_observation": self.execution_ref, "spawn_attempted": self.spawn_attempted,
+            "source_receipts": self.receipts, "authority_deadline_monotonic": self.deadline,
+            "failure_type": type(error).__name__[:128], "storage_release_authorized": False,
+            "retry_authorized": False, "further_productive_work": False, "Root_intervention_required": True}
+        try:
+            new_json(Path(self.context["invocation"]) / "source-custody-unknown.json", value)
+        except BaseException:
+            pass  # Preserve actual process/context even if evidence storage fails.
+        try: print(canonical(value).decode(), flush=True)
+        except BaseException: pass
+        while True:
+            try: time.sleep(.1)
+            except BaseException: pass
+
+    def finish(self, completed, witness):
+        # The bounded observation was persisted before record-count/code/proof gates.
+        self.clock(); self.guard()
+        observation = self.checked_execution(completed, witness)
+        need(observation.output_capture == "complete", "original V5 terminal EOF is incomplete or unknown")
+        need(0 < len(completed.stdout) <= 1024**2 and len(completed.stderr) <= 1024**2,
+             "bounded original V5 terminal required")
+        raw = completed.stdout.encode("utf-8")
+        need(len(raw) <= 1024**2 and len(completed.stderr.encode("utf-8")) <= 1024**2,
+             "bounded original V5 terminal required")
+        # Only a genuinely waited, complete terminal enters existing classifiers.
+        wait = {"schema": WORK_SCHEMA, "request": self.request_pin, **witness,
+            "argv": self.argv, "returncode": completed.returncode, "stdout": completed.stdout,
+            "stderr": completed.stderr, "original_process_owner_returned": True,
+            "execution_observation": self.execution_ref}
+        self.wait_ref = new_json(Path(self.context["invocation"]) / "runner-wait.json", wait)
+        self.clock()
+        terminal = json_object(raw)
+        if completed.returncode == 0:
+            need(observation.completion_kind == "completed" and self.process.returncode == 0,
+                 "original V5 success requires actual/public zero and completed capture")
+            self.clock()
+            summary = verify_validation_evidence(self.policy, self.context["plan"], self.request_pin,
+                terminal, Path(self.context["invocation"]))
+            value = {"closure_kind": "existing_verified_success", "storage_status": "released",
+                "verified_checks": summary}
+        else:
+            arguments = {"expected_request_sha256": self.request_pin["sha256"],
+                "owner_pid": self.identity["pid"], "owner_birth": self.identity["birth"],
+                "returncode": self.process.returncode, "expected_resource_ledger": str(self.ledger)}
+            self.clock()
+            verdict = self.no_grant(terminal, self.raw, **arguments)
+            if verdict == {"verdict": "proven_original_no_child_no_native_grant",
+                    "source_custody_closed": True, "storage_release_authorized": False}:
+                value = {"closure_kind": "original_no_child_no_native_grant",
+                    "storage_status": terminal.get("reservation", {}).get("status", "not_requested")}
+            else:
+                reservation = terminal.get("reservation", {}); row = reservation.get("record")
+                if type(row) is dict and row.get("child") is None:
+                    self.clock()
+                    verdict = self.no_child(terminal, self.raw, **arguments,
+                        cleanup_timeout_seconds=min(5, self.deadline - time.monotonic()))
+                    need(verdict == {"verdict": "proven_original_no_child_native_closed",
+                        "source_custody_closed": True, "storage_release_authorized": False},
+                        "original V5 no-child native closure remains unknown")
+                    value = {"closure_kind": "original_no_child_native_closed", "storage_status": reservation["status"]}
+                elif type(row) is dict and row.get("status") == "retained" and reservation.get("cleanup_error") is None:
+                    self.clock()
+                    if "source_qualification" in self.policy["validation"]:
+                        negative = _source_qualification_failed_custody(self.policy, self.context["plan"],
+                            self.request_pin, Path(self.context["invocation"]), terminal, wait)
+                    else:
+                        negative = negative_validation_material(self.policy, self.context["plan"], self.context["frozen"],
+                            self.request_pin, Path(self.context["invocation"]), terminal, wait)
+                    need(all(negative[k] is True for k in (("parent_source_ready_to_close", "native_closed", "processes_closed")
+                         if _reviewed_parent_policy(self.policy) else ("source_closed", "native_closed", "processes_closed"))),
+                        "original V5 retained failure custody remains unknown")
+                    value = {"closure_kind": "existing_verified_retained_failure", "storage_status": "retained"}
+                else:
+                    self.clock()
+                    verdict = self.inspector(terminal, self.raw, **arguments,
+                        original_wait_deadline_monotonic=self.deadline)
+                    need(type(verdict) is dict and verdict == {"verdict": "proven_original_productive_native_closed_storage_separate",
+                        "source_custody_closed": True, "storage_release_authorized": False},
+                        "original V5 native/source closure remains unknown")
+                    need(reservation["status"] == row["status"] == "active"
+                         and row["storage_bytes"] == self.request["storage_bytes"],
+                         "failed retention must preserve original ACTIVE storage")
+                    value = {"closure_kind": "productive_native_closed_storage_separate", "storage_status": "active"}
+        self.guard(); self.clock()
+        if _reviewed_parent_policy(self.policy):
+            _reviewed_parent_check_worker_delegation(self, require_worker_report=completed.returncode == 0)
+        self.stack.close(); self.closed = True
+        self.source_exit_finished_at = time.monotonic()
+        if self.source_exit_finished_at >= self.deadline:
+            # Record actual irreversible closure; do not grant acceptance after D.
+            new_json(Path(self.context["invocation"]) / "source-custody-late-close.json", {
+                "schema": "agent-supervisor/v5-validation-late-source-close@1", "request": self.request_pin,
+                "source_closed": True, "native_closed": True, "execution_observation": self.execution_ref,
+                "authority_deadline_monotonic": self.deadline,
+                "source_exit_finished_at_monotonic": self.source_exit_finished_at,
+                "storage_release_authorized": False, "retry_authorized": False, "validation_accepted": False})
+            need(False, "original V5 Source exit completed after the original authority deadline")
+        # A later metadata failure cannot relabel this closed Source stack as open.
+        return {"schema": "agent-supervisor/v5-validation-parent-source-custody@2", **value,
+            "source_closed": True, "native_closed": True, "source_receipts": self.receipts,
+            "storage_release_authorized": False, "retry_authorized": False,
+            "original_wait": self.wait_ref, "authority_deadline_monotonic": self.deadline,
+            "execution_observation": self.execution_ref, "work_deadline_monotonic": self.work_deadline,
+            "cleanup_deadline_monotonic": self.cleanup_deadline,
+            "source_exit_finished_at_monotonic": self.source_exit_finished_at,
+            "clock_scope": "Source entry and closure proof use the original timeout; unchanged engine stop/reap and nonpreemptible IO may exceed it, in which case no postdeadline proof is begun"}
+
+
+def original_runner_wait(policy, argv, cwd, timeout, *, validation_context=None, capture_parent_success=False):
+    need(type(capture_parent_success) is bool, "exact original parent capture option required")
+    if capture_parent_success:
+        if (_reviewed_parent_guard is not _REVIEWED_PARENT_GUARD_OBJECT
+                or _reviewed_parent_guard.__code__ is not _REVIEWED_PARENT_GUARD_CODE):
+            raise ValueError("reviewed parent callable bindings changed: guard")
+        _reviewed_parent_guard()
+        need(_reviewed_parent_policy(policy) and timeout == 420, "explicit reviewed parent420 profile required")
+        need(type(validation_context) is dict and type(validation_context.get("plan")) is dict,
+             "predeclared reviewed parent validation context required")
+        declared = validation_context["plan"]["policy"]
+        checked = _checked_reviewed_parent_policy_for(policy, Path(declared["path"]), declared["sha256"])
+        need(canonical(checked) == canonical(policy), "closed original reviewed parent declaration required")
+        _reviewed_parent_check_plan_v1(policy, validation_context)
+    joined_opening_binding = (_reviewed_parent_joined_opening_v3(policy)
+                              if capture_parent_success else None)
+    custody = (_V5ValidationSourceCustody(policy, argv, cwd, timeout, validation_context)
+               if _v5_ordinary_validation(policy) else None)
     try:
-        engine.subprocess.Popen = observed
-        completed = engine.run_command(argv, cwd=cwd, timeout_seconds=timeout)
-    finally:
-        engine.subprocess.Popen = actual
-    need(len(records) == 1, "one genuine original runner process required")
-    process, identity = records[0]
-    need(identity is not None and process.returncode is not None
-         and process.poll() == process.returncode == completed.returncode, "actual runner wait is unknown")
-    need(descriptor(Path(engine.__file__).absolute()) == source, "original process owner source changed")
-    return completed, {"runner_identity": identity, "actual_Popen_returned": True,
-        "actual_process_waited": True, "actual_process_returncode": process.returncode, "engine_source": source}
+        """Observe the actual Popen owned by the unchanged public engine helper."""
+        from ipfs_accelerate_py.agent_supervisor.todo_daemon import engine
+        if custody is not None:
+            custody.clock()
+        source = descriptor(Path(engine.__file__).absolute())
+        need(source in policy["source_descriptors"], "original process owner source is not pinned")
+        if capture_parent_success:
+            _reviewed_parent_engine_guard(engine, source)
+        if custody is not None:
+            custody.engine_source = source; custody.engine_runner = engine.run_command
+        actual = engine.subprocess.Popen
+        need(actual is _ORIGINAL_POPEN, "original process primitive was replaced before owner invocation")
+        records = []
+        def observed(command, *positional, **kwargs):
+            frame = sys._getframe(1)
+            need(frame.f_code is engine.run_command.__code__ and frame.f_globals is vars(engine)
+                 and frame.f_code.co_filename == source["path"] and list(command) == argv
+                 and kwargs.get("cwd") == str(cwd) and kwargs.get("start_new_session") is True,
+                 "only the exact original owned runner launch may be observed")
+            if custody is not None:
+                custody.launch_clock()
+                custody.spawn_attempted = True
+            process = actual(command, *positional, **kwargs)
+            # Record uncertainty without raising after spawn: the original engine
+            # must retain its actual process and perform its own stop/reap logic.
+            if custody is None:
+                records.append((process, proc_identity(process.pid)))
+            else:
+                custody.process = process; custody.spawn_returned_at = time.monotonic()
+                try:
+                    identity = proc_identity(process.pid)
+                except (OSError, ValueError, IndexError) as error:
+                    identity = None; custody.identity_error = type(error).__name__
+                custody.identity = identity; custody.identity_observed_at = time.monotonic()
+                records.append((process, identity))
+            return process
+        completed = None
+        try:
+            engine.subprocess.Popen = observed
+            if custody is not None:
+                remaining = custody.launch_clock()
+                custody.engine_started_at = time.monotonic()
+                custody.clock()
+                completed = engine.run_command(argv, cwd=cwd, timeout_seconds=remaining,
+                    work_deadline_monotonic=custody.work_deadline,
+                    cleanup_deadline_monotonic=custody.cleanup_deadline)
+                custody.engine_returned = True
+            else:
+                completed = engine.run_command(argv, cwd=cwd, timeout_seconds=timeout)
+        finally:
+            engine.subprocess.Popen = actual
+            if custody is not None:
+                custody.record_execution(completed, engine, records)
+        need(len(records) == 1, "one genuine original runner process required")
+        process, identity = records[0]
+        if custody is None:
+            need(identity is not None and process.returncode is not None
+                 and process.poll() == process.returncode == completed.returncode, "actual runner wait is unknown")
+        else:
+            custody.clock()
+        need(descriptor(Path(engine.__file__).absolute()) == source, "original process owner source changed")
+        observation = None if custody is None else custody.execution_observation
+        witness = {"runner_identity": identity, "actual_Popen_returned": True,
+            "actual_process_waited": True if custody is None else (
+                None if observation is None else observation.leader_waited),
+            "actual_process_returncode": process.returncode, "engine_source": source}
+        if custody is not None:
+            witness["parent_source_custody"] = custody.finish(completed, witness)
+            # Canonical parent observation, persisted after normal Source exit.
+            # It grants no storage release, retry or independently trusted success.
+            witness["parent_source_closeout"] = new_json(Path(validation_context["invocation"]) / "parent-source-closeout.json", {
+                "schema": "agent-supervisor/v5-validation-parent-source-closeout@2",
+                "request": custody.request_pin, "original_wait": custody.wait_ref,
+                "producer": descriptor(Path(__file__).absolute()),
+                "parent_source_custody": witness["parent_source_custody"]})
+        if capture_parent_success:
+            need(custody is not None and custody.closed, "original reviewed parent Source closure required")
+            return completed, witness, _reviewed_parent_issue(custody, completed, witness)
+        return completed, witness
+
+    except BaseException as error:
+        if custody is not None:
+            # Source closure is irreversible. A later metadata failure is a
+            # failed observation, not UNKNOWN custody of an open Source stack.
+            if custody.closed:
+                raise
+            if custody.process is not None or custody.spawn_attempted:
+                custody.hold(error)
+            try:
+                custody.stack.close(); custody.closed = True
+            except BaseException as close_error:
+                custody.hold(close_error)
+        raise
 
 
 
@@ -1108,22 +1794,22 @@ def immutable_bytes(path, raw):
     return descriptor(path)
 
 
-def validation_control_directory(policy, frozen):
+def validation_control_directory(policy, frozen, invocation=None):
     """Separate the fixed programme registry from the actual candidate lane."""
     binding = frozen["binding"]; v3 = "external_fixture_profile" in policy["validation"]
-    expected = "ptr_lane_0" if v3 else "legal_ir_unattended_repair"
+    expected = "ptr_lane_0" if v3 or _v5_ordinary_validation(policy) else "legal_ir_unattended_repair"
     need(binding["namespace"] == expected and binding["board_id"] == REPAIR_PROFILE
          and type(binding["attempt_id"]) is str and re.fullmatch(r"[0-9a-f]{32}", binding["attempt_id"]),
          "fixed original candidate namespace/board/attempt required")
     registry_namespace = "legal_ir_unattended_repair"
-    directory = Path(policy["validation"]["attempt_root"]) / "control-requests" / registry_namespace / binding["board_id"] / binding["attempt_id"]
+    directory = Path(policy["validation"]["attempt_root"]) / "control-requests" / registry_namespace / binding["board_id"] / validation_request_generation(policy, frozen, invocation)
     need(not any(parent.is_symlink() for parent in (directory, *directory.parents)), "original control registry must not be aliased")
     return directory
 
 
 def publish_validation_request(policy, frozen, invocation, local_request):
     """Publish the actual executed D request before invoking its original owner."""
-    directory = validation_control_directory(policy, frozen)
+    directory = validation_control_directory(policy, frozen, invocation)
     directory.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     count = 0
     with os.scandir(directory.parent) as entries:
@@ -1151,7 +1837,7 @@ def original_execution_request(invocation):
     publication = json_object(ordinary_bytes(path))
     plan_pin = descriptor(invocation / "validation-plan.json"); plan = json_object(checked_descriptor(plan_pin))
     policy = json_object(checked_descriptor(plan["policy"])); frozen = json_object(checked_descriptor(plan["freeze"]))
-    expected = validation_control_directory(policy, frozen) / "execution-request.json"
+    expected = validation_control_directory(policy, frozen, invocation) / "execution-request.json"
     need(set(publication) == {"schema", "request", "invocation_copy", "plan", "freeze", "owner_policy", "source_commitment"}
          and publication["schema"] == CONTROL_PUBLICATION_SCHEMA and publication["request"]["path"] == str(expected)
          and publication["invocation_copy"] == local and publication["plan"] == plan_pin
@@ -1169,6 +1855,7 @@ def publish_closed_validation_control(policy, plan, frozen, request_pin, invocat
     version, exact current ledger row/native policy/PID/groups and typed failed
     inventory. The changing A publisher descriptor is historical metadata.
     """
+    need("source_qualification" not in policy["validation"], "immutable qualification cannot enter repair publish_closed_validation_control")
     proof = json_object(checked_descriptor(negative_pin))
     if not all(proof[key] is True for key in ("source_closed", "native_closed", "processes_closed")):
         return None
@@ -1221,7 +1908,9 @@ def publish_closed_validation_control(policy, plan, frozen, request_pin, invocat
 
 def validate(args):
     policy = checked_policy(args.policy, args.policy_sha256)
-    frozen = frozen_candidate(args.freeze_path, args.source_commitment, args.candidate_root)
+    qualification = checked_source_qualification(policy)
+    frozen = (_source_qualification_arguments(args, qualification) if qualification is not None else
+              frozen_candidate(args.freeze_path, args.source_commitment, args.candidate_root))
     invocation = args.invocation_root
     need(args.receipt_path.parent == invocation and args.freeze_path.parent == invocation.parent,
          "original candidate owner invocation required")
@@ -1248,26 +1937,63 @@ def validate(args):
     argv = [policy["python"], "-I", "-B", str(Path(policy["datasets_root"]) / "scripts/ops/legal_ir/run_owned_validation.py"),
         "--request", request_pin["path"], "--expected-request-sha256", request_pin["sha256"],
         "--resource-ledger", v["resource_ledger"]]
-    completed, witness = original_runner_wait(policy, argv, args.candidate_root, v["timeout_seconds"] + 60)
-    new_json(invocation / "runner-wait.json", {"schema": WORK_SCHEMA, "request": request_pin, **witness,
-        "argv": argv, "returncode": completed.returncode, "stdout": completed.stdout,
-        "stderr": completed.stderr, "original_process_owner_returned": True})
+    validation_request_generation(policy,frozen,invocation,live=True) # Fixed expiry rechecked after publication I/O.
+    completed, witness = original_runner_wait(policy, argv, args.candidate_root, v["timeout_seconds"] + 60,
+        **({"validation_context": {"plan": plan, "request_pin": request_pin, "invocation": invocation, "frozen": frozen}}
+           if _v5_ordinary_validation(policy) else {}))
+    if not _v5_ordinary_validation(policy):
+        new_json(invocation / "runner-wait.json", {"schema": WORK_SCHEMA, "request": request_pin, **witness,
+            "argv": argv, "returncode": completed.returncode, "stdout": completed.stdout,
+            "stderr": completed.stderr, "original_process_owner_returned": True})
     if type(completed.returncode) is int and completed.returncode != 0:
-        capture_negative_validation(policy, plan, frozen, request_pin, invocation, completed)
+        if _v5_ordinary_validation(policy):
+            need(witness["parent_source_custody"]["source_closed"] is True
+                 and witness["parent_source_custody"]["native_closed"] is True, "V5 failed source custody is unknown")
+            if (qualification is None and witness["parent_source_custody"]["closure_kind"] == "original_no_child_no_native_grant"
+                    and json_object(completed.stdout.encode()).get("source_custody_lifecycle", {}).get("schema")
+                        == "owned-validation-pre-grant-ledger-lock-refusal/v1"):
+                material = operational_ledger_busy_material(policy, frozen, request_pin, invocation,
+                    witness["parent_source_closeout"])
+                new_json(invocation/"operational-ledger-busy.json", material)
+                return completed.returncode
+            # Source/native closure is operational evidence only; ACTIVE storage
+            # must never enter the legacy retained-negative publisher or retry path.
+            new_json(invocation / ("failed-source-qualification.json" if qualification is not None else
+                "failed-validation-source-closeout.json"), {
+                "schema": ("agent-supervisor/v5-source-qualification-failed-source-closeout@1" if qualification is not None else
+                    "agent-supervisor/v5-validation-failed-source-closeout@1"),
+                "request": request_pin, "parent_source_custody": witness["parent_source_custody"],
+                "storage_closed": False, "semantic_negative": False, "passed": False, "retry_authorized": False})
+        else:
+            capture_negative_validation(policy, plan, frozen, request_pin, invocation, completed)
         return completed.returncode if 0 < completed.returncode < 126 else 1
     need(type(completed.returncode) is int and completed.returncode == 0,
          "original validation owner failed or is unknown; retain without retry")
     terminal = json_object(completed.stdout.encode())
     original_pin = new_json(invocation / "original-terminal.json", terminal)
-    summary = verify_validation_evidence(policy, plan, request_pin, terminal, invocation)
+    summary = (witness["parent_source_custody"]["verified_checks"] if _v5_ordinary_validation(policy)
+               else verify_validation_evidence(policy, plan, request_pin, terminal, invocation))
+    if qualification is not None:
+        new_json(args.receipt_path, {"schema": SOURCE_QUALIFICATION_SCHEMA,
+            "snapshot": qualification["snapshot_ref"], "source_qualification": qualification["profile"],
+            "source_commitment": args.source_commitment, "passed": True,
+            "source_closed": True, "native_closed": True, "processes_closed": True, "storage_closed": True,
+            "cleanup_errors": [], "original_receipt_reference": original_pin["path"],
+            "original_receipt_descriptor": original_pin, "verified_checks": summary,
+            "parent_source_closeout": witness["parent_source_closeout"],
+            "repair_authority": False, "adoption_authority": False,
+            "activation_authority": False, "completion_authority": False})
+        return
     new_json(args.receipt_path, {"schema": VALIDATION_SCHEMA, "freeze_sha256": frozen["freeze_sha256"],
         "source_commitment": args.source_commitment, "passed": True,
         "source_closed": True, "native_closed": True, "processes_closed": True, "storage_closed": True,
         "cleanup_errors": [], "original_receipt_reference": original_pin["path"],
-        "original_receipt_descriptor": original_pin, "verified_checks": summary})
+        "original_receipt_descriptor": original_pin, "verified_checks": summary,
+        **({"parent_source_closeout": witness["parent_source_closeout"]} if _v5_ordinary_validation(policy) else {})})
 
 
 def verify_validation_evidence(policy, plan, request_pin, terminal, invocation):
+    qualification = _source_qualification_plan(policy, plan, invocation)
     request = json_object(checked_descriptor(request_pin))
     wait = json_object(ordinary_bytes(invocation / "runner-wait.json"))
     need(wait["request"] == request_pin and wait["original_process_owner_returned"] is True
@@ -1292,8 +2018,10 @@ def verify_validation_evidence(policy, plan, request_pin, terminal, invocation):
          and owner["completed"] is True and type(owner["returncode"]) is int and owner["returncode"] == 0
          and owner["request_sha256"] == request_pin["sha256"], "original result mismatch")
     report = json_object(ordinary_bytes(attempt / "exports/trusted-validation.json"))
-    need(report["schema"] == WORK_SCHEMA and report["passed"] is True
-         and report["source_READ_closed"] is True and report["source_snapshot_stable"] is True
+    native_profile = _reviewed_parent_policy(policy)
+    need(report["schema"] == (_reviewed_parent_domain(_reviewed_parent_version(policy))[1] if native_profile else WORK_SCHEMA) and report["passed"] is True
+         and (report["source_READ_closed"] is False if native_profile else report["source_READ_closed"] is True)
+         and report["source_snapshot_stable"] is True
          and report["cleanup_errors"] == [] and report["error"] is None and report["junit_error"] is None and report["guard_denials"] == []
          and report["plan_sha256"] == descriptor(invocation / "validation-plan.json")["sha256"],
          "trusted source/semantic result missing")
@@ -1303,8 +2031,10 @@ def verify_validation_evidence(policy, plan, request_pin, terminal, invocation):
          and report["startup"]["python"] == policy["python"]
          and report["startup"]["isolated"] == 1 and report["startup"]["no_bytecode"] is True,
          "trusted interpreter/Pytest origin differs")
+    _source_qualification_report(qualification, plan, report)
     need(all(report["executed_source_buffers"].get(path) == plan["source_pins"][path]
              for path in plan["required_candidate_bodies"]), "edited candidate body was not actually tested")
+    _v5_validation_namespace_evidence(policy, plan, report)
     if request["schema"] == "owned-validation-request/v3":
         original_external_validation_profile(policy, plan, request_pin, record)
         need(report["collected_cases"] == expected_natural_nodes(plan)
@@ -1337,12 +2067,30 @@ def verify_validation_evidence(policy, plan, request_pin, terminal, invocation):
         need((pin["bytes"], pin["sha256"], info.st_dev, info.st_ino) == (row["bytes"], row["sha256"], row["device"], row["inode"]), "durable artifact changed")
     for path, sha in request["source_sha256"].items():
         need(descriptor(Path(path))["sha256"] == sha, "validation source changed")
-    return {"cases": plan["expected_cases"], "phases": sum(expected.values()), "reservation_id": record["reservation_id"],
+    summary = {"cases": plan["expected_cases"], "phases": sum(expected.values()), "reservation_id": record["reservation_id"],
             "native_lease_id": native["lease_id"], "natural_phase_counter_verified": True}
+    if native_profile:
+        need(report.get("native_return_refusal") is None, "reviewed worker recorded a failed native build return")
+        need(terminal.get("admitted") is False
+             and plan["schema"] == _reviewed_parent_domain(_reviewed_parent_version(policy))[1] and plan["operation"] == policy["operation"]
+             and report["source_custody_mode"] == "delegated-original-parent-read/v1"
+             and report["source_READ_admission_complete"] is False
+             and report["parent_nonce_sha256"] == plan["parent_nonce_sha256"],
+             "reviewed worker delegated source scope differs")
+        binding_pin = descriptor(attempt / "exports/reviewed-preservation-native-binding.json")
+        need(report["native_binding"] == binding_pin, "worker original native binding descriptor differs")
+        binding = json_object(checked_descriptor(binding_pin))
+        inventory = _reviewed_parent_binding_for(policy, binding, durability["files"],
+            attempt_directory=attempt)
+        summary.update(native_binding=binding_pin, packet_inventory=[list(row) for row in inventory],
+            durability=descriptor(attempt / "logs/validation-durability.json"),
+            parent_source_observation=report["parent_source_observation"])
+    return summary
 
 
 def verify_validation(args):
     policy = checked_policy(args.policy, args.policy_sha256)
+    need("source_qualification" not in policy["validation"], "immutable qualification cannot enter repair verify_validation")
     receipt = json_object(ordinary_bytes(args.receipt_path))
     plan = json_object(ordinary_bytes(args.invocation_root / "validation-plan.json"))
     frozen_candidate(args.freeze_path, args.source_commitment, args.candidate_root)
@@ -1350,12 +2098,257 @@ def verify_validation(args):
          and receipt["source_commitment"] == args.source_commitment, "positive bound validation required")
     terminal = json_object(checked_descriptor(receipt["original_receipt_descriptor"]))
     request_pin = original_execution_request(args.invocation_root)
-    verify_validation_evidence(policy, plan, request_pin, terminal, args.invocation_root)
+    actual_summary = verify_validation_evidence(policy, plan, request_pin, terminal, args.invocation_root)
+    if _v5_ordinary_validation(policy):
+        need(receipt["verified_checks"] == actual_summary, "V5 verified summary differs from actual evidence")
+        verify_v5_parent_source_closeout(policy, request_pin, args.invocation_root,
+            receipt["parent_source_closeout"], actual_summary)
 
 
 
+# Immutable incoming SDK evidence is DATA only. It is not the currently running
+# producer or engine, and never supplies a lease, retry, Source or native grant.
+_ARCHIVED_V5_SDK_SOURCES = {}
+_ARCHIVED_V5_SOURCE_STAMP_FIELDS = ('st_dev','st_ino','st_mode','st_uid','st_gid',
+    'st_nlink','st_size','st_mtime_ns','st_ctime_ns')
 
 
+class _ArchivedV5SDKSource:
+    __slots__ = ()
+
+
+def _archived_v5_frozen_input(reference):
+    # Use the existing exact typed descriptor before any path/hash association.
+    raw = checked_descriptor(reference); path = Path(reference['path']); info = path.lstat()
+    need(stat.S_ISREG(info.st_mode) and info.st_uid == os.getuid() and info.st_nlink == 1
+         and not info.st_mode & 0o222, 'archived V5 SDK input must be sealed and owned')
+    return raw, tuple(getattr(info,key) for key in _ARCHIVED_V5_SOURCE_STAMP_FIELDS)
+
+
+def _archived_v5_current_reader_sources():
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon import engine
+    producer = descriptor(Path(__file__).absolute()); engine_ref = descriptor(Path(engine.__file__).absolute())
+    need(producer['sha256'] == _REVIEWED_PARENT_SELF_PIN,
+         'actual current V5 SDK reader source changed after import')
+    need(all(function.__globals__ is globals() and function.__code__.co_filename == producer['path']
+             for function in (checked_policy, checked_control_release, verify_validation_evidence,
+                              verify_v5_parent_source_closeout, _verify_v5_parent_source_closeout)),
+         'actual V5 SDK reader callable origin changed')
+    return producer, engine_ref
+
+
+def _archived_v5_sdk_source_record(witness, policy=None):
+    need(type(witness) is _ArchivedV5SDKSource and witness in _ARCHIVED_V5_SDK_SOURCES,
+         'archived V5 SDK capability is not authenticated')
+    record = _ARCHIVED_V5_SDK_SOURCES[witness]
+    need(policy is None or canonical(policy) == record['policy_encoded'],
+         'archived V5 SDK capability belongs to another policy')
+    current_owner, current_engine = _archived_v5_current_reader_sources()
+    current_stamps = [tuple(getattr(Path(pin['path']).lstat(), key) for key in _ARCHIVED_V5_SOURCE_STAMP_FIELDS)
+                      for pin in (current_owner,current_engine)]
+    need(current_stamps == record['current_stamps']
+         and current_owner == record['current_producer'] and current_engine == record['current_engine'],
+         'archived V5 SDK current reader or engine changed')
+    for reference, stamp in record['inputs']:
+        _, observed = _archived_v5_frozen_input(reference)
+        need(observed == stamp, 'archived V5 SDK frozen input identity changed')
+    # Every declared control source is checked by the existing whole manifest
+    # reader. Every other declared policy/import source retains ordinary current
+    # exact reads in checked_policy; there is no general source substitution.
+    selected = checked_policy(Path(record['policy_ref']['path']), record['policy_ref']['sha256'], current_owner=False)
+    need(canonical(selected) == record['policy_encoded'], 'archived V5 SDK original policy changed')
+    control = checked_control_release(selected, current_owner=False)
+    need(descriptor(control['owner']) == record['producer']
+         and record['engine'] in selected['source_descriptors']
+         and control['pins'].get(record['engine']['path']) == record['engine']['sha256']
+         and checked_descriptor(record['producer']) == checked_descriptor(current_owner)
+         and checked_descriptor(record['engine']) == checked_descriptor(current_engine),
+         'archived V5 SDK incoming/current bodies are not the same source generation')
+    # NEW body compatibility is mandatory. Old7ad receipts do not become
+    # qualified by a later reader that merely adds this API.
+    return record
+
+
+def authenticate_archived_v5_sdk_source(policy_ref):
+    """Bind the exact incoming immutable SDK/engine without loading old code.
+
+    The current SDK body must already be the SAME bytes as both incoming SDK
+    files. Freeze NEW code first, then policy/plan/receipts outside that body.
+    This cannot upgrade an old SDK lineage or assign current producer identity.
+    """
+    policy_raw, _ = _archived_v5_frozen_input(policy_ref)
+    policy = checked_policy(Path(policy_ref['path']), policy_ref['sha256'], current_owner=False)
+    need(_v5_ordinary_validation(policy), 'archived SDK requires explicit existing V5 ordinary profile')
+    control = checked_control_release(policy, current_owner=False)
+    producer = descriptor(control['owner'])
+    engine_path = control['root']/'ipfs_accelerate_py/agent_supervisor/todo_daemon/engine.py'
+    engine_ref = descriptor(engine_path)
+    need(engine_ref in policy['source_descriptors']
+         and control['pins'].get(engine_ref['path']) == engine_ref['sha256'],
+         'archived V5 SDK exact incoming engine must be in the sealed control manifest and policy')
+    current_owner, current_engine = _archived_v5_current_reader_sources()
+    need(checked_descriptor(producer) == checked_descriptor(current_owner)
+         and checked_descriptor(engine_ref) == checked_descriptor(current_engine),
+         'archived V5 SDK incoming/current bodies are not the same source generation')
+    manifest = json_object(checked_descriptor(control['manifest']))
+    references = [policy_ref, control['manifest'], *manifest['files']]
+    unique = {}; inputs = []
+    for reference in references:
+        if reference['path'] in unique:
+            need(canonical(unique[reference['path']]) == canonical(reference), 'archived V5 SDK reference alias')
+            continue
+        unique[reference['path']] = reference
+        _, stamp = _archived_v5_frozen_input(reference)
+        inputs.append((dict(reference),stamp))
+    need(len(_ARCHIVED_V5_SDK_SOURCES) < 64, 'archived V5 SDK capability population exceeded')
+    witness = _ArchivedV5SDKSource()
+    _ARCHIVED_V5_SDK_SOURCES[witness] = dict(policy_ref=dict(policy_ref),policy_encoded=canonical(policy),
+        producer=producer,engine=engine_ref,current_producer=current_owner,current_engine=current_engine,
+        inputs=tuple(inputs),control_root=str(control['root']),
+        current_stamps=[tuple(getattr(Path(pin['path']).lstat(), key) for key in _ARCHIVED_V5_SOURCE_STAMP_FIELDS)
+                        for pin in (current_owner,current_engine)])
+    try:
+        _archived_v5_sdk_source_record(witness)
+        return witness
+    except BaseException:
+        del _ARCHIVED_V5_SDK_SOURCES[witness]; raise
+
+
+def close_archived_v5_sdk_source(witness):
+    need(type(witness) is _ArchivedV5SDKSource and witness in _ARCHIVED_V5_SDK_SOURCES,
+         'archived V5 SDK capability is not authenticated')
+    del _ARCHIVED_V5_SDK_SOURCES[witness]
+
+
+def archived_v5_sdk_source_data(witness):
+    """Return a fresh DATA copy; it is not a source/producer capability."""
+    record = _archived_v5_sdk_source_record(witness)
+    return {'schema':'agent-supervisor/archived-v5-SDK-source-DATA@1',
+        'policy':json_object(record['policy_encoded']), 'policy_ref':dict(record['policy_ref']),
+        'control_root':record['control_root'], 'producer_ref':dict(record['producer']),
+        'engine_ref':dict(record['engine']), 'same_source_generation_bytes_authenticated':True,
+        'current_producer_verified':False, 'current_engine_verified':False,
+        'Source_authority':False, 'native_authority':False, 'dispatch_authority':False,
+        'retry_authority':False, 'storage_release_authority':False,
+        'runtime_activation_authority':False,'completion_authority':False,'current_health_authority':False}
+
+
+def _archived_v5_sdk_origin(witness, policy, role):
+    need(role in ('producer','engine'), 'archived V5 SDK unknown source role')
+    return dict(_archived_v5_sdk_source_record(witness, policy)[role])
+
+
+def verify_archived_v5_parent_source_closeout(witness, request_pin, invocation, closeout_pin, summary):
+    """Recheck original typed wait/Source@2 clocks at their unchanged origins."""
+    record = _archived_v5_sdk_source_record(witness)
+    policy = json_object(record['policy_encoded'])
+    value = _verify_v5_parent_source_closeout(policy, request_pin, invocation, closeout_pin, summary,
+                                             archived_sdk_source=witness)
+    _archived_v5_sdk_source_record(witness, policy)
+    return {'schema':'agent-supervisor/archived-v5-parent-source-closeout-DATA@1',
+        'original_parent_source_closeout':value,'original_policy_ref':dict(record['policy_ref']),
+        'original_producer_ref':dict(record['producer']),'original_engine_ref':dict(record['engine']),
+        'historical_evidence_verified':True,'current_producer_verified':False,
+        'current_engine_verified':False,'Source_authority':False,'native_authority':False,
+        'dispatch_authority':False,'retry_authority':False,'storage_release_authority':False,
+        'runtime_activation_authority':False,'completion_authority':False,'current_health_authority':False,
+        'new_original_process_or_native_execution_performed':False}
+
+
+def verify_v5_parent_source_closeout(policy, request_pin, invocation, closeout_pin, summary):
+    """Recheck CURRENT canonical parent origins; archived capabilities are not accepted."""
+    return _verify_v5_parent_source_closeout(policy, request_pin, invocation, closeout_pin, summary)
+
+
+def _verify_v5_parent_source_closeout(policy, request_pin, invocation, closeout_pin, summary, *, archived_sdk_source=None, _ledger_busy=False):
+    """Recheck the canonical parent's linked observation; no new authority."""
+    need(type(_ledger_busy) is bool and not (_ledger_busy and archived_sdk_source is not None), "operational DATA cannot borrow archived authority")
+    expected_code = 1 if _ledger_busy else 0
+    need(_v5_ordinary_validation(policy) and closeout_pin == descriptor(invocation / "parent-source-closeout.json"),
+         "original V5 parent Source closeout descriptor required")
+    value = json_object(checked_descriptor(closeout_pin))
+    need(type(value) is dict and set(value) == {"schema", "request", "original_wait", "producer", "parent_source_custody"}
+         and value["schema"] == "agent-supervisor/v5-validation-parent-source-closeout@2"
+         and value["request"] == request_pin and value["producer"] == (descriptor(Path(__file__).absolute()) if archived_sdk_source is None else
+             _archived_v5_sdk_origin(archived_sdk_source, policy, 'producer'))
+         and value["producer"] in policy["source_descriptors"], "V5 parent/request/current producer differs")
+    wait_pin = descriptor(invocation / "runner-wait.json")
+    need(value["original_wait"] == wait_pin, "V5 parent genuine wait descriptor differs")
+    wait = json_object(checked_descriptor(wait_pin)); custody = value["parent_source_custody"]
+    need(wait["request"] == request_pin and wait["actual_Popen_returned"] is True
+         and wait["actual_process_waited"] is True and wait["original_process_owner_returned"] is True
+         and type(wait["returncode"]) is int and wait["returncode"] == wait["actual_process_returncode"] == expected_code,
+         "V5 parent completed genuine wait differs")
+    need(type(custody) is dict and custody["schema"] == "agent-supervisor/v5-validation-parent-source-custody@2"
+         and custody["closure_kind"] == ("original_no_child_no_native_grant" if _ledger_busy else "existing_verified_success")
+         and custody["storage_status"] == ("not_entered" if _ledger_busy else "released")
+         and custody["source_closed"] is True and custody["native_closed"] is True
+         and custody["storage_release_authorized"] is False and custody["retry_authorized"] is False
+         and custody["original_wait"] == wait_pin
+         and (("verified_checks" not in custody) if _ledger_busy else custody["verified_checks"] == summary)
+         and type(custody["source_receipts"]) is list and len(custody["source_receipts"]) == 2
+         and type(custody["authority_deadline_monotonic"]) in (int, float)
+         and math.isfinite(custody["authority_deadline_monotonic"]), "V5 positive parent Source observation differs")
+    execution_pin = descriptor(invocation / "runner-execution-observation.json")
+    need(wait["execution_observation"] == custody["execution_observation"] == execution_pin,
+         "V5 parent typed execution descriptor differs")
+    execution = json_object(checked_descriptor(execution_pin)); observed = execution.get("execution_observation")
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon import engine
+    engine_source = (descriptor(Path(engine.__file__).absolute()) if archived_sdk_source is None else
+                     _archived_v5_sdk_origin(archived_sdk_source, policy, 'engine'))
+    need(type(execution) is dict and set(execution) == {"schema", "request", "engine_source", "exact_command_result",
+        "exact_execution_observation", "execution_observation", "public_returncode", "actual_process_pid",
+        "actual_process_returncode", "actual_Popen_returned", "spawn_attempted", "process_count", "runner_identity",
+        "identity_observation_error", "engine_returned", "engine_started_at_monotonic", "engine_finished_at_monotonic",
+        "spawn_returned_at_monotonic", "identity_observed_at_monotonic", "authority_deadline_monotonic",
+        "work_deadline_monotonic", "cleanup_deadline_monotonic", "requested_nominal_window_seconds", "window_scope",
+        "source_closed", "native_closed", "storage_release_authorized", "retry_authorized"}
+         and execution["schema"] == "agent-supervisor/v5-runner-execution-observation@1"
+         and execution["request"] == request_pin and execution["engine_source"] == wait["engine_source"] == engine_source
+         and engine_source in policy["source_descriptors"]
+         and execution["exact_command_result"] is True and execution["exact_execution_observation"] is True
+         and execution["actual_Popen_returned"] is True and execution["spawn_attempted"] is True
+         and execution["engine_returned"] is True and type(execution["process_count"]) is int and execution["process_count"] == 1
+         and execution["runner_identity"] == wait["runner_identity"]
+         and type(execution["actual_process_pid"]) is int and execution["actual_process_pid"] > 0
+         and type(execution["runner_identity"]) is dict and set(execution["runner_identity"]) == {"pid", "birth"}
+         and type(execution["runner_identity"]["pid"]) is int
+         and execution["runner_identity"]["pid"] == execution["actual_process_pid"]
+         and type(execution["runner_identity"]["birth"]) is str and 0 < len(execution["runner_identity"]["birth"]) <= 32
+         and execution["runner_identity"]["birth"].isascii() and execution["runner_identity"]["birth"].isdigit()
+         and int(execution["runner_identity"]["birth"]) > 0 and execution["identity_observation_error"] is None
+         and type(execution["public_returncode"]) is int and type(execution["actual_process_returncode"]) is int
+         and execution["public_returncode"] == execution["actual_process_returncode"] == expected_code,
+         "V5 parent original engine observation differs")
+    need(type(wait["actual_process_returncode"]) is int
+         and type(execution["requested_nominal_window_seconds"]) is int and execution["requested_nominal_window_seconds"] == 300
+         and execution["source_closed"] is False and execution["native_closed"] is False
+         and execution["storage_release_authorized"] is False and execution["retry_authorized"] is False,
+         "V5 parent observation cannot grant authority")
+    need(type(observed) is dict and tuple(sorted(observed)) == tuple(sorted(_V5_EXECUTION_FIELDS))
+         and observed["schema"] == "command-execution-observation/v1"
+         and observed["completion_kind"] == "completed" and observed["leader_waited"] is True
+         and observed["output_capture"] == "complete"
+         and type(observed["process_pid"]) is int and observed["process_pid"] == execution["actual_process_pid"] == wait["runner_identity"]["pid"]
+         and type(observed["process_returncode"]) is int and observed["process_returncode"] == expected_code,
+         "V5 parent complete typed terminal observation differs")
+    deadline = custody["authority_deadline_monotonic"]
+    times = [execution[key] for key in ("engine_started_at_monotonic", "spawn_returned_at_monotonic",
+        "identity_observed_at_monotonic", "engine_finished_at_monotonic")]
+    times += [observed["observed_at_monotonic"], custody["source_exit_finished_at_monotonic"],
+        execution["authority_deadline_monotonic"], execution["work_deadline_monotonic"],
+        execution["cleanup_deadline_monotonic"], custody["work_deadline_monotonic"], custody["cleanup_deadline_monotonic"],
+        observed["work_deadline_monotonic"], observed["cleanup_deadline_monotonic"]]
+    need(all(type(value) in (int, float) and math.isfinite(value) for value in times)
+         and times[0] <= times[1] <= times[2] <= times[4] <= times[3] <= times[5] < deadline
+         and execution["authority_deadline_monotonic"] == deadline
+         and execution["work_deadline_monotonic"] == custody["work_deadline_monotonic"]
+             == observed["work_deadline_monotonic"] == deadline - _V5_PROOF_RESERVE_SECONDS - _V5_ENGINE_CLEANUP_SECONDS
+         and execution["cleanup_deadline_monotonic"] == custody["cleanup_deadline_monotonic"]
+             == observed["cleanup_deadline_monotonic"] == deadline - _V5_PROOF_RESERVE_SECONDS,
+         "V5 parent original deadline observation differs")
+    checked_descriptor(request_pin)
+    return value
 
 
 NEGATIVE_SCHEMA = "agent-supervisor/isolated-repair-candidate-negative-validation@1"
@@ -1365,6 +2358,10 @@ NEGATIVE_VERIFIED_SCHEMA = "agent-supervisor/verified-negative-validation@1"
 
 def verify_negative_semantic_report(policy, plan, report, invocation):
     """Recheck original failed-report attribution and raw compilation facts."""
+    need("source_qualification" not in policy["validation"], "immutable qualification cannot enter repair verify_negative_semantic_report")
+    need("source_qualification" not in plan and "required_source_bodies" not in plan
+         and "source_qualification" not in report and "required_source_bodies" not in report,
+         "repair negative report cannot carry immutable qualification fields")
     need(report["schema"] == WORK_SCHEMA and report["passed"] is False
          and report["source_READ_closed"] is True and report["source_snapshot_stable"] is True
          and report["cleanup_errors"] == [] and report["guard_denials"] == [] and report["error"] is None
@@ -1479,6 +2476,7 @@ def verify_negative_semantic_report(policy, plan, report, invocation):
 
 def negative_validation_material(policy, plan, frozen, request_pin, invocation, terminal, wait):
     """Join immutable original facts; retained storage remains explicitly false."""
+    need("source_qualification" not in policy["validation"], "immutable qualification cannot enter repair negative_validation_material")
     need(type(wait["returncode"]) is int and wait["returncode"] != 0 and wait["request"] == request_pin
          and wait["original_process_owner_returned"] is True and wait["actual_Popen_returned"] is True
          and wait["actual_process_waited"] is True and wait["actual_process_returncode"] == wait["returncode"]
@@ -1506,6 +2504,20 @@ def negative_validation_material(policy, plan, frozen, request_pin, invocation, 
     producer_pin = next(pin for pin in policy["source_descriptors"] if pin["path"] == producer["path"])
     checked_descriptor(producer_pin)
     need(producer_pin["sha256"] == producer["sha256"], "original failed producer identity is unpinned")
+    if _reviewed_parent_policy(policy):
+        # Reuse the original SDK's post-exit request/native/source provenance
+        # above. Failed scientific work cannot claim a semantic negative or a
+        # child Source lease; only the actual parent closes its held READs.
+        process = reservation["process_observation"]
+        process_closed = (process["live_processes"] == 0
+            and process["out_of_group_live_identities"] == [] and not process["tracking_error"])
+        need(reservation["cleanup_error"] is None and native["released"] is True and process_closed
+             and reservation["status"] == record["status"] == "retained",
+             "original scientific failure native/process closure remains unknown")
+        return {"semantic_negative": False, "negative_profile": None, "source_closed": False,
+            "parent_source_ready_to_close": True, "native_closed": True, "processes_closed": True,
+            "storage_closed": False, "reservation_id": record["reservation_id"],
+            "native_lease_id": native["lease_id"]}
     report_path = Path(plan["attempt_directory"]) / "exports/trusted-validation.json"
     need(not report_path.lstat().st_mode & 0o222, "trusted worker report is not immutable")
     report = json_object(ordinary_bytes(report_path))
@@ -1545,6 +2557,7 @@ def negative_validation_material(policy, plan, frozen, request_pin, invocation, 
 
 def capture_negative_validation(policy, plan, frozen, request_pin, invocation, completed):
     """Preserve original partial failure now; future storage release is separate."""
+    need("source_qualification" not in policy["validation"], "immutable qualification cannot enter repair capture_negative_validation")
     wait_pin = descriptor(invocation / "runner-wait.json"); wait = json_object(checked_descriptor(wait_pin))
     value = {"schema": NEGATIVE_SCHEMA, "passed": False, "semantic_negative": False, "negative_profile": None, "semantic_error": None,
         "freeze_sha256": frozen["freeze_sha256"], "source_commitment": frozen["source_commitment"],
@@ -1584,6 +2597,7 @@ def verify_negative_validation(args):
     is authorized by this observation. Missing or ambiguous history stays held.
     """
     policy = checked_policy(args.policy, args.policy_sha256)
+    need("source_qualification" not in policy["validation"], "immutable qualification cannot enter repair verify_negative_validation")
     frozen = frozen_candidate(args.freeze_path, args.source_commitment, args.candidate_root)
     invocation = args.invocation_root
     need(args.receipt_path.parent == invocation and args.freeze_path.parent == invocation.parent,
@@ -1659,10 +2673,18 @@ def public_source_lease(policy):
     expected = str(d / "ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_source_lease.py")
     pin = next(row for row in policy["source_descriptors"] if row["path"] == expected)
     checked_descriptor(pin)
-    sys.path.insert(0, str(d))
+    if _CONTROL_GUARD is None:
+        sys.path.insert(0, str(d))
+    else:
+        roots = _CONTROL_GUARD.roots
+        need(len(roots) == 2 and roots[1] == d, "authenticated cold Source roots differ")
+        prefix = [str(root) for root in roots]
+        sys.path[:] = prefix + [entry for entry in sys.path if entry not in prefix]
     os.environ["IPFS_DATASETS_PY_MINIMAL_IMPORTS"] = "1"
     module = importlib.import_module("ipfs_datasets_py.optimizers.logic_theorem_optimizer.autoencoder_source_lease")
     need(descriptor(Path(module.__file__).absolute()) == pin, "canonical public source owner origin differs")
+    if _reviewed_parent_policy(policy):
+        _reviewed_parent_source_guard(module, pin)
     return module.source_lease
 
 
@@ -2181,6 +3203,7 @@ def _bootstrap_current_profile_contract(policy, frozen, anchor, config, board, c
 
 def current_profile_contract(policy, frozen, *, checked_policy_reference=None):
     """Advance only exact prior profile postimages from the anchored chain."""
+    need("source_qualification" not in policy["validation"], "immutable qualification has no adoption profile")
     from ipfs_accelerate_py.agent_supervisor.rescue.repair_authorization import repair_job_directory
     grant = json_object(checked_descriptor(policy["adoption"]))
     bootstrap = grant.get("schema") == INITIAL_PROFILE_BOOTSTRAP_SCHEMA
@@ -2253,15 +3276,20 @@ def current_profile_contract(policy, frozen, *, checked_policy_reference=None):
 
 def adopt(args):
     policy = checked_policy(args.policy, args.policy_sha256)
+    need("source_qualification" not in policy["validation"], "immutable qualification cannot enter repair adopt")
     frozen = frozen_candidate(args.freeze_path, args.source_commitment, args.candidate_root)
     pending = json_object(ordinary_bytes(args.validation_path))
     need(pending.get("stage") == "adoption_pending" and pending.get("freeze_sha256") == frozen["freeze_sha256"], "accepted original validation required")
     validation_receipt = pending["validation"]
     validation_invocation = Path(validation_receipt["original_receipt_reference"]).parent
-    verify_validation_evidence(policy,
+    actual_summary = verify_validation_evidence(policy,
         json_object(ordinary_bytes(validation_invocation / "validation-plan.json")),
         original_execution_request(validation_invocation),
         json_object(checked_descriptor(validation_receipt["original_receipt_descriptor"])), validation_invocation)
+    if _v5_ordinary_validation(policy):
+        need(validation_receipt["verified_checks"] == actual_summary, "V5 verified summary differs from actual evidence")
+        verify_v5_parent_source_closeout(policy, original_execution_request(validation_invocation), validation_invocation,
+            validation_receipt["parent_source_closeout"], actual_summary)
     checked_reference = descriptor(args.policy)
     need(checked_reference["sha256"] == args.policy_sha256,
          "actual checked owner policy changed before adoption")
@@ -2496,7 +3524,7 @@ def serve(args):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=("validate", "verify-validation", "verify-negative-validation", "adopt", "verify-adoption", "activate", "serve", "inspect-control", "verify-validation-admission"))
+    parser.add_argument("action", choices=("validate", "verify-validation", "verify-negative-validation", "verify-operational-validation", "verify-source-qualification", "adopt", "verify-adoption", "activate", "serve", "inspect-control", "verify-validation-admission"))
     for name in ("policy", "candidate-root", "freeze-path", "receipt-path", "validation-path", "invocation-root", "plan", "deferred", "bootstrap", "config"):
         parser.add_argument("--" + name, type=Path)
     for name in ("policy-sha256", "source-commitment", "plan-sha256", "deferred-sha256", "bootstrap-sha256"):
@@ -2509,11 +3537,2631 @@ def main(argv=None):
         parser.error("all fixed owner binding arguments are required")
     if args.action != "serve":
         install_control_guard(args.policy, args.policy_sha256)
-    dispatch = {"inspect-control": inspect_control, "validate": validate, "verify-validation": verify_validation, "verify-negative-validation": verify_negative_validation, "verify-validation-admission": verify_validation_admission, "adopt": adopt, "verify-adoption": verify_adoption,
+    dispatch = {"inspect-control": inspect_control, "validate": validate, "verify-validation": verify_validation, "verify-negative-validation": verify_negative_validation, "verify-operational-validation": verify_operational_validation, "verify-validation-admission": verify_validation_admission, "verify-source-qualification": verify_source_qualification, "adopt": adopt, "verify-adoption": verify_adoption,
         "activate": activate, "serve": serve}
     result = dispatch[args.action](args)
     return 0 if result is None else result
 
+
+REVIEWED_PARENT_POLICY_SCHEMA = "reviewed-preservation-parent/v1"
+REVIEWED_PARENT_WORKER_SCHEMA = "reviewed-preservation-native-worker/v1"
+REVIEWED_PARENT_BINDING_SCHEMA = "reviewed-preservation-native-binding/v1"
+REVIEWED_PARENT_SOURCE_SCHEMA = "reviewed-preservation-parent-source-observation/v1"
+REVIEWED_PARENT_POLICY_SCHEMA_V3 = "reviewed-preservation-parent/v3"
+REVIEWED_PARENT_WORKER_SCHEMA_V3 = "reviewed-preservation-native-worker/v3"
+REVIEWED_PARENT_BINDING_SCHEMA_V3 = "reviewed-preservation-native-binding/v3"
+_REVIEWED_PARENT_CAPABILITIES = weakref.WeakKeyDictionary()
+_REVIEWED_PARENT_ENGINE_BINDINGS = None
+_REVIEWED_PARENT_SOURCE_BINDINGS = None
+_REVIEWED_PARENT_PACKAGE_BINDINGS = None
+# This exact maintained initializer is independently declared in the original
+# Source manifest. Supporting a successor requires a new source qualification.
+_REVIEWED_PARENT_ROOT_INITIALIZER_SHA256 = "5083369f823be18cd467346f6f3b955925ec65bedafe9eb28a61ca8897997c03"
+_REVIEWED_PARENT_ROOT_INITIALIZER_BYTES = 40208
+
+
+def _reviewed_parent_policy(value):
+    return type(value) is dict and value.get("schema") in (
+        REVIEWED_PARENT_POLICY_SCHEMA, REVIEWED_PARENT_POLICY_SCHEMA_V3)
+
+
+def _reviewed_parent_domain(reviewed_version):
+    need(type(reviewed_version) is int and reviewed_version in (2, 3),
+         "explicit reviewed parent version required")
+    return ((REVIEWED_PARENT_POLICY_SCHEMA, REVIEWED_PARENT_WORKER_SCHEMA,
+             REVIEWED_PARENT_BINDING_SCHEMA, "reviewed-preservation-fixture-native-inputs/v1")
+            if reviewed_version == 2 else
+            (REVIEWED_PARENT_POLICY_SCHEMA_V3, REVIEWED_PARENT_WORKER_SCHEMA_V3,
+             REVIEWED_PARENT_BINDING_SCHEMA_V3, "reviewed-preservation-fixture-native-inputs/v3"))
+
+
+def _reviewed_parent_version(policy):
+    need(type(policy) is dict and policy.get("schema") in (
+        REVIEWED_PARENT_POLICY_SCHEMA, REVIEWED_PARENT_POLICY_SCHEMA_V3),
+        "explicit reviewed parent policy version required")
+    return 2 if policy["schema"] == REVIEWED_PARENT_POLICY_SCHEMA else 3
+
+
+def _reviewed_parent_packet_paths_v3(data):
+    """Derive opening paths from the independently pinned complete preparation DATA.
+
+    This is an identity/shape check only. The original V3 native producer still
+    regenerates the complete project and validates source/review/proofs.
+    """
+    preparation = data["preparation"]
+    need(type(preparation) is dict and set(preparation) == {"manifest_json", "files"}
+         and type(preparation["manifest_json"]) is str
+         and len(preparation["manifest_json"].encode("utf-8")) <= 1024**2
+         and type(preparation["files"]) is list and 1 <= len(preparation["files"]) <= 78,
+         "complete bounded V3 preparation DATA required")
+    # The current shared owner hashes exactly this ordinary string/list tree.
+    need(digest(preparation) == data["expected_preservation_sha256"],
+         "opening V3 preparation DATA differs from its independent complete pin")
+    manifest = json_object(preparation["manifest_json"].encode("utf-8"))
+    need(manifest.get("schema") == "legal-corpus-reviewed-preservation-preparation/v3"
+         and manifest.get("profile") == "reviewed-multi-unit-mixed-relational-preservation/v3"
+         and type(manifest.get("units")) is list and 3 <= len(manifest["units"]) <= 8,
+         "explicit complete three-to-eight-unit mixed preparation required")
+    names, hashes, total = [], {}, 0
+    for pair in preparation["files"]:
+        need(type(pair) is list and len(pair) == 2
+             and all(type(value) is str for value in pair), "ordinary V3 preparation file pairs required")
+        name, body = pair
+        need(len(name) <= 256 and re.fullmatch(
+            r"[A-Za-z0-9_][A-Za-z0-9_.-]*(/[A-Za-z0-9_][A-Za-z0-9_.-]*)?", name)
+             and all(part not in (".", "..") for part in name.split("/")),
+             "safe exact V3 preparation path required")
+        raw = body.encode("utf-8"); total += len(raw)
+        need(total <= 8 * 1024**2, "unchanged complete native project byte bound required")
+        names.append(name); hashes[name] = hashlib.sha256(raw).hexdigest()
+    need(names == sorted(set(names)) and "corpus-manifest.json" not in names
+         and manifest.get("file_sha256") == hashes,
+         "opening V3 file list and manifest hashes differ")
+    modules = manifest.get("expected_modules")
+    need(type(modules) is list and 1 <= len(modules) <= 11
+         and all(type(name) is str and re.fullmatch(
+             r"[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*", name) for name in modules)
+         and len(set(modules)) == len(modules),
+         "exact bounded V3 compiled-module population required")
+    paths = sorted(["build-receipt.json", "stdout.txt", "stderr.txt", "runner-error.txt",
+        "project/corpus-manifest.json",
+        *("project/" + name for name in names),
+        *("executed-inputs/" + name for name in names),
+        *("compiled/" + name.replace(".", "/") + ".olean" for name in modules)])
+    need(len(paths) <= 172 and len(paths) == len(set(paths)),
+         "complete opening V3 packet path population required")
+    return paths
+
+
+def _checked_reviewed_parent_policy_for(policy, path, expected_policy_sha256):
+    if _reviewed_parent_version(policy) == 2:
+        return checked_reviewed_preservation_parent_policy_v1(path, expected_policy_sha256)
+    return checked_reviewed_preservation_parent_policy_v3(path, expected_policy_sha256)
+
+
+def _reviewed_parent_binding_for(policy, binding, durability_files, *, attempt_directory):
+    if _reviewed_parent_version(policy) == 2:
+        return _reviewed_parent_packet_binding_v1(policy["operation"], binding, durability_files,
+            attempt_directory=attempt_directory)
+    return _reviewed_parent_packet_binding_v3(policy["operation"], binding, durability_files,
+        attempt_directory=attempt_directory)
+
+
+def _reviewed_parent_plan_sources(policy, policy_pin):
+    v = policy["validation"]; d = Path(policy["datasets_root"])
+    sources = {}
+    for pin in [*policy["source_descriptors"], *v["import_sources"], *v["trusted_tests"], v["pytest_module"]]:
+        need(pin["path"] not in sources or sources[pin["path"]] == pin["sha256"], "native source pin collision")
+        sources[pin["path"]] = pin["sha256"]
+    need(len(sources) <= 4096, "unchanged complete import manifest cap required")
+    controls = {pin["path"]: pin["sha256"] for pin in policy["source_descriptors"]}
+    controls.update({path: sha for path, sha in sources.items() if d in Path(path).parents})
+    controls[policy_pin["path"]] = policy_pin["sha256"]
+    data = policy["operation"]["native_inputs"]
+    controls[data["path"]] = data["sha256"]
+    need(len(controls) <= 253, "unchanged original SDK source control cap required")
+    return sources, controls
+
+
+def _reviewed_parent_check_plan_v1(policy, context):
+    need(set(context) == {"plan", "request_pin", "invocation", "frozen"}, "closed original parent context required")
+    plan = context["plan"]; operation = policy["operation"]; invocation = Path(context["invocation"])
+    fields = {"schema", "policy", "operation", "native_inputs", "candidate_root", "collection_root", "attempt_directory",
+        "source_pins", "original_public_control_pins", "selected_checks", "expected_cases", "required_candidate_bodies",
+        "ordinary_scratch_profile", "normal_namespace_profiles", "parent_source_observation_path",
+        "parent_nonce_sha256", "parent_identity", "execution_request_path"}
+    need(set(plan) == fields and plan["schema"] == _reviewed_parent_domain(_reviewed_parent_version(policy))[1]
+         and plan["operation"] == operation and plan["native_inputs"] == operation["native_inputs"]
+         and plan["candidate_root"] == plan["collection_root"] == policy["source_root"]
+         and plan["attempt_directory"] == str(Path(policy["validation"]["attempt_root"]) / operation["operation_id"])
+         and plan["selected_checks"] == [operation["nodeid"]] and plan["expected_cases"] == 1
+         and plan["ordinary_scratch_profile"] == _V5_ORDINARY_PROFILE
+         and plan["normal_namespace_profiles"] == policy["validation"]["normal_namespace_profiles"]
+         and plan["parent_identity"] == proc_identity(os.getpid())
+         and plan["parent_source_observation_path"] == str(invocation / "parent-source-observation.json")
+         and plan["execution_request_path"] == str(invocation / "execution-request.json"),
+         "closed predeclared reviewed parent plan differs")
+    source_pins, controls = _reviewed_parent_plan_sources(policy, plan["policy"])
+    need(plan["source_pins"] == source_pins and plan["original_public_control_pins"] == controls,
+         "whole reviewed parent source/data manifest differs")
+    d = Path(policy["datasets_root"])
+    need(plan["required_candidate_bodies"] == [str(d / "ipfs_datasets_py/logic/autoformal/legal_corpus_definition_use_native_v2.py"),
+          operation["nodeid"].split("::", 1)[0]], "exact actual native producer/test bodies required")
+    plan_pin = descriptor(invocation / "validation-plan.json")
+    need(json_object(checked_descriptor(plan_pin)) == plan, "original physical plan differs")
+    request = json_object(checked_descriptor(context["request_pin"]))
+    need(context["request_pin"]["path"] == plan["execution_request_path"]
+         and request["source_sha256"] == {**controls, plan_pin["path"]: plan_pin["sha256"]}
+         and request["argv"] == [policy["python"], "-I", "-B", str(Path(policy["source_root"]) /
+             "ipfs_accelerate_py/agent_supervisor/rescue/repair_validation_worker.py"),
+             "--plan", plan_pin["path"], "--plan-sha256", plan_pin["sha256"]],
+         "original reviewed parent request/source binding differs")
+    frozen = context["frozen"]
+    need(type(frozen) is dict and set(frozen) == {"schema", "parent_nonce"}
+         and frozen["schema"] == "reviewed-preservation-original-parent-context/v1"
+         and type(frozen["parent_nonce"]) is str and re.fullmatch(r"[0-9a-f]{64}", frozen["parent_nonce"])
+         and hashlib.sha256(bytes.fromhex(frozen["parent_nonce"])).hexdigest() == plan["parent_nonce_sha256"],
+         "original reviewed parent nonce context differs")
+
+
+def _reviewed_parent_relative(value):
+    need(type(value) is str and 0 < len(value) <= 512
+         and re.fullmatch(r"[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)*", value)
+         and all(part not in (".", "..") for part in value.split("/")),
+         "closed reviewed parent relative artifact path required")
+    return value
+
+
+def _reviewed_parent_native_descriptor(pin):
+    need(type(pin) is dict and set(pin) == {"path", "bytes", "sha256"}
+         and type(pin["bytes"]) is int and 0 < pin["bytes"] <= 512 * 1024**2
+         and type(pin["sha256"]) is str and _SHA.fullmatch(pin["sha256"]),
+         "bounded pinned native data descriptor required")
+    path = Path(pin["path"])
+    need(path.is_absolute() and ".." not in path.parts
+         and not any(p.is_symlink() for p in (path, *path.parents)), "unaliased native data required")
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    try:
+        before = os.fstat(fd)
+        need(stat.S_ISREG(before.st_mode) and before.st_nlink == 1
+             and before.st_uid in (0, os.getuid()) and before.st_size == pin["bytes"],
+             "pinned ordinary native data differs")
+        hashed = hashlib.sha256(); total = 0
+        while part := os.read(fd, 1024**2):
+            total += len(part); need(total <= pin["bytes"], "native data byte bound exceeded")
+            hashed.update(part)
+        stamp = lambda info: (info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns)
+        need(total == pin["bytes"] and hashed.hexdigest() == pin["sha256"]
+             and stamp(before) == stamp(os.fstat(fd)) == stamp(path.lstat()), "native data changed")
+    finally:
+        os.close(fd)
+
+
+def checked_reviewed_preservation_parent_policy_v1(path, expected_policy_sha256):
+    """Check the unchanged V1 parent policy for reviewed V2 native work."""
+    return _checked_reviewed_preservation_parent_policy(path, expected_policy_sha256, reviewed_version=2)
+
+
+def checked_reviewed_preservation_parent_policy_v3(path, expected_policy_sha256):
+    """Check the explicit mixed V3 policy under the unchanged resource envelope."""
+    return _checked_reviewed_preservation_parent_policy(path, expected_policy_sha256, reviewed_version=3)
+
+
+def _checked_reviewed_preservation_parent_policy(path, expected_policy_sha256, *, reviewed_version):
+    """Closed scientific validation policy; no repair/adoption permission."""
+    domain = _reviewed_parent_domain(reviewed_version)
+    need(type(expected_policy_sha256) is str and _SHA.fullmatch(expected_policy_sha256),
+         "independent reviewed parent policy SHA256 required")
+    raw = ordinary_bytes(Path(path), 4 * 1024**2)
+    need(hashlib.sha256(raw).hexdigest() == expected_policy_sha256, "reviewed parent policy differs")
+    value = json_object(raw)
+    need(set(value) == {"schema", "datasets_root", "source_root", "python", "source_descriptors",
+                        "validation", "operation"} and value.get("schema") == domain[0],
+         "closed reviewed parent policy required")
+    a, d = Path(value["source_root"]), Path(value["datasets_root"])
+    need(a == Path(__file__).resolve().parents[3] and a != d
+         and all(p.is_absolute() and ".." not in p.parts
+                 and not any(part.is_symlink() for part in (p, *p.parents)) for p in (a, d)),
+         "canonical reviewed parent source roots required")
+    need(type(value["python"]) is str and Path(value["python"]).is_absolute(), "explicit parent Python required")
+    sources = value["source_descriptors"]
+    need(type(sources) is list and 0 < len(sources) <= 128
+         and len({row["path"] for row in sources}) == len(sources), "finite original parent sources required")
+    for pin in sources:
+        need(pin["bytes"] <= 4 * 1024**2, "unchanged original source byte cap required")
+        checked_descriptor(pin)
+    v = value["validation"]
+    fields = {"trusted_tests", "selected_checks", "pytest_module", "import_sources", "attempt_root",
+        "cpu_slots", "memory_mb", "storage_bytes", "timeout_seconds", "child_process_slots",
+        "scheduler_state_path", "expected_scheduler_policy_sha256", "roots", "resource_ledger",
+        "ordinary_scratch_profile", "normal_namespace_profiles"}
+    need(type(v) is dict and set(v) == fields and v["ordinary_scratch_profile"] == _V5_ORDINARY_PROFILE
+         and all(type(v[name]) is int and v[name] == expected for name, expected in {
+             "cpu_slots": 1, "memory_mb": 1536, "storage_bytes": 16777216,
+             "timeout_seconds": 300, "child_process_slots": 4}.items()),
+         "unchanged reviewed parent V5 16MiB/300/1/1536/4 profile required")
+    need(type(v["import_sources"]) is list and len(v["import_sources"]) <= 4096
+         and type(v["trusted_tests"]) is list and len(v["trusted_tests"]) == 1,
+         "finite exact reviewed parent import/test manifest required")
+    all_pins = [*sources, *v["import_sources"], *v["trusted_tests"], v["pytest_module"]]
+    for pin in all_pins:
+        need(pin["bytes"] <= 4 * 1024**2, "unchanged normal source byte cap required")
+        checked_descriptor(pin)
+    # Descriptor integrity alone does not make pytest.__main__ its package.
+    # Resolve metadata in the declared installation; never import or execute it.
+    pytest_path = Path(v["pytest_module"]["path"])
+    need(pytest_path.name == "__init__.py" and pytest_path.parent.name == "pytest",
+         "reviewed parent Pytest must pin its normal package initializer")
+    pytest_spec = importlib.machinery.PathFinder.find_spec(
+        "pytest", [str(pytest_path.parent.parent)])
+    need(pytest_spec is not None and pytest_spec.origin == str(pytest_path)
+         and list(pytest_spec.submodule_search_locations or ()) == [str(pytest_path.parent)],
+         "reviewed parent Pytest package metadata differs")
+    pinned = {pin["path"]: pin["sha256"] for pin in all_pins}
+    required = {str(Path(__file__).resolve()),
+        str(a / "ipfs_accelerate_py/agent_supervisor/rescue/repair_validation_worker.py"),
+        str(a / "ipfs_accelerate_py/agent_supervisor/todo_daemon/engine.py"),
+        str(d / "scripts/ops/legal_ir/run_owned_validation.py"),
+        str(d / "ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_source_lease.py"),
+        *_v5_lifecycle_owner_paths(d)}
+    need(required <= set(pinned), "complete original reviewed parent lifecycle sources required")
+    direct_required = {str(Path(__file__).resolve()),
+        str(a / "ipfs_accelerate_py/agent_supervisor/rescue/repair_validation_worker.py"),
+        str(a / "ipfs_accelerate_py/agent_supervisor/todo_daemon/engine.py"),
+        str(d / "scripts/ops/legal_ir/run_owned_validation.py"),
+        str(d / "ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_source_lease.py")}
+    need(direct_required <= {pin["path"] for pin in sources}, "original process/Source/CLI direct descriptors required")
+    namespace_profiles = v["normal_namespace_profiles"]
+    native_namespaces_v2 = (type(namespace_profiles) is list
+        and any(type(profile) is dict and type(profile.get("profile")) is str
+            and profile["profile"] == "reviewed-preservation-normal-namespaces/v2" for profile in namespace_profiles))
+    if native_namespaces_v2:
+        expected_namespaces = (
+            ("ipfs_datasets_py.logic.backends", "ipfs_datasets_py/logic/backends", "process.py"),
+            ("ipfs_datasets_py.logic.families", "ipfs_datasets_py/logic/families", "namespaces.py"),
+            ("ipfs_datasets_py.logic.intent_ir.formalize", "ipfs_datasets_py/logic/intent_ir/formalize", "modal_projections.py"),
+        )
+        need(len(namespace_profiles) == 3
+             and all(type(profile) is dict and set(profile) == {
+                 "profile", "fullname", "path", "device", "inode", "initializer_absent"}
+                 for profile in namespace_profiles), "exact three native namespace v2 declarations required")
+        for namespace, (fullname, relative, representative) in zip(namespace_profiles, expected_namespaces, strict=True):
+            directory = d / relative
+            need(type(namespace["profile"]) is str
+                 and namespace["profile"] == "reviewed-preservation-normal-namespaces/v2"
+                 and type(namespace["fullname"]) is type(namespace["path"]) is str
+                 and namespace["fullname"] == fullname and namespace["path"] == str(directory)
+                 and type(namespace["device"]) is int and namespace["device"] >= 0
+                 and type(namespace["inode"]) is int and namespace["inode"] > 0
+                 and namespace["initializer_absent"] is True
+                 and str(directory / representative) in pinned,
+                 "native namespace v2 name/path/identity/source declaration differs")
+    else:
+        need(type(v["normal_namespace_profiles"]) is list and len(v["normal_namespace_profiles"]) == 1,
+             "single exact existing normal backends namespace profile required")
+        namespace = v["normal_namespace_profiles"][0]
+        need(type(namespace) is dict and set(namespace) == {"fullname", "path", "device", "inode", "initializer_absent"}
+             and namespace["fullname"] == "ipfs_datasets_py.logic.backends"
+             and namespace["path"] == str(d / "ipfs_datasets_py/logic/backends")
+             and type(namespace["device"]) is int and namespace["device"] >= 0
+             and type(namespace["inode"]) is int and namespace["inode"] > 0
+             and namespace["initializer_absent"] is True,
+             "only canonical normal backends namespace is permitted")
+        namespace_profiles = [namespace]
+    for namespace in namespace_profiles:
+        directory = Path(namespace["path"])
+        need(not any(p.is_symlink() for p in (directory, *directory.parents)), "unaliased normal namespace required")
+        namespace_fd = os.open(directory, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC)
+        try:
+            opened = os.fstat(namespace_fd)
+            need(stat.S_ISDIR(opened.st_mode) and opened.st_uid == os.getuid()
+                 and (opened.st_dev, opened.st_ino) == (namespace["device"], namespace["inode"]),
+                 "normal namespace physical identity changed")
+            try:
+                os.stat("__init__.py", dir_fd=namespace_fd, follow_symlinks=False)
+            except FileNotFoundError:
+                pass
+            else:
+                need(False, "normal namespace initializer absence changed")
+            after = directory.lstat()
+            need((after.st_dev, after.st_ino) == (opened.st_dev, opened.st_ino), "normal namespace changed")
+        finally:
+            os.close(namespace_fd)
+    need(type(v["roots"]) is list and 0 < len(v["roots"]) <= 4
+         and all(type(root) is str and Path(root).is_absolute() for root in v["roots"]),
+         "finite original named storage roots required")
+    need(Path(v["attempt_root"]).is_absolute() and any(Path(root) in Path(v["attempt_root"]).parents
+         or Path(root) == Path(v["attempt_root"]) for root in v["roots"]), "named attempt root required")
+    for key in ("resource_ledger", "scheduler_state_path", "attempt_root"):
+        p = Path(v[key]); need(p.is_absolute() and ".." not in p.parts
+            and not any(q.is_symlink() for q in (p, *p.parents)), "unaliased existing control path required")
+    need(type(v["expected_scheduler_policy_sha256"]) is str
+         and _SHA.fullmatch(v["expected_scheduler_policy_sha256"]), "original scheduler policy pin required")
+    op = value["operation"]
+    need(type(op) is dict and set(op) == {"operation_id", "packet_root", "nodeid", "expected_source_sha256",
+        "expected_graph_sha256", "expected_admission_sha256", "expected_preservation_sha256", "toolchain",
+        "expected_binary_sha256", "native_argv", "native_data", "native_inputs"}
+        | ({"expected_packet_paths"} if reviewed_version == 3 else set()), "closed reviewed parent operation required")
+    data_pin = op["native_inputs"]
+    need(type(data_pin) is dict and set(data_pin) == {"path", "bytes", "sha256"}
+         and type(data_pin["bytes"]) is int and 0 < data_pin["bytes"] <= 4 * 1024**2,
+         "bounded original public native input DATA descriptor required")
+    data = json_object(checked_descriptor(data_pin))
+    need(set(data) == {"schema", "fixture_only", "provenance_kind", "preparation", "graph", "admission", "args", "kwargs",
+        "expected_preservation_sha256", "expected_graph_sha256", "expected_admission_sha256", "toolchain"}
+        and data["schema"] == domain[3]
+        and data["fixture_only"] is True and data["provenance_kind"] == "fictional_fixture",
+        "closed public signed fictional native fixture DATA required")
+    need(all(data[name] == op[name] for name in ("expected_preservation_sha256", "expected_graph_sha256",
+        "expected_admission_sha256", "toolchain")), "public native fixture differs from predeclared operation pins")
+    if reviewed_version == 3:
+        need(op["expected_packet_paths"] == _reviewed_parent_packet_paths_v3(data),
+             "V3 opening packet paths differ from pinned complete preparation DATA")
+    forbidden = {"private_key", "private_key_bytes", "secret_key", "signing_key", "private_bytes", "signers"}
+    pending, nodes = [(data, 0)], 0
+    while pending:
+        item, depth = pending.pop(); nodes += 1
+        need(nodes <= 2_000_000 and depth <= 64, "bounded public native input DATA tree required")
+        if type(item) is dict:
+            need(not forbidden.intersection(item), "private signer or signing key DATA is forbidden")
+            pending.extend((child, depth + 1) for child in item.values())
+        elif type(item) is list:
+            pending.extend((child, depth + 1) for child in item)
+    need(data_pin["path"] not in pinned, "native input DATA must not grant source execution permission")
+    need(type(op["operation_id"]) is str and re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}", op["operation_id"]),
+         "exact reviewed operation ID required")
+    need(_reviewed_parent_relative(op["packet_root"]).startswith("exports/"), "native packet must be inside owned exports")
+    need(v["selected_checks"] == [op["nodeid"]] and type(op["nodeid"]) is str and "::" in op["nodeid"]
+         and op["nodeid"].split("::", 1)[0] == v["trusted_tests"][0]["path"]
+         and any(a / folder in Path(v["trusted_tests"][0]["path"]).parents for folder in ("test", "tests")),
+         "single exact maintained canonical native test node required")
+    need(type(op["expected_source_sha256"]) is dict and op["expected_source_sha256"]
+         and all(pinned.get(name) == pin for name, pin in op["expected_source_sha256"].items()),
+         "exact reviewed native producer source pins required")
+    for name in ("expected_graph_sha256", "expected_admission_sha256", "expected_preservation_sha256"):
+        need(type(op[name]) is str and _SHA.fullmatch(op[name]), "explicit reviewed operation pin required")
+    need(type(op["toolchain"]) is str and re.fullmatch(r"leanprover/lean4:v[0-9]+\.[0-9]+\.[0-9]+", op["toolchain"]),
+         "version-pinned reviewed native toolchain required")
+    binaries = op["expected_binary_sha256"]
+    need(type(binaries) is dict and len(binaries) == 2
+         and {Path(name).name for name in binaries} == {"lake", "lean"}
+         and len({str(Path(name).parent) for name in binaries}) == 1
+         and all(Path(name).is_absolute() and type(pin) is str and _SHA.fullmatch(pin) for name, pin in binaries.items()),
+         "exact sibling reviewed native compiler pins required")
+    roster = op["native_data"]
+    binroot = Path(next(name for name in binaries if Path(name).name == "lake")).parent
+    required_native = {"/usr/bin/prlimit", *(str(binroot / name) for name in ("lake", "lean")),
+        *(str(binroot.parent / "lib/lean" / name) for name in ("libLake_shared.so", "libInit_shared.so",
+            "libleanshared_1.so", "libleanshared_2.so", "libleanshared.so"))}
+    need(type(roster) is list and len(roster) == 8 and {pin["path"] for pin in roster} == required_native
+         and sum(pin["bytes"] for pin in roster) <= 512 * 1024**2, "exact eight native data files required")
+    for pin in roster:
+        _reviewed_parent_native_descriptor(pin)
+        need(pin["path"] not in binaries or pin["sha256"] == binaries[pin["path"]], "native compiler roster pin differs")
+    need(type(op["native_argv"]) is list and len(op["native_argv"]) == 3
+         and all(type(argv) is list and argv and all(type(x) is str and x and "\x00" not in x for x in argv)
+                 and argv[0] == "/usr/bin/prlimit" and "--" in argv for argv in op["native_argv"]),
+         "three exact predeclared original prlimit launches required")
+    wanted = [[str(binroot / "lake"), "--version"], [str(binroot / "lean"), "--version"],
+              [str(binroot / "lake"), "--offline", "--no-cache", "build", "legal"]]
+    need([argv[argv.index("--") + 1:] for argv in op["native_argv"]] == wanted,
+         "exact original probe/probe/offline legal build roster required")
+    prefix = ["/usr/bin/prlimit", "--core=0:0"]
+    expected_argv = [prefix + ["--fsize=16777216:16777216", "--", *wanted[0]],
+        prefix + ["--fsize=16777216:16777216", "--", *wanted[1]],
+        prefix + ["--fsize=134217728:134217728", "--cpu=60:60", "--", *wanted[2]]]
+    need(op["native_argv"] == expected_argv, "exact three bounded original native command limits required")
+    return value
+
+
+def _reviewed_parent_proc_stat(pid):
+    need(type(pid) is int and pid > 0, "positive original parent process ID required")
+    fields = Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()
+    need(fields[19].isdigit() and int(fields[19]) > 0, "original process birth required")
+    return {"pid": pid, "ppid": int(fields[1]), "birth": fields[19]}
+
+
+def _reviewed_parent_fd_observation(pid, fd):
+    need(type(pid) is int and pid > 0 and type(fd) is int and 0 <= fd <= 1_000_000,
+         "bounded original Source descriptor required")
+    path = Path(f"/proc/{pid}/fd/{fd}"); info = path.stat()
+    text = Path(f"/proc/{pid}/fdinfo/{fd}").read_text()
+    need(len(text) <= 16384 and stat.S_ISREG(info.st_mode), "ordinary original Source FD required")
+    return {"device": info.st_dev, "inode": info.st_ino, "lock_path": os.readlink(path), "fdinfo": text}
+
+
+def _reviewed_parent_proc_executable(pid):
+    return Path(f"/proc/{pid}/exe").resolve(strict=True)
+
+
+def _reviewed_parent_kernel_read_lock(pid, row):
+    observed = _reviewed_parent_fd_observation(pid, row["fd"])
+    need(all(observed[name] == row[name] for name in ("device", "inode", "lock_path")),
+         "original parent Source FD identity changed")
+    expected = (pid, os.major(row["device"]), os.minor(row["device"]), row["inode"])
+    matches = []
+    for line in observed["fdinfo"].splitlines():
+        match = re.fullmatch(r"lock:\s+\d+:\s+FLOCK\s+ADVISORY\s+READ\s+(\d+)\s+([0-9a-fA-F]+):([0-9a-fA-F]+):(\d+)\s+0\s+EOF", line)
+        if match:
+            matches.append((int(match[1]), int(match[2], 16), int(match[3], 16), int(match[4])))
+    need(expected in matches, "genuine parent kernel FLOCK READ is not held")
+
+
+def _reviewed_parent_validate_source_observation(raw, *, expected_request_sha256,
+        expected_parent_identity, expected_nonce_sha256, expected_sdk_argv, expected_roots):
+    need(type(raw) is bytes and 0 < len(raw) <= 1024**2, "bounded original Source observation bytes required")
+    value = json_object(raw)
+    need(set(value) == {"schema", "request", "parent_identity", "nonce", "source_receipts", "source_fds", "sdk_argv"}
+         and value["schema"] == REVIEWED_PARENT_SOURCE_SCHEMA
+         and value["parent_identity"] == expected_parent_identity and value["sdk_argv"] == expected_sdk_argv
+         and value["request"]["sha256"] == expected_request_sha256,
+         "original parent Source observation binding differs")
+    need(type(value["nonce"]) is str and re.fullmatch(r"[0-9a-f]{64}", value["nonce"])
+         and hashlib.sha256(bytes.fromhex(value["nonce"])).hexdigest() == expected_nonce_sha256,
+         "original parent Source nonce differs")
+    checked_descriptor(value["request"])
+    parent = _reviewed_parent_proc_stat(expected_parent_identity["pid"])
+    need({name: parent[name] for name in ("pid", "birth")} == expected_parent_identity,
+         "original parent Source process birth differs")
+    need(type(value["source_receipts"]) is list and type(value["source_fds"]) is list
+         and len(value["source_receipts"]) == len(value["source_fds"]) == len(expected_roots) == 2,
+         "two original parent Source READs required")
+    for receipt, row, root in zip(value["source_receipts"], value["source_fds"], expected_roots, strict=True):
+        need(type(receipt) is dict and set(receipt) == {"canonical_root", "mode", "lock_path", "waited_seconds", "schema_version", "cooperative"}
+             and receipt["canonical_root"] == str(root) and receipt["mode"] == "read"
+             and receipt["schema_version"] == "autoencoder-source-lease/v1" and receipt["cooperative"] is True
+             and type(receipt["waited_seconds"]) in (int, float)
+             and math.isfinite(receipt["waited_seconds"]) and receipt["waited_seconds"] >= 0
+             and type(row) is dict and set(row) == {"root", "lock_path", "fd", "device", "inode"}
+             and row["root"] == str(root) and row["lock_path"] == receipt["lock_path"]
+             and all(type(row[key]) is int and row[key] >= 0 for key in ("fd", "device", "inode")),
+             "original parent Source receipt/descriptor differs")
+        lock = Path(row["lock_path"])
+        need(lock == Path(root) / "workspace/control-plane/source-leases/source.lock"
+             and lock.is_absolute() and not any(p.is_symlink() for p in (lock, *lock.parents)),
+             "unaliased canonical Source lock path required")
+        info = lock.lstat()
+        need(stat.S_ISREG(info.st_mode) and info.st_nlink == 1 and info.st_uid == os.getuid()
+             and (info.st_dev, info.st_ino) == (row["device"], row["inode"]), "canonical Source lock identity differs")
+        _reviewed_parent_kernel_read_lock(parent["pid"], row)
+    return value
+
+
+def verify_reviewed_preservation_parent_source_observation_v1(observation_raw, *,
+        expected_request_sha256, expected_parent_identity, expected_nonce_sha256, expected_sdk_argv, expected_roots):
+    """Observe real parent's held Source FDs through the actual SDK child chain.
+
+    This pure read-only check acquires no lease and mints no capability. The
+    child owns no Source closure; only the original parent closes these READs.
+    """
+    value = _reviewed_parent_validate_source_observation(observation_raw,
+        expected_request_sha256=expected_request_sha256, expected_parent_identity=expected_parent_identity,
+        expected_nonce_sha256=expected_nonce_sha256, expected_sdk_argv=expected_sdk_argv, expected_roots=expected_roots)
+    worker = _reviewed_parent_proc_stat(os.getpid())
+    sdk = _reviewed_parent_proc_stat(worker["ppid"])
+    need(sdk["ppid"] == expected_parent_identity["pid"], "worker is not original SDK CLI parent's child")
+    need(_reviewed_parent_proc_executable(sdk["pid"]) == Path(expected_sdk_argv[0]).resolve(strict=True),
+         "worker original SDK CLI executable differs")
+    command = Path(f"/proc/{sdk['pid']}/cmdline").read_bytes()
+    need(0 < len(command) <= 32768 and command.endswith(b"\x00")
+         and command[:-1].split(b"\x00") == [os.fsencode(word) for word in expected_sdk_argv],
+         "worker original SDK CLI command chain differs")
+    return {"observation_sha256": hashlib.sha256(observation_raw).hexdigest(),
+        "request_sha256": expected_request_sha256, "nonce_sha256": expected_nonce_sha256,
+        "parent_identity": dict(expected_parent_identity), "source_fds": [dict(row) for row in value["source_fds"]]}
+
+
+def _reviewed_parent_record_source_fd(custody, manager, held):
+    generator = getattr(manager, "gen", None); frame = getattr(generator, "gi_frame", None)
+    source = Path(custody.policy["datasets_root"]) / "ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_source_lease.py"
+    need(frame is not None and generator.gi_code.co_name == "source_lease"
+         and generator.gi_code.co_filename == str(source) and frame.f_globals.get("__file__") == str(source),
+         "original live Source42 generator required")
+    need(_REVIEWED_PARENT_SOURCE_BINDINGS is not None
+         and generator.gi_code is _REVIEWED_PARENT_SOURCE_BINDINGS[3][1]
+         and frame.f_globals is vars(_REVIEWED_PARENT_SOURCE_BINDINGS[0]),
+         "same original Source42 generator code and globals required")
+    fd = frame.f_locals.get("source")
+    need(type(fd) is int and fd >= 0 and frame.f_locals.get("root") == Path(held.canonical_root),
+         "actual held Source42 descriptor required")
+    info = os.fstat(fd)
+    row = {"root": held.canonical_root, "lock_path": held.lock_path,
+           "fd": fd, "device": info.st_dev, "inode": info.st_ino}
+    _reviewed_parent_kernel_read_lock(os.getpid(), row)
+    if not hasattr(custody, "reviewed_source_fds"):
+        custody.reviewed_source_fds = []
+    custody.reviewed_source_fds.append(row)
+
+
+def _reviewed_parent_publish_source_observation(custody):
+    plan, frozen = custody.context["plan"], custody.context["frozen"]
+    need(plan["schema"] == _reviewed_parent_domain(_reviewed_parent_version(custody.policy))[1] and plan["operation"] == custody.policy["operation"]
+         and plan["parent_identity"] == proc_identity(os.getpid())
+         and hashlib.sha256(bytes.fromhex(frozen["parent_nonce"])).hexdigest() == plan["parent_nonce_sha256"],
+         "original predeclared parent Source operation differs")
+    value = {"schema": REVIEWED_PARENT_SOURCE_SCHEMA, "request": custody.request_pin,
+        "parent_identity": plan["parent_identity"], "nonce": frozen["parent_nonce"],
+        "source_receipts": custody.receipts, "source_fds": custody.reviewed_source_fds, "sdk_argv": custody.argv}
+    custody.reviewed_source_observation = new_json(Path(plan["parent_source_observation_path"]), value)
+    custody.reviewed_source_raw = checked_descriptor(custody.reviewed_source_observation)
+    _reviewed_parent_validate_source_observation(custody.reviewed_source_raw,
+        expected_request_sha256=custody.request_pin["sha256"], expected_parent_identity=plan["parent_identity"],
+        expected_nonce_sha256=plan["parent_nonce_sha256"], expected_sdk_argv=custody.argv,
+        expected_roots=[custody.d, custody.cwd])
+
+
+def _reviewed_parent_check_worker_delegation(custody, *, require_worker_report=True):
+    plan = custody.context["plan"]
+    need(checked_descriptor(custody.reviewed_source_observation) == custody.reviewed_source_raw,
+         "original parent Source observation changed")
+    _reviewed_parent_validate_source_observation(custody.reviewed_source_raw,
+        expected_request_sha256=custody.request_pin["sha256"], expected_parent_identity=plan["parent_identity"],
+        expected_nonce_sha256=plan["parent_nonce_sha256"], expected_sdk_argv=custody.argv,
+        expected_roots=[custody.d, custody.cwd])
+    if not require_worker_report:
+        return
+    report = json_object(ordinary_bytes(Path(plan["attempt_directory"]) / "exports/trusted-validation.json"))
+    need(report["parent_source_observation"] == custody.reviewed_source_observation
+         and report["parent_nonce_sha256"] == plan["parent_nonce_sha256"]
+         and report["source_custody_mode"] == "delegated-original-parent-read/v1"
+         and report["source_READ_closed"] is False and report["source_READ_admission_complete"] is False,
+         "worker cannot replace original parent Source closure")
+
+
+def _reviewed_parent_packet_binding_v1(operation, binding, durability_files, *, attempt_directory):
+    return _reviewed_parent_packet_binding(operation, binding, durability_files,
+        attempt_directory=attempt_directory, reviewed_version=2)
+
+
+def _reviewed_parent_packet_binding_v3(operation, binding, durability_files, *, attempt_directory):
+    return _reviewed_parent_packet_binding(operation, binding, durability_files,
+        attempt_directory=attempt_directory, reviewed_version=3)
+
+
+def _reviewed_parent_packet_binding(operation, binding, durability_files, *, attempt_directory, reviewed_version):
+    """Pure exact inventory join; this alone authenticates no original success."""
+    domain = _reviewed_parent_domain(reviewed_version)
+    fields = {"schema", "operation_id", "packet_root", "receipt_sha256", "packet_sha256",
+        "preparation_sha256", "graph_sha256", "admission_sha256", "toolchain", "binary_sha256",
+        "producer_pins", "execution_projection_sha256", "packet_inventory", "native_argv"}
+    if reviewed_version == 3:
+        fields.add("expected_packet_paths")
+    need(type(binding) is dict and set(binding) == fields and binding["schema"] == domain[2],
+         "closed original reviewed native packet binding required")
+    wanted = {"operation_id": operation["operation_id"], "packet_root": operation["packet_root"],
+        "preparation_sha256": operation["expected_preservation_sha256"], "graph_sha256": operation["expected_graph_sha256"],
+        "admission_sha256": operation["expected_admission_sha256"], "toolchain": operation["toolchain"],
+        "binary_sha256": operation["expected_binary_sha256"], "native_argv": operation["native_argv"]}
+    need(all(binding[key] == value for key, value in wanted.items()), "predeclared reviewed native operation differs")
+    need(type(binding["producer_pins"]) is dict and all(binding["producer_pins"].get(name) == pin
+        for name, pin in operation["expected_source_sha256"].items()), "original reviewed native source pins differ")
+    for key in ("receipt_sha256", "packet_sha256", "execution_projection_sha256"):
+        need(type(binding[key]) is str and _SHA.fullmatch(binding[key]), "complete original native commitment required")
+    rows = binding["packet_inventory"]
+    need(type(rows) is list and ((len(rows) == 77) if reviewed_version == 2 else 1 <= len(rows) <= 172),
+         "complete original77-file native packet required" if reviewed_version == 2
+         else "complete original V3 native packet population required")
+    names = []
+    for row in rows:
+        need(type(row) is dict and set(row) == {"path", "bytes", "sha256"}
+             and type(row["bytes"]) is int and 0 <= row["bytes"] <= 48 * 1024**2
+             and type(row["sha256"]) is str and _SHA.fullmatch(row["sha256"]), "exact native packet byte inventory required")
+        names.append(_reviewed_parent_relative(row["path"]))
+    need(names == sorted(set(names)) and sum(row["bytes"] for row in rows) <= 16 * 1024**2,
+         "sorted bounded complete original native packet required")
+    if reviewed_version == 2:
+        need(set(name for name in names if "/" not in name) == {"build-receipt.json", "stdout.txt", "stderr.txt", "runner-error.txt"}
+             and sum(name.startswith("project/") for name in names) == 34
+             and sum(name.startswith("executed-inputs/") for name in names) == 33
+             and sum(name.startswith("compiled/") for name in names) == 6,
+             "exact qualified77-file native packet partitions required")
+    else:
+        expected = operation["expected_packet_paths"]
+        need(type(expected) is list and 1 <= len(expected) <= 172
+             and all(type(name) is str for name in expected) and expected == sorted(set(expected))
+             and names == expected and binding["expected_packet_paths"] == expected,
+             "exact independently pinned V3 packet population required")
+        need(set(name for name in names if "/" not in name)
+             == {"build-receipt.json", "stdout.txt", "stderr.txt", "runner-error.txt"},
+             "complete V3 top-level receipt and log population required")
+    need(digest(rows) == binding["packet_sha256"]
+         and next(row["sha256"] for row in rows if row["path"] == "build-receipt.json") == binding["receipt_sha256"],
+         "complete original native packet/receipt commitment differs")
+    prefix = _reviewed_parent_relative(operation["packet_root"]) + "/"
+    need(Path(attempt_directory).is_absolute() and prefix.startswith("exports/"), "owned native export root required")
+    selected = {}
+    need(type(durability_files) is list, "original complete durability inventory required")
+    for row in durability_files:
+        need(type(row) is dict and set(row) == {"path", "bytes", "sha256", "device", "inode"},
+             "closed original durable file row required")
+        _reviewed_parent_relative(row["path"])
+        if row["path"].startswith(prefix):
+            rel = row["path"][len(prefix):]
+            need(rel not in selected, "duplicate original durable native path")
+            selected[rel] = row
+    need(set(selected) == set(names), "complete original native packet durability coverage differs")
+    result = []
+    for row in rows:
+        durable = selected[row["path"]]
+        need((row["bytes"], row["sha256"]) == (durable["bytes"], durable["sha256"])
+             and all(type(durable[key]) is int and durable[key] >= 0 for key in ("device", "inode")),
+             "original native packet byte/physical durability join differs")
+        result.append((prefix + row["path"], row["bytes"], row["sha256"], durable["device"], durable["inode"]))
+    return tuple(result)
+
+
+class VerifiedReviewedPreservationParentSuccess:
+    """Opaque original admitted-parent engineering custody, never legal authority."""
+    __slots__ = ("__weakref__",)
+    __eq__ = object.__eq__
+    __hash__ = object.__hash__
+    def __new__(cls, *args, **kwargs):
+        raise TypeError("reviewed parent success is issued only by its original successful wait")
+    def __init_subclass__(cls, **kwargs):
+        raise TypeError("reviewed parent success cannot be subclassed")
+    def __reduce_ex__(self, protocol):
+        raise TypeError("reviewed parent success cannot be copied or serialized")
+
+
+def _reviewed_parent_function_state(function):
+    return (function, function.__code__, function.__defaults__, tuple(sorted((function.__kwdefaults__ or {}).items())))
+
+
+def _reviewed_parent_function_matches(function, state):
+    return (type(function) is types.FunctionType and function is state[0] and function.__code__ is state[1]
+        and function.__defaults__ is state[2] and set(function.__kwdefaults__ or {}) == {key for key, _ in state[3]}
+        and all((function.__kwdefaults__ or {})[key] is value for key, value in state[3]))
+
+
+def _reviewed_parent_descriptor_function(value):
+    return value.__func__ if type(value) in (staticmethod, classmethod) else value.fget if type(value) is property else value
+
+
+def _reviewed_parent_package_guard(package):
+    """Accept only the source-pinned maintained lazy A root module class.
+
+    Read the namespace intrinsically so this check never resolves an optional
+    lazy public attribute. This observes code provenance, granting no authority.
+    """
+    global _REVIEWED_PARENT_PACKAGE_BINDINGS
+
+    def require(condition, label):
+        if not condition:
+            raise ValueError("reviewed parent callable bindings changed: canonical source package " + label)
+
+    def matches(function, state):
+        return (type(function) is types.FunctionType and function is state[0]
+            and function.__code__ is state[1] and function.__defaults__ is state[2]
+            and set(function.__kwdefaults__ or {}) == {name for name, _ in state[3]}
+            and all((function.__kwdefaults__ or {})[name] is value for name, value in state[3]))
+
+    try:
+        namespace = types.ModuleType.__getattribute__(package, "__dict__")
+    except (TypeError, AttributeError) as error:
+        raise ValueError("reviewed parent callable bindings changed: canonical source package module") from error
+    filename = Path(__file__).resolve().parents[3] / "ipfs_accelerate_py/__init__.py"
+    require(type(namespace) is dict and namespace.get("__name__") == "ipfs_accelerate_py"
+            and sys.modules.get("ipfs_accelerate_py") is package
+            and type(namespace.get("__file__")) is str
+            and Path(namespace["__file__"]).resolve() == filename,
+            "origin")
+    spec = namespace.get("__spec__")
+    require(type(spec) is importlib.machinery.ModuleSpec and spec.origin == str(filename)
+            and namespace.get("ModuleType") is types.ModuleType,
+            "specification")
+    raw = ordinary_bytes(filename, 4 * 1024**2)
+    require(len(raw) == _REVIEWED_PARENT_ROOT_INITIALIZER_BYTES
+            and hashlib.sha256(raw).hexdigest() == _REVIEWED_PARENT_ROOT_INITIALIZER_SHA256,
+            "initializer pin")
+    owner = namespace.get("_IPFSAccelerateModule")
+    require(type(owner) is type and type(package) is owner
+            and owner.__module__ == "ipfs_accelerate_py" and owner.__qualname__ == "_IPFSAccelerateModule"
+            and owner.__bases__ == (types.ModuleType,),
+            "class identity")
+    class_namespace = type.__getattribute__(owner, "__dict__")
+    if _REVIEWED_PARENT_PACKAGE_BINDINGS is None:
+        tree = ast.parse(raw, str(filename))
+        declarations = [node for node in tree.body if type(node) is ast.ClassDef
+                        and node.name == "_IPFSAccelerateModule"]
+        require(len(declarations) == 1 and len(declarations[0].bases) == 1
+                and type(declarations[0].bases[0]) is ast.Name
+                and declarations[0].bases[0].id == "ModuleType" and not declarations[0].keywords,
+                "class declaration")
+        methods = [node for node in declarations[0].body if type(node) is ast.FunctionDef]
+        names = {node.name for node in methods}
+        require(names == {"__getattribute__", "__setattr__", "__delattr__", "__dir__"}
+                and len(methods) == 4 and all(not node.decorator_list for node in methods),
+                "method declaration")
+        allowed = names | {"__module__", "__doc__", "__dict__", "__weakref__", "__qualname__"}
+        require(set(class_namespace) <= allowed, "undeclared class namespace")
+        for name in ("__dict__", "__weakref__"):
+            if name in class_namespace:
+                descriptor = class_namespace[name]
+                require(type(descriptor) in (types.GetSetDescriptorType, types.MemberDescriptorType)
+                        and descriptor.__objclass__ is owner,
+                        "generated class descriptor")
+        codes = {}
+
+        def walk(code):
+            codes[code.co_qualname] = code
+            for item in code.co_consts:
+                if type(item) is types.CodeType:
+                    walk(item)
+
+        walk(_ORIGINAL_COMPILE(raw, str(filename), "exec", dont_inherit=True, optimize=sys.flags.optimize))
+        states = []
+        for name in sorted(names):
+            function = class_namespace.get(name)
+            require(type(function) is types.FunctionType and function.__globals__ is namespace
+                    and function.__module__ == "ipfs_accelerate_py"
+                    and function.__qualname__ == "_IPFSAccelerateModule." + name
+                    and function.__code__.co_filename == str(filename)
+                    and function.__code__ == codes.get("_IPFSAccelerateModule." + name),
+                    "method code origin " + name)
+            states.append((name, (function, function.__code__, function.__defaults__,
+                tuple(sorted((function.__kwdefaults__ or {}).items())))))
+        _REVIEWED_PARENT_PACKAGE_BINDINGS = (package, namespace, owner, type(owner), owner.__bases__,
+            frozenset(class_namespace), tuple(states))
+    original, original_namespace, original_class, metaclass, bases, keys, states = _REVIEWED_PARENT_PACKAGE_BINDINGS
+    require(package is original and namespace is original_namespace and owner is original_class
+            and type(owner) is metaclass and owner.__bases__ is bases
+            and frozenset(class_namespace) == keys,
+            "runtime class binding")
+    for name, state in states:
+        function = class_namespace.get(name)
+        require(matches(function, state) and function.__globals__ is namespace,
+                "runtime method binding " + name)
+
+
+def _reviewed_parent_guard():
+    """Cooperative process integrity fence; no hostile Python memory claim."""
+
+    def require(condition, message):
+        if not condition:
+            raise ValueError(message)
+
+    def matches(function, state):
+        return type(function) is types.FunctionType and function is state[0] and (function.__code__ is state[1]) and (function.__defaults__ is state[2]) and (set(function.__kwdefaults__ or {}) == {key for key, _ in state[3]}) and all(((function.__kwdefaults__ or {})[key] is value for key, value in state[3]))
+    name = 'ipfs_accelerate_py.agent_supervisor.rescue.repair_candidate_owners'
+    module = sys.modules.get(name)
+    require(__name__ == name and type(module) is types.ModuleType and (vars(module) is globals()) and (Path(__file__).resolve().name == 'repair_candidate_owners.py') and (module.__spec__ is not None) and (module.__spec__.origin == str(Path(__file__).resolve())) and (_ORIGINAL_COMPILE is _REVIEWED_PARENT_COMPILE) and (hashlib.sha256(Path(__file__).read_bytes()).hexdigest() == _REVIEWED_PARENT_SELF_PIN), 'reviewed parent callable bindings changed: canonical owner')
+    package = sys.modules.get('ipfs_accelerate_py')
+    for key, state in _REVIEWED_PARENT_FUNCTIONS:
+        require(matches(globals().get(key), state), 'reviewed parent callable bindings changed: ' + key)
+    _reviewed_parent_package_guard(package)
+    for key, owner, metaclass, bases, keys, methods in _REVIEWED_PARENT_CLASSES:
+        require(globals().get(key) is owner and type(owner) is metaclass and (owner.__bases__ is bases) and (frozenset(vars(owner)) == keys), 'reviewed parent callable bindings changed: class namespace')
+        for method, state in methods:
+            require(matches(_reviewed_parent_descriptor_function(vars(owner).get(method)), state), 'reviewed parent callable bindings changed: class method')
+    require(isinstance(_ORIGINAL_POPEN, type) and subprocess.Popen is _ORIGINAL_POPEN and type(subprocess.Popen) is _REVIEWED_PARENT_POPEN_META and (subprocess.Popen.__bases__ is _REVIEWED_PARENT_POPEN_BASES) and (frozenset(vars(subprocess.Popen)) == _REVIEWED_PARENT_POPEN_KEYS), 'reviewed parent callable bindings changed: original Popen')
+    for key, state in _REVIEWED_PARENT_POPEN_FUNCTIONS:
+        require(matches(_reviewed_parent_descriptor_function(vars(subprocess.Popen).get(key)), state), 'reviewed parent callable bindings changed: original Popen method')
+    if _REVIEWED_PARENT_ENGINE_BINDINGS is not None:
+        module, pin, function, classes = _REVIEWED_PARENT_ENGINE_BINDINGS
+        require(sys.modules.get(module.__name__) is module and descriptor(Path(module.__file__)) == pin and matches(module.run_command, function), 'reviewed parent callable bindings changed: original engine')
+        for key, owner, metaclass, bases, keys, methods in classes:
+            require(vars(module).get(key) is owner and type(owner) is metaclass and (owner.__bases__ is bases) and (frozenset(vars(owner)) == keys), 'reviewed parent callable bindings changed: engine class')
+            for method, state in methods:
+                require(matches(_reviewed_parent_descriptor_function(vars(owner).get(method)), state), 'reviewed parent callable bindings changed: engine class method')
+    if _REVIEWED_PARENT_SOURCE_BINDINGS is not None:
+        module, pin, wrapper, wrapped = _REVIEWED_PARENT_SOURCE_BINDINGS
+        require(sys.modules.get(module.__name__) is module and descriptor(Path(module.__file__)) == pin and matches(module.source_lease, wrapper) and (getattr(module.source_lease, '__wrapped__', None) is wrapped[0]) and matches(wrapped[0], wrapped), 'reviewed parent callable bindings changed: original Source42')
+
+
+def _reviewed_parent_source_guard(module, pin):
+    global _REVIEWED_PARENT_SOURCE_BINDINGS
+    _reviewed_parent_guard()
+    need(type(module) is types.ModuleType and module.__name__ ==
+         "ipfs_datasets_py.optimizers.logic_theorem_optimizer.autoencoder_source_lease"
+         and sys.modules.get(module.__name__) is module, "canonical original Source42 module required")
+    raw = checked_descriptor(pin); codes = {}
+    def walk(code):
+        codes[code.co_qualname] = code
+        for item in code.co_consts:
+            if type(item) is types.CodeType:
+                walk(item)
+    walk(_ORIGINAL_COMPILE(raw, pin["path"], "exec", dont_inherit=True, optimize=sys.flags.optimize))
+    wrapper = module.source_lease; wrapped = getattr(wrapper, "__wrapped__", None)
+    need(type(wrapper) is types.FunctionType and type(wrapped) is types.FunctionType
+         and wrapped.__globals__ is vars(module) and wrapped.__code__ == codes.get("source_lease")
+         and wrapper.__code__ == contextlib.contextmanager(wrapped).__code__
+         and wrapper.__closure__ is not None and len(wrapper.__closure__) == 1
+         and wrapper.__closure__[0].cell_contents is wrapped,
+         "reviewed parent callable bindings changed: original Source42 code origin")
+    if _REVIEWED_PARENT_SOURCE_BINDINGS is None:
+        _REVIEWED_PARENT_SOURCE_BINDINGS = (module, dict(pin), _reviewed_parent_function_state(wrapper),
+                                           _reviewed_parent_function_state(wrapped))
+    _reviewed_parent_guard()
+
+
+def _reviewed_parent_engine_guard(module, source):
+    global _REVIEWED_PARENT_ENGINE_BINDINGS
+    _reviewed_parent_guard()
+    need(type(module) is types.ModuleType and module.__name__ == "ipfs_accelerate_py.agent_supervisor.todo_daemon.engine"
+         and sys.modules.get(module.__name__) is module, "canonical original parent engine required")
+    raw = checked_descriptor(source)
+    codes = {}
+    def walk(code):
+        codes[code.co_qualname] = code
+        for value in code.co_consts:
+            if type(value) is types.CodeType:
+                walk(value)
+    walk(_ORIGINAL_COMPILE(raw, source["path"], "exec", dont_inherit=True, optimize=sys.flags.optimize))
+    function = module.run_command
+    need(type(function) is types.FunctionType and function.__globals__ is vars(module)
+         and function.__code__ == codes.get("run_command"),
+         "reviewed parent callable bindings changed: original engine source origin")
+    if _REVIEWED_PARENT_ENGINE_BINDINGS is None:
+        classes = []
+        tree = ast.parse(raw, source["path"])
+        for name in ("CommandResult", "CommandExecutionObservation"):
+            owner = vars(module)[name]
+            node = next(node for node in tree.body if type(node) is ast.ClassDef and node.name == name)
+            declared = {node.name for node in node.body if type(node) is ast.FunctionDef}
+            need(type(owner) is type and owner.__bases__ == (object,)
+                 and owner.__getattribute__ is object.__getattribute__ and owner.__new__ is object.__new__
+                 and not hasattr(owner, "__getattr__")
+                 and not (set(vars(owner)) & {"__getattribute__", "__getattr__", "__call__"} - declared),
+                 "reviewed parent callable bindings changed: engine lookup hooks")
+            for method in declared:
+                target = _reviewed_parent_descriptor_function(vars(owner).get(method))
+                need(type(target) is types.FunctionType and target.__globals__ is vars(module)
+                     and target.__code__ == codes.get(name + "." + method),
+                     "reviewed parent callable bindings changed: engine method source origin")
+            methods = tuple((key, _reviewed_parent_function_state(_reviewed_parent_descriptor_function(value)))
+                for key, value in vars(owner).items() if type(_reviewed_parent_descriptor_function(value)) is types.FunctionType)
+            classes.append((name, owner, type(owner), owner.__bases__, frozenset(vars(owner)), methods))
+        classes = tuple(classes)
+        _REVIEWED_PARENT_ENGINE_BINDINGS = (module, dict(source), _reviewed_parent_function_state(function), classes)
+    _reviewed_parent_guard()
+
+
+def _reviewed_parent_capability_entry(handle):
+    if not (type(handle) is _REVIEWED_PARENT_HANDLE_CLASS
+            and VerifiedReviewedPreservationParentSuccess is _REVIEWED_PARENT_HANDLE_CLASS
+            and vars(_REVIEWED_PARENT_HANDLE_CLASS).get("__eq__") is object.__eq__
+            and vars(_REVIEWED_PARENT_HANDLE_CLASS).get("__hash__") is object.__hash__):
+        raise ValueError("reviewed parent handle was not issued by this process and native thread")
+    entry = _REVIEWED_PARENT_CAPABILITIES.get(handle)
+    if not (entry is not None and entry[0] == os.getpid() and entry[1] == threading.get_native_id()
+            and entry[2]() is threading.current_thread() and entry[3]() is handle):
+        raise ValueError("reviewed parent handle was not issued by this process and native thread")
+    return entry
+
+
+def _reviewed_parent_issue(custody, completed, witness):
+    if (_reviewed_parent_guard is not _REVIEWED_PARENT_GUARD_OBJECT
+            or _reviewed_parent_guard.__code__ is not _REVIEWED_PARENT_GUARD_CODE):
+        raise ValueError("reviewed parent callable bindings changed: guard")
+    _reviewed_parent_guard()
+    frame = sys._getframe(1)
+    need(frame.f_code is original_runner_wait.__code__ and frame.f_globals is globals()
+         and frame.f_locals.get("custody") is custody and frame.f_locals.get("completed") is completed
+         and frame.f_locals.get("witness") is witness and frame.f_locals.get("capture_parent_success") is True,
+         "only original parent wait may issue admitted success")
+    custody.clock()
+    _reviewed_parent_guard()
+    need(type(custody) is _V5ValidationSourceCustody and custody.closed
+         and custody.context["plan"]["schema"] == _reviewed_parent_domain(_reviewed_parent_version(custody.policy))[1],
+         "actual original reviewed parent custody required")
+    custody.checked_execution(completed, witness)
+    parent = witness["parent_source_custody"]
+    need(parent["closure_kind"] == "existing_verified_success" and parent["source_closed"] is True
+         and parent["native_closed"] is True and parent["storage_status"] == "released"
+         and completed.returncode == 0 and custody.process.returncode == 0,
+         "complete original reviewed parent success required")
+    verify_v5_parent_source_closeout(custody.policy, custody.request_pin, Path(custody.context["invocation"]),
+        witness["parent_source_closeout"], parent["verified_checks"])
+    custody.clock()
+    summary = parent["verified_checks"]
+    binding = json_object(checked_descriptor(summary["native_binding"]))
+    durability = json_object(checked_descriptor(summary["durability"]))
+    inventory = _reviewed_parent_binding_for(custody.policy, binding, durability["files"],
+        attempt_directory=Path(custody.context["plan"]["attempt_directory"]))
+    need([list(row) for row in inventory] == summary["packet_inventory"], "original parent inventory changed after Source close")
+    custody.clock()
+    evidence = canonical({"operation": custody.policy["operation"], "binding": binding,
+        "inventory": [list(row) for row in inventory], "request": custody.request_pin,
+        "plan": descriptor(Path(custody.context["invocation"]) / "validation-plan.json"),
+        "wait": custody.wait_ref, "closeout": witness["parent_source_closeout"],
+        "durability": summary["durability"], "datasets_root": str(custody.d),
+        "attempt_directory": custody.context["plan"]["attempt_directory"],
+        "source_pins": custody.context["plan"]["source_pins"], "summary": summary,
+        **({"reviewed_version": 3, "expected_packet_paths": custody.policy["operation"]["expected_packet_paths"]}
+           if _reviewed_parent_version(custody.policy) == 3 else {})})
+    _reviewed_parent_guard()
+    custody.clock()
+    joined_binding = None
+    joined_path = str(Path(custody.d) / "ipfs_datasets_py/logic/autoformal/legal_release_coordinator_v1.py")
+    if (_reviewed_parent_version(custody.policy) == 3
+            and any(pin["path"] == joined_path for pin in custody.policy["source_descriptors"])):
+        joined_binding = frame.f_locals.get("joined_opening_binding")
+        need(joined_binding is not None,
+             "joined owner population must be authenticated before original dispatch")
+        _release, current_binding = _parent_release_owner_binding_v3(json_object(evidence))
+        need(_same_joined_owner_binding_v1(current_binding, joined_binding),
+             "joined owner changed between opening dispatch and original parent issuance")
+    handle = object.__new__(_REVIEWED_PARENT_HANDLE_CLASS)
+    entry = (os.getpid(), threading.get_native_id(),
+        weakref.ref(threading.current_thread()), weakref.ref(handle), evidence)
+    _REVIEWED_PARENT_CAPABILITIES[handle] = entry if joined_binding is None else (*entry, joined_binding)
+    try:
+        custody.clock()
+        _reviewed_parent_guard()
+        if joined_binding is not None:
+            _release, current_binding = _parent_release_owner_binding_v3(json_object(evidence))
+            need(_same_joined_owner_binding_v1(current_binding, joined_binding),
+                 "joined owner changed during original parent issuance")
+        custody.clock()
+    except BaseException:
+        _REVIEWED_PARENT_CAPABILITIES.pop(handle, None)
+        raise
+    return handle
+
+
+def _parent_native_descriptor_function_v1(value):
+    """Extract only native descriptor wrappers using identity-only dispatch."""
+    kind = type(value)
+    if kind is staticmethod or kind is classmethod:
+        return value.__func__
+    if kind is property:
+        return value.fget
+    return value
+
+
+def _parent_native_module_metadata_v1(module, name, path):
+    """Read fixed module metadata without invoking module lookup hooks."""
+    need(type(module) is types.ModuleType, "ordinary canonical native owner required")
+    namespace = vars(module)
+    need(type(namespace) is dict and len(namespace) <= 4096
+         and all(type(key) is str for key in namespace), "ordinary native namespace required")
+    package = name if path.name == "__init__.py" else name.rpartition(".")[0]
+    for key, expected in (("__name__", name), ("__file__", str(path)), ("__package__", package)):
+        value = namespace.get(key)
+        need(type(value) is str and value == expected, "canonical native metadata differs")
+    spec = namespace.get("__spec__")
+    need(type(spec) is importlib.machinery.ModuleSpec, "ordinary native specification required")
+    fields = object.__getattribute__(spec, "__dict__")
+    need(type(fields) is dict and all(type(key) is str for key in fields),
+         "ordinary native specification fields required")
+    for key, expected in (("name", name), ("origin", str(path))):
+        value = fields.get(key)
+        need(type(value) is str and value == expected, "canonical native specification differs")
+    need(sys.modules.get(name) is module and path.resolve(strict=True) == path,
+         "canonical native identity differs")
+    return namespace
+
+
+def _parent_native_source_plan_v1(raw, path):
+    """Derive code, declarations and scalar defaults without executing Source."""
+    need(type(raw) is bytes and len(raw) <= 4 * 1024**2, "bounded native Source required")
+    tree = ast.parse(raw, filename=str(path))
+    compiled = _ORIGINAL_COMPILE(raw, str(path), "exec",
+                                 dont_inherit=True, optimize=sys.flags.optimize)
+    codes, pending, declarations = {}, [compiled], {}
+    while pending:
+        code = pending.pop()
+        need(len(codes) <= 4096, "bounded native Source code population required")
+        codes[code.co_qualname] = code
+        pending.extend(item for item in code.co_consts if type(item) is types.CodeType)
+
+    def visit(nodes, prefix=""):
+        for node in nodes:
+            if type(node) is ast.FunctionDef:
+                qualified = prefix + node.name
+                need(qualified not in declarations, "unambiguous native Source function required")
+                declarations[qualified] = node
+                visit(node.body, qualified + ".<locals>.")
+            elif type(node) is ast.ClassDef:
+                visit(node.body, prefix + node.name + ".")
+    visit(tree.body)
+    return tree, codes, declarations
+
+
+def _parent_native_literal_v1(node, values):
+    """Evaluate only the closed native scalar/container constant vocabulary."""
+    kind = type(node)
+    if kind is ast.Name:
+        need(node.id in values, "closed native Source literal reference required")
+        return values[node.id]
+    if kind is ast.Constant:
+        _joined_literal_signature_v1(node.value)
+        return node.value
+    if any(kind is allowed for allowed in (ast.Tuple, ast.List, ast.Set)):
+        children = tuple(_parent_native_literal_v1(child, values) for child in node.elts)
+        return children if kind is ast.Tuple else list(children) if kind is ast.List else set(children)
+    if kind is ast.Dict:
+        result = {}
+        for key, value in zip(node.keys, node.values, strict=True):
+            if key is None:
+                extra = _parent_native_literal_v1(value, values)
+                need(type(extra) is dict, "ordinary Source dictionary expansion required")
+                result.update(extra)
+            else:
+                result[_parent_native_literal_v1(key, values)] = _parent_native_literal_v1(value, values)
+        return result
+    if kind is ast.UnaryOp and any(type(node.op) is allowed for allowed in (ast.USub, ast.UAdd)):
+        value = _parent_native_literal_v1(node.operand, values)
+        need(type(value) is int, "native Source integer expression required")
+        return -value if type(node.op) is ast.USub else value
+    if kind is ast.BinOp:
+        left = _parent_native_literal_v1(node.left, values)
+        right = _parent_native_literal_v1(node.right, values)
+        if type(left) is int and type(right) is int:
+            need(max(left.bit_length(), right.bit_length()) <= 4096, "bounded Source arithmetic required")
+            if type(node.op) is ast.Mult:
+                result = left * right
+            elif type(node.op) is ast.Add:
+                result = left + right
+            elif type(node.op) is ast.Sub:
+                result = left - right
+            else:
+                raise ValueError("closed native Source arithmetic required")
+            need(result.bit_length() <= 4096, "bounded Source integer required")
+            return result
+        if type(left) is list and type(right) is list and type(node.op) is ast.Add:
+            return left + right
+        if type(left) is frozenset and type(right) is frozenset:
+            if type(node.op) is ast.Sub:
+                return left - right
+            if type(node.op) is ast.BitOr:
+                return left | right
+        raise ValueError("closed native Source container expression required")
+    if kind is ast.Call and not node.keywords:
+        if type(node.func) is ast.Name and node.func.id == "frozenset" and len(node.args) == 1:
+            value = _parent_native_literal_v1(node.args[0], values)
+            need(any(type(value) is allowed for allowed in (tuple, list, set, frozenset, dict)),
+                 "ordinary Source frozen collection required")
+            return frozenset(value)
+        if (type(node.func) is ast.Attribute and type(node.func.value) is ast.Name
+                and node.func.value.id == "dict" and node.func.attr == "fromkeys" and len(node.args) == 2):
+            keys = _parent_native_literal_v1(node.args[0], values)
+            need(type(keys) is tuple and all(type(key) is str for key in keys),
+                 "ordinary Source flag names required")
+            return dict.fromkeys(keys, _parent_native_literal_v1(node.args[1], values))
+    raise ValueError("closed native Source literal expression required")
+
+
+def _parent_native_runtime_literals_v1(namespace, tree):
+    dynamic = {"_SELF_PIN", "_LIVE_SUCCESS_HANDLES", "_LIVE_NATIVE_FUNCTIONS",
+        "_LIVE_HANDLE_CLASS", "_LIVE_HANDLE_METACLASS", "_LIVE_HANDLE_BASES", "_LIVE_HANDLE_KEYS",
+        "_LIVE_HANDLE_FUNCTIONS", "_LIVE_POPEN_CLASS", "_LIVE_POPEN_METACLASS", "_LIVE_POPEN_BASES",
+        "_LIVE_POPEN_KEYS", "_LIVE_POPEN_FUNCTIONS", "_LIVE_MODULE_BINDINGS",
+        "_LIVE_REVIEW_BINDINGS", "_LIVE_MIXED_REVIEW_BINDINGS"}
+    allowed = {"__name__", "__doc__", "__package__", "__loader__", "__spec__", "__file__",
+               "__cached__", "__builtins__"}
+    values, caches = {}, []
+    for node in tree.body:
+        kind = type(node)
+        if any(kind is accepted for accepted in (ast.FunctionDef, ast.ClassDef)):
+            allowed.add(node.name)
+        elif any(kind is accepted for accepted in (ast.Import, ast.ImportFrom)):
+            if kind is ast.Import:
+                imports = ((item.asname or item.name.partition(".")[0],
+                    importlib.import_module(item.name if item.asname else item.name.partition(".")[0]))
+                    for item in node.names)
+            else:
+                need(node.level == 0 and type(node.module) is str,
+                     "fixed standard-library Native import required")
+                owner = importlib.import_module(node.module)
+                imports = ((item.asname or item.name, vars(owner).get(item.name)) for item in node.names)
+            for bound, expected in imports:
+                allowed.add(bound)
+                need(expected is not None and namespace.get(bound) is expected,
+                     "native Source runtime import alias differs")
+        elif kind is ast.Assign:
+            names = []
+            for target in node.targets:
+                if type(target) is ast.Name:
+                    names.append(target.id)
+                elif type(target) is ast.Tuple:
+                    need(all(type(item) is ast.Name for item in target.elts),
+                         "closed native Source export assignment required")
+                    names.extend(item.id for item in target.elts)
+                else:
+                    raise ValueError("closed native Source assignment required")
+            allowed.update(names)
+            if len(names) != 1 or names[0] in dynamic:
+                continue
+            bound = names[0]
+            if bound.endswith("_OPERATION_PINS") or bound == "_OPERATION_PINS":
+                need(type(node.value) is ast.Constant and node.value.value is None,
+                     "original lazy native pin cache declaration required")
+                caches.append(bound)
+            elif (type(node.value) is ast.Call and type(node.value.func) is ast.Attribute
+                    and type(node.value.func.value) is ast.Name
+                    and node.value.func.value.id == "re" and node.value.func.attr == "compile"):
+                need(len(node.value.args) == 1 and not node.value.keywords,
+                     "closed Source regular expression required")
+                expected = _parent_native_literal_v1(node.value.args[0], values)
+                current = namespace.get(bound)
+                need(type(expected) is str and type(current) is re.Pattern
+                     and type(current.pattern) is str and current.pattern == expected
+                     and current.flags == re.compile(expected).flags, "native Source regular expression differs")
+            else:
+                values[bound] = _parent_native_literal_v1(node.value, values)
+        elif kind is ast.AugAssign:
+            need(type(node.target) is ast.Name and type(node.op) is ast.Add
+                 and node.target.id in values, "closed native Source export append required")
+            left, right = values[node.target.id], _parent_native_literal_v1(node.value, values)
+            need(type(left) is list and type(right) is list, "ordinary Source export lists required")
+            values[node.target.id] = left + right
+    need(set(namespace) <= allowed and namespace.get("__builtins__") is __builtins__,
+         "native namespace/builtin shadow bindings differ")
+    for bound, expected in values.items():
+        need(_joined_literal_signature_v1(namespace.get(bound)) == _joined_literal_signature_v1(expected),
+             "native Source literal/resource binding differs")
+    for bound in caches:
+        current = namespace.get(bound)
+        need(current is None or type(current) is dict and len(current) <= 4096
+             and all(type(key) is str and type(value) is str and _SHA.fullmatch(value)
+                     for key, value in current.items()), "ordinary native producer pin cache required")
+    return values
+
+
+def _parent_native_class_tables_v1(namespace, declarations, codes, check_function, state_matches):
+    """Authenticate the two Source classes and trusted Popen state before iteration."""
+    class_specs = (("_LiveNativeObserverRefusal", ValueError),
+                   ("VerifiedReviewedPreservationNativeSuccess", object))
+    handle_functions = {}
+    for name, base in class_specs:
+        owner = namespace.get(name)
+        need(type(owner) is type, "ordinary original Native class required")
+        fields = type.__getattribute__(owner, "__dict__")
+        bases = type.__getattribute__(owner, "__bases__")
+        need(type(bases) is tuple and len(bases) == 1 and bases[0] is base,
+             "original Native class bases differ")
+        module_name = type.__getattribute__(owner, "__module__")
+        qualified = type.__getattribute__(owner, "__qualname__")
+        need(type(module_name) is str and module_name == namespace["__name__"]
+             and type(qualified) is str and qualified == name,
+             "original Native class metadata differs")
+        methods = {qualified[len(name) + 1:]: qualified for qualified in declarations
+                   if qualified.startswith(name + ".") and ".<locals>." not in qualified}
+        allowed = set(methods) | {"__module__", "__doc__", "__dict__", "__weakref__"}
+        if name == "VerifiedReviewedPreservationNativeSuccess":
+            allowed.update(("__slots__", "__hash__", "__eq__"))
+            slots = fields.get("__slots__")
+            need(type(slots) is tuple and len(slots) == 1 and type(slots[0]) is str
+                 and slots[0] == "__weakref__" and fields.get("__hash__") is object.__hash__
+                 and fields.get("__eq__") is object.__eq__, "original opaque Native class contract differs")
+        need(all(type(key) is str for key in fields) and set(fields) <= allowed,
+             "undeclared Native class namespace differs")
+        for generated in ("__dict__", "__weakref__"):
+            if generated in fields:
+                descriptor = fields[generated]
+                need(any(type(descriptor) is allowed_type for allowed_type in
+                         (types.GetSetDescriptorType, types.MemberDescriptorType))
+                     and descriptor.__objclass__ is owner, "ordinary generated Native descriptor required")
+        for method, qualified in methods.items():
+            function = _parent_native_descriptor_function_v1(fields.get(method))
+            check_function(function, qualified)
+            if name == "VerifiedReviewedPreservationNativeSuccess":
+                handle_functions[method] = function
+    handle = namespace["VerifiedReviewedPreservationNativeSuccess"]
+    need(namespace.get("_LIVE_HANDLE_CLASS") is handle
+         and namespace.get("_LIVE_HANDLE_METACLASS") is type
+         and namespace.get("_LIVE_HANDLE_BASES") is type.__getattribute__(handle, "__bases__"),
+         "original Native handle class table differs")
+    handle_keys = namespace.get("_LIVE_HANDLE_KEYS")
+    need(type(handle_keys) is frozenset and all(type(key) is str for key in handle_keys)
+         and handle_keys == frozenset(type.__getattribute__(handle, "__dict__")),
+         "original Native handle key table differs")
+    tables = (("_LIVE_HANDLE_FUNCTIONS", handle_functions),)
+    popen = _ORIGINAL_POPEN
+    need(namespace.get("_LIVE_POPEN_CLASS") is popen
+         and namespace.get("_LIVE_POPEN_METACLASS") is _REVIEWED_PARENT_POPEN_META
+         and namespace.get("_LIVE_POPEN_BASES") is _REVIEWED_PARENT_POPEN_BASES,
+         "original trusted Popen class table differs")
+    popen_keys = namespace.get("_LIVE_POPEN_KEYS")
+    need(type(popen_keys) is frozenset and all(type(key) is str for key in popen_keys)
+         and popen_keys == _REVIEWED_PARENT_POPEN_KEYS, "original trusted Popen key table differs")
+    popen_functions = {}
+    for key, original in _REVIEWED_PARENT_POPEN_FUNCTIONS:
+        current = _parent_native_descriptor_function_v1(vars(popen).get(key))
+        need(type(current) is types.FunctionType and current is original[0]
+             and current.__code__ is original[1] and current.__defaults__ is original[2],
+             "original trusted Popen function differs")
+        kwargs = current.__kwdefaults__
+        need(kwargs is None or type(kwargs) is dict and all(type(name) is str for name in kwargs),
+             "ordinary trusted Popen keyword defaults required")
+        need(state_matches(original, current), "original trusted Popen defaults differ")
+        popen_functions[key] = current
+    tables += (("_LIVE_POPEN_FUNCTIONS", popen_functions),)
+    for key, expected in tables:
+        table = namespace.get(key)
+        need(type(table) is tuple and len(table) == len(expected),
+             "complete original Native class function table required")
+        seen = set()
+        for row in table:
+            need(type(row) is tuple and len(row) == 2 and type(row[0]) is str
+                 and row[0] in expected and row[0] not in seen
+                 and state_matches(row[1], expected[row[0]]),
+                 "original Native class function state differs")
+            seen.add(row[0])
+
+
+def _parent_native_trusted_metaclasses_v1():
+    # These are existing standard-library infrastructure identities, not
+    # caller-supplied predicates. Actual process.py uses StrEnum and Protocol.
+    abc = importlib.import_module("abc")
+    enum = importlib.import_module("enum")
+    typing = importlib.import_module("typing")
+    return (type, vars(abc)["ABCMeta"], vars(enum)["EnumType"], type(vars(typing)["Protocol"]))
+
+
+def _parent_native_declared_class_v1(node, namespace, tree, prior_classes, trusted_metaclasses):
+    """Bind Source base names and stdlib metaclasses without calling class hooks."""
+    imports = {}
+    for statement in tree.body:
+        if type(statement) is ast.Import:
+            for item in statement.names:
+                imports[item.asname or item.name.partition(".")[0]] = (
+                    item.name if item.asname else item.name.partition(".")[0], None, 0)
+        elif type(statement) is ast.ImportFrom:
+            for item in statement.names:
+                imports[item.asname or item.name] = (statement.module or "", item.name, statement.level)
+    builtins_owner = importlib.import_module("builtins")
+    builtin_values = vars(builtins_owner)
+    package = namespace.get("__package__")
+    need(type(package) is str, "ordinary Source dependency package required")
+
+    def reference(expression):
+        if type(expression) is ast.Subscript:
+            return reference(expression.value)
+        if type(expression) is ast.Name:
+            key = expression.id
+            if key in prior_classes:
+                return prior_classes[key]
+            if key in imports:
+                module_name, attribute, level = imports[key]
+                if level:
+                    module_name = importlib.util.resolve_name("." * level + module_name, package)
+                if module_name in ("abc", "enum", "typing", "collections.abc", "builtins"):
+                    module = importlib.import_module(module_name)
+                else:
+                    module = sys.modules.get(module_name if attribute is not None else module_name.partition(".")[0])
+                    need(type(module) is types.ModuleType, "canonical Source class-base import required")
+                fields = vars(module)
+                need(type(fields) is dict and all(type(name) is str for name in fields),
+                     "ordinary Source class-base import namespace required")
+                expected = module if attribute is None else fields.get(attribute)
+                need(expected is not None and namespace.get(key) is expected,
+                     "Source class-base runtime alias differs")
+                return expected
+            need(key in builtin_values and key not in namespace,
+                 "closed independently resolved Source class-base name required")
+            return builtin_values[key]
+        if type(expression) is ast.Attribute:
+            owner = reference(expression.value)
+            need(type(owner) is types.ModuleType, "ordinary Source class-base module alias required")
+            fields = vars(owner)
+            need(type(fields) is dict and all(type(key) is str for key in fields),
+                 "ordinary Source class-base module namespace required")
+            value = fields.get(expression.attr)
+            need(value is not None, "Source class-base attribute missing")
+            return value
+        raise ValueError("unsupported Source class-base expression requires independent authentication")
+
+    bases = tuple(reference(base) for base in node.bases)
+    if not bases:
+        bases = (object,)
+    explicit = None
+    for keyword in node.keywords:
+        need(keyword.arg == "metaclass", "unsupported Source class keyword requires independent authentication")
+        explicit = reference(keyword.value)
+        need(any(explicit is trusted for trusted in trusted_metaclasses),
+             "Source class metaclass must have an authenticated stdlib identity")
+    expected = type if explicit is None else explicit
+    for base in bases:
+        candidate = type(base)
+        need(any(candidate is trusted for trusted in trusted_metaclasses),
+             "Source class-base metaclass must have an authenticated stdlib identity")
+        if expected is candidate:
+            continue
+        expected_mro = type.__getattribute__(expected, "__mro__")
+        candidate_mro = type.__getattribute__(candidate, "__mro__")
+        if any(parent is candidate for parent in expected_mro):
+            continue
+        need(any(parent is expected for parent in candidate_mro),
+             "compatible authenticated Source class metaclasses required")
+        expected = candidate
+    return expected, bases
+
+
+def _parent_native_import_surface_v1(module, root, source_pins):
+    """Preflight the Source-defined surface consumed by Native's existing guard."""
+    need(type(module) is types.ModuleType, "ordinary Native dependency module required")
+    namespace = vars(module)
+    need(type(namespace) is dict and len(namespace) <= 4096
+         and all(type(key) is str for key in namespace), "ordinary Native dependency namespace required")
+    name = namespace.get("__name__")
+    need(type(name) is str and re.fullmatch(r"ipfs_datasets_py(?:\.[A-Za-z_][A-Za-z0-9_]*)*", name),
+         "fixed canonical Native dependency name required")
+    stem = root.joinpath(*name.split("."))
+    filename = namespace.get("__file__")
+    leaf, package_path = stem.with_suffix(".py"), stem / "__init__.py"
+    need(type(filename) is str and (filename == str(leaf) or filename == str(package_path)),
+         "canonical Native dependency Source path required")
+    path = leaf if filename == str(leaf) else package_path
+    _parent_native_module_metadata_v1(module, name, path)
+    expected_sha = source_pins.get(str(path))
+    need(expected_sha is None or type(expected_sha) is str and _SHA.fullmatch(expected_sha),
+         "ordinary optional parent dependency Source pin required")
+    raw = ordinary_bytes(path, 4 * 1024**2)
+    current_sha = hashlib.sha256(raw).hexdigest()
+    # Preserve Native's existing current-canonical-Source provenance contract.
+    # A parent commitment, when present, is additionally enforced; absence
+    # grants no independently parent-custodied imported-Source claim.
+    need(expected_sha is None or current_sha == expected_sha,
+         "provided parent dependency Source pin differs")
+    tree, codes, declarations = _parent_native_source_plan_v1(raw, path)
+    need(namespace.get("__builtins__") is __builtins__, "Native dependency builtins differ")
+    bound = set()
+    for node in tree.body:
+        if any(type(node) is allowed for allowed in (ast.FunctionDef, ast.ClassDef)):
+            bound.add(node.name)
+        elif type(node) is ast.Import:
+            bound.update(item.asname or item.name.partition(".")[0] for item in node.names)
+        elif type(node) is ast.ImportFrom:
+            bound.update(item.asname or item.name for item in node.names)
+        elif any(type(node) is allowed for allowed in (ast.Assign, ast.AnnAssign, ast.AugAssign)):
+            targets = node.targets if type(node) is ast.Assign else (node.target,)
+            for target in targets:
+                bound.update(child.id for child in ast.walk(target) if type(child) is ast.Name)
+    for builtin in ("type", "len", "vars", "globals", "set", "frozenset", "tuple", "all",
+                    "any", "sorted", "isinstance", "compile", "ValueError", "TypeError"):
+        need(builtin not in namespace or builtin in bound, "Native dependency builtin shadow differs")
+    functions, classes = {}, {}
+    trusted_metaclasses = _parent_native_trusted_metaclasses_v1()
+
+    def function_surface(function, qualified):
+        need(type(function) is types.FunctionType and function.__globals__ is namespace
+             and type(function.__module__) is str and function.__module__ == name
+             and type(function.__qualname__) is str and function.__qualname__ == qualified
+             and qualified in codes, "original Native dependency Source function required")
+        need(_joined_literal_signature_v1(function.__code__) == _joined_literal_signature_v1(codes[qualified]),
+             "Native dependency function differs from pinned Source")
+        defaults, kwargs = function.__defaults__, function.__kwdefaults__
+        need(defaults is None or type(defaults) is tuple, "ordinary dependency positional defaults required")
+        need(kwargs is None or type(kwargs) is dict and all(type(key) is str for key in kwargs),
+             "ordinary dependency keyword defaults required")
+
+    for node in tree.body:
+        if type(node) is ast.FunctionDef:
+            function = namespace.get(node.name)
+            function_surface(function, node.name)
+            functions[(id(None), node.name)] = function
+        elif type(node) is ast.ClassDef:
+            owner = namespace.get(node.name)
+            expected_metaclass, expected_bases = _parent_native_declared_class_v1(
+                node, namespace, tree, classes, trusted_metaclasses)
+            need(type(owner) is expected_metaclass, "Source-authenticated Native dependency metaclass required")
+            actual_bases = type.__getattribute__(owner, "__bases__")
+            need(type(actual_bases) is tuple and len(actual_bases) == len(expected_bases)
+                 and all(a is b for a, b in zip(actual_bases, expected_bases, strict=True)),
+                 "Source-authenticated Native dependency bases differ")
+            fields = type.__getattribute__(owner, "__dict__")
+            module_name = type.__getattribute__(owner, "__module__")
+            qualified = type.__getattribute__(owner, "__qualname__")
+            need(type(module_name) is str and module_name == name and type(qualified) is str
+                 and qualified == node.name and all(type(key) is str for key in fields),
+                 "original Native dependency class metadata required")
+            declared = {child.name for child in node.body if type(child) is ast.FunctionDef}
+            forbidden = {"__getattribute__", "__getattr__", "__call__", "__get__", "__set__", "__delete__"}
+            need(not ((set(fields) & forbidden) - declared),
+                 "undeclared Native dependency lookup hook refused")
+            for child in node.body:
+                if type(child) is ast.FunctionDef:
+                    function_surface(_parent_native_descriptor_function_v1(fields.get(child.name)),
+                                     node.name + "." + child.name)
+            for key, descriptor in fields.items():
+                # Native\'s retained extractor uses type-membership; reject a
+                # caller metaclass equality hook before its existing traversal.
+                need(any(type(type(descriptor)) is trusted for trusted in trusted_metaclasses),
+                     "authenticated dependency field metaclass required")
+                function = _parent_native_descriptor_function_v1(descriptor)
+                if type(function) is types.FunctionType:
+                    defaults, kwargs = function.__defaults__, function.__kwdefaults__
+                    need(defaults is None or type(defaults) is tuple,
+                         "ordinary dependency class defaults required")
+                    need(kwargs is None or type(kwargs) is dict and all(type(key) is str for key in kwargs),
+                         "ordinary dependency class keyword defaults required")
+                    functions[(id(owner), key)] = function
+            classes[node.name] = owner
+    return namespace, path, current_sha, classes, functions
+
+
+def _parent_native_import_tables_v1(namespace, source_pins, root, state_matches, reviewed_version):
+    """Validate snapshot schemas and Source completeness before Native iteration."""
+    surfaces = {}
+
+    def surface(module):
+        need(type(module) is types.ModuleType, "ordinary Native snapshot module required")
+        key = id(module)
+        if key not in surfaces:
+            surfaces[key] = _parent_native_import_surface_v1(module, root, source_pins)
+        return surfaces[key]
+
+    def snapshot(value):
+        need(type(value) is tuple and len(value) == 5,
+             "ordinary complete Native import snapshot required")
+        module, filename, sha, classes, functions = value
+        need(type(filename) is str and type(sha) is str and _SHA.fullmatch(sha)
+             and type(classes) is tuple and len(classes) <= 512
+             and type(functions) is tuple and len(functions) <= 4096,
+             "ordinary Native import snapshot fields required")
+        original, path, expected_sha, expected_classes, expected_functions = surface(module)
+        need(filename == str(path) and sha == expected_sha
+             and len(classes) == len(expected_classes) and len(functions) == len(expected_functions),
+             "Source-complete Native import snapshot required")
+        seen_classes = set()
+        for row in classes:
+            need(type(row) is tuple and len(row) == 5 and type(row[0]) is str
+                 and row[0] in expected_classes and row[0] not in seen_classes,
+                 "ordinary complete Native class snapshot required")
+            key, owner, metaclass, bases, keys = row
+            need(owner is expected_classes[key] and metaclass is type(owner)
+                 and bases is type.__getattribute__(owner, "__bases__")
+                 and type(keys) is frozenset and all(type(item) is str for item in keys)
+                 and keys == frozenset(type.__getattribute__(owner, "__dict__")),
+                 "original Native dependency class snapshot differs")
+            seen_classes.add(key)
+        seen_functions = set()
+        for row in functions:
+            need(type(row) is tuple and len(row) == 3 and type(row[1]) is str
+                 and (row[0] is None or any(row[0] is owner for owner in expected_classes.values())),
+                 "ordinary Native dependency function snapshot required")
+            key = (id(row[0]), row[1])
+            need(key in expected_functions and key not in seen_functions
+                 and state_matches(row[2], expected_functions[key]),
+                 "Source-complete Native dependency function snapshot differs")
+            seen_functions.add(key)
+
+    modules = namespace.get("_LIVE_MODULE_BINDINGS")
+    if modules is not None:
+        need(type(modules) is tuple and len(modules) == 5, "complete Native owner snapshots required")
+        for value in modules:
+            snapshot(value)
+    # The existing guard reads only its selected review domain. Do not turn
+    # an inactive domain cache into an undocumented evidence prerequisite.
+    active = (("_LIVE_REVIEW_BINDINGS", 6) if reviewed_version == 2
+              else ("_LIVE_MIXED_REVIEW_BINDINGS", 7))
+    for key, primary_size in (active,):
+        bindings = namespace.get(key)
+        if bindings is not None:
+            need(type(bindings) is tuple and len(bindings) == 2 and type(bindings[0]) is tuple
+                 and len(bindings[0]) == primary_size and type(bindings[1]) is tuple
+                 and len(bindings[1]) <= 128, "ordinary complete Native review snapshots required")
+            for value in (*bindings[0], *bindings[1]):
+                snapshot(value)
+    return None
+
+
+def _parent_native_owner_tuple_v1(owners, root, source_pins):
+    names = ("ipfs_datasets_py.logic.autoformal.legal_corpus_definition_use_lake_v2",
+        "ipfs_datasets_py.logic.autoformal.legal_corpus_lake",
+        "ipfs_datasets_py.logic.autoformal.legal_pilot_lake",
+        "ipfs_datasets_py.logic.backends.process",
+        "ipfs_datasets_py.logic.autoformal.legal_corpus_shared_lake")
+    need(type(owners) is tuple and len(owners) == len(names),
+         "fixed complete Native owner tuple required")
+    for module, name in zip(owners, names, strict=True):
+        path = root.joinpath(*name.split(".")).with_suffix(".py")
+        _parent_native_module_metadata_v1(module, name, path)
+        _parent_native_import_surface_v1(module, root, source_pins)
+    return owners
+
+
+def _parent_source_builtin_bindings_v1(namespace, tree):
+    """Reject Source-undeclared globals before authenticating external callables."""
+    need(type(namespace) is dict and len(namespace) <= 4096
+         and all(type(key) is str for key in namespace), "ordinary Source owner namespace required")
+    allowed = {"__name__", "__doc__", "__package__", "__loader__", "__spec__", "__file__",
+               "__cached__", "__builtins__"}
+    for node in tree.body:
+        if any(type(node) is accepted for accepted in (ast.FunctionDef, ast.ClassDef)):
+            allowed.add(node.name)
+        elif type(node) is ast.Import:
+            allowed.update(item.asname or item.name.partition(".")[0] for item in node.names)
+        elif type(node) is ast.ImportFrom:
+            allowed.update(item.asname or item.name for item in node.names)
+        elif any(type(node) is accepted for accepted in (ast.Assign, ast.AnnAssign, ast.AugAssign)):
+            targets = node.targets if type(node) is ast.Assign else (node.target,)
+            for target in targets:
+                allowed.update(child.id for child in ast.walk(target) if type(child) is ast.Name)
+    need(set(namespace) <= allowed and namespace.get("__builtins__") is __builtins__,
+         "Source owner namespace/builtin shadow bindings differ")
+    return None
+
+
+def _parent_native_bootstrap_v1(native, source_raw, source_path, source_pins, *, reviewed_version=2):
+    """Cold-authenticate actual Native Source and its existing private binder.
+
+    No Native predicate, owner callback, compiler/model, process or resource
+    operation runs here. Process memory and stdlib retain their established
+    cooperative trust scope. Mutable Native metadata is never a trust root.
+    """
+    need(type(reviewed_version) is int and reviewed_version in (2, 3),
+         "explicit existing Native review domain required")
+    name = "ipfs_datasets_py.logic.autoformal.legal_corpus_definition_use_native_v2"
+    namespace = _parent_native_module_metadata_v1(native, name, source_path)
+    need(type(source_pins) is dict and len(source_pins) <= 4096
+         and all(type(key) is str and type(value) is str for key, value in source_pins.items()),
+         "ordinary independent native Source pins required")
+    expected_sha = source_pins.get(str(source_path))
+    need(type(expected_sha) is str and _SHA.fullmatch(expected_sha) and type(source_raw) is bytes
+         and hashlib.sha256(source_raw).hexdigest() == expected_sha,
+         "independent native Source pin differs")
+    tree, codes, declarations = _parent_native_source_plan_v1(source_raw, source_path)
+    _parent_source_builtin_bindings_v1(namespace, tree)
+    literals = _parent_native_runtime_literals_v1(namespace, tree)
+    need(type(namespace.get("_SELF_PIN")) is str and namespace["_SELF_PIN"] == expected_sha,
+         "native independent self Source pin differs")
+    checked, cells, closure_values = {}, {}, {}
+
+    def check_function(function, qualified):
+        need(type(function) is types.FunctionType and function.__globals__ is namespace
+             and type(function.__name__) is str and type(function.__qualname__) is str
+             and type(function.__module__) is str and function.__module__ == name
+             and function.__qualname__ == qualified and qualified in declarations and qualified in codes,
+             "original Source native function metadata required")
+        node = declarations[qualified]
+        need(function.__name__ == node.name
+             and _joined_literal_signature_v1(function.__code__) == _joined_literal_signature_v1(codes[qualified]),
+             "native function differs from independently pinned Source")
+        wanted_defaults = (tuple(_parent_native_literal_v1(value, literals) for value in node.args.defaults)
+                           if node.args.defaults else None)
+        actual_defaults = function.__defaults__
+        need(actual_defaults is None or type(actual_defaults) is tuple,
+             "ordinary native positional defaults required")
+        need(_joined_literal_signature_v1(actual_defaults) == _joined_literal_signature_v1(wanted_defaults),
+             "native Source positional defaults differ")
+        wanted_keywords = {argument.arg: _parent_native_literal_v1(value, literals)
+            for argument, value in zip(node.args.kwonlyargs, node.args.kw_defaults, strict=True)
+            if value is not None}
+        wanted_keywords = wanted_keywords if wanted_keywords else None
+        actual_keywords = function.__kwdefaults__
+        need(actual_keywords is None or type(actual_keywords) is dict
+             and all(type(key) is str for key in actual_keywords), "ordinary native keyword defaults required")
+        need(_joined_literal_signature_v1(actual_keywords) == _joined_literal_signature_v1(wanted_keywords),
+             "native Source keyword defaults differ")
+        previous = checked.get(qualified)
+        need(previous is None or previous is function, "one original native function per Source declaration required")
+        if previous is not None:
+            return
+        checked[qualified] = function
+        actual_cells = function.__closure__
+        need((actual_cells is None and not codes[qualified].co_freevars)
+             or type(actual_cells) is tuple and len(actual_cells) == len(codes[qualified].co_freevars),
+             "original native closure shape required")
+        for cell_name, cell in zip(codes[qualified].co_freevars,
+                                    () if actual_cells is None else actual_cells, strict=True):
+            need(cell_name not in cells or cells[cell_name] is cell,
+                 "one original shared native closure cell required")
+            cells[cell_name] = cell
+            try:
+                value = cell.cell_contents
+            except ValueError as error:
+                raise ValueError("empty native integrity closure refused") from error
+            closure_values[cell_name] = value
+            if type(value) is types.FunctionType:
+                check_function(value, value.__code__.co_qualname)
+
+    wrapped = {"_live_success_guard": "guarded", "_live_entry_guard": "entry_guard",
+        "_live_integrity_checker": "integrity",
+        "build_verified_reviewed_norm_preservation_native_v2": "build_verified_reviewed_norm_preservation_native_v2",
+        "load_verified_reviewed_norm_preservation_native_v2": "load_verified_reviewed_norm_preservation_native_v2",
+        "build_verified_reviewed_norm_preservation_native_v3": "build_verified_reviewed_norm_preservation_native_v3",
+        "load_verified_reviewed_norm_preservation_native_v3": "load_verified_reviewed_norm_preservation_native_v3"}
+    expected = {node.name: node.name for node in tree.body if type(node) is ast.FunctionDef}
+    expected.update((key, "_bind_live_success_independent_guard_v1.<locals>." + value)
+                    for key, value in wrapped.items())
+    functions = {key: value for key, value in namespace.items()
+        if type(value) is types.FunctionType and (value.__globals__ is namespace
+            or type(value.__module__) is str and value.__module__ == name)}
+    need(set(functions) == set(expected), "complete independently pinned native function population required")
+    for key, qualified in expected.items():
+        check_function(functions[key], qualified)
+
+    def keywords_match(observed, function):
+        current = function.__kwdefaults__
+        current = {} if current is None else current
+        return (type(observed) is tuple and len(observed) == len(current)
+            and all(type(pair) is tuple and len(pair) == 2 and type(pair[0]) is str
+                and pair[0] == key and pair[1] is value
+                for pair, (key, value) in zip(observed, sorted(current.items()), strict=True)))
+
+    def state_matches(observed, function):
+        return (type(observed) is tuple and len(observed) == 4 and observed[0] is function
+            and observed[1] is function.__code__ and observed[2] is function.__defaults__
+            and keywords_match(observed[3], function))
+
+    states = namespace.get("_LIVE_NATIVE_FUNCTIONS")
+    need(type(states) is tuple and len(states) == len(expected),
+         "complete original native private function states required")
+    seen = set()
+    for row in states:
+        need(type(row) is tuple and len(row) == 2 and type(row[0]) is str and row[0] in expected
+             and row[0] not in seen and state_matches(row[1], functions[row[0]]),
+             "original native private function state differs")
+        seen.add(row[0])
+    references = {"entry_guard": namespace["_live_entry_guard"], "guarded": namespace["_live_success_guard"],
+        "integrity": namespace["_live_integrity_checker"],
+        "original_build_core": namespace["_build_verified_reviewed_norm_preservation_native"],
+        "original_load_core": namespace["_load_verified_reviewed_norm_preservation_native"],
+        "original_handle_entry": namespace["_live_handle_entry"], "function_type": types.FunctionType,
+        "states": states, "issued_handles": namespace.get("_LIVE_SUCCESS_HANDLES"),
+        "issued_handle_class": namespace.get("VerifiedReviewedPreservationNativeSuccess"),
+        "verify_native_functions": checked.get("_bind_live_success_independent_guard_v1.<locals>.verify_native_functions"),
+        "original_guard": checked.get("_live_success_guard")}
+    need(type(references["issued_handles"]) is weakref.WeakKeyDictionary,
+         "ordinary original native handle registry required")
+    for stem, function_name in (("entry", "entry_guard"), ("guard", "guarded"),
+                                ("handle", "original_handle_entry"), ("original_guard", "original_guard")):
+        function = references[function_name]
+        need(type(function) is types.FunctionType, "complete original native closure chain required")
+        references[stem + "_code"] = function.__code__
+        references[stem + "_defaults"] = function.__defaults__
+    need(set(closure_values) == set(references) | {
+        "guard_keywords", "handle_keywords", "original_guard_keywords", "integrity_state"},
+        "closed original native integrity closure population required")
+    for key, value in references.items():
+        need(closure_values[key] is value, "original native integrity closure reference differs")
+    for key, function_name in (("guard_keywords", "guarded"), ("handle_keywords", "original_handle_entry"),
+                               ("original_guard_keywords", "original_guard")):
+        need(keywords_match(closure_values[key], references[function_name]),
+             "original native closure keyword state differs")
+    integrity_state = closure_values["integrity_state"]
+    need(type(integrity_state) is tuple and len(integrity_state) == 5
+         and state_matches(integrity_state[:4], references["integrity"])
+         and state_matches(integrity_state[4], namespace["_live_postrun_persistence_trusted"]),
+         "original native integrity/persistence state differs")
+    _parent_native_class_tables_v1(namespace, declarations, codes, check_function, state_matches)
+    _parent_native_import_tables_v1(namespace, source_pins, source_path.parents[3], state_matches, reviewed_version)
+    return None
+
+
+def _parent_native_owner(evidence, *, reviewed_version=2):
+    _reviewed_parent_domain(reviewed_version)
+    name = "ipfs_datasets_py.logic.autoformal.legal_corpus_definition_use_native_v2"
+    root = Path(evidence["datasets_root"])
+    path = root / "ipfs_datasets_py/logic/autoformal/legal_corpus_definition_use_native_v2.py"
+    pins = evidence["source_pins"]
+    need(type(pins) is dict and all(type(key) is str and type(value) is str for key, value in pins.items())
+         and type(pins.get(str(path))) is str
+         and _SHA.fullmatch(pins[str(path)]), "independent original Native Source pin required")
+    raw = ordinary_bytes(path, 4 * 1024**2)
+    need(hashlib.sha256(raw).hexdigest() == pins[str(path)], "original Native Source differs")
+    native = importlib.import_module(name)
+    _parent_native_bootstrap_v1(native, raw, path, pins, reviewed_version=reviewed_version)
+    owners = native._owners()
+    _parent_native_owner_tuple_v1(owners, root, pins)
+    _parent_native_bootstrap_v1(native, raw, path, pins, reviewed_version=reviewed_version)
+    # Invoke the actual Source-authenticated existing private binder only after
+    # its code, closures, aliases and complete native snapshot schemas pass.
+    native._live_success_guard(owners, reviewed_version=reviewed_version)
+    _parent_native_bootstrap_v1(native, raw, path, pins, reviewed_version=reviewed_version)
+    need(hashlib.sha256(ordinary_bytes(path, 4 * 1024**2)).hexdigest() == pins[str(path)],
+         "original Native Source changed during parent replay")
+    return native
+
+
+def load_parent_verified_reviewed_preservation_v1(handle, packet_files, preparation, graph, admission, *args,
+        expected_receipt_sha256, expected_packet_sha256, expected_binary_sha256,
+        expected_preservation_sha256, expected_graph_sha256, expected_admission_sha256, toolchain, **kwargs):
+    """Replay only this explicit original-parent reviewed version; execute nothing."""
+    if (_reviewed_parent_guard is not _REVIEWED_PARENT_GUARD_OBJECT
+            or _reviewed_parent_guard.__code__ is not _REVIEWED_PARENT_GUARD_CODE):
+        raise ValueError("reviewed parent callable bindings changed: guard")
+    _reviewed_parent_capability_entry(handle)
+    _reviewed_parent_guard()
+    return _load_parent_verified_reviewed_preservation(handle, packet_files, preparation, graph, admission, *args,
+        expected_receipt_sha256=expected_receipt_sha256, expected_packet_sha256=expected_packet_sha256,
+        expected_binary_sha256=expected_binary_sha256, expected_preservation_sha256=expected_preservation_sha256,
+        expected_graph_sha256=expected_graph_sha256, expected_admission_sha256=expected_admission_sha256,
+        toolchain=toolchain, reviewed_version=2, **kwargs)
+
+
+def load_parent_verified_reviewed_preservation_v3(handle, packet_files, preparation, graph, admission, *args,
+        expected_receipt_sha256, expected_packet_sha256, expected_binary_sha256,
+        expected_preservation_sha256, expected_graph_sha256, expected_admission_sha256, toolchain, **kwargs):
+    """Replay only this explicit original-parent reviewed version; execute nothing."""
+    if (_reviewed_parent_guard is not _REVIEWED_PARENT_GUARD_OBJECT
+            or _reviewed_parent_guard.__code__ is not _REVIEWED_PARENT_GUARD_CODE):
+        raise ValueError("reviewed parent callable bindings changed: guard")
+    _reviewed_parent_capability_entry(handle)
+    _reviewed_parent_guard()
+    return _load_parent_verified_reviewed_preservation(handle, packet_files, preparation, graph, admission, *args,
+        expected_receipt_sha256=expected_receipt_sha256, expected_packet_sha256=expected_packet_sha256,
+        expected_binary_sha256=expected_binary_sha256, expected_preservation_sha256=expected_preservation_sha256,
+        expected_graph_sha256=expected_graph_sha256, expected_admission_sha256=expected_admission_sha256,
+        toolchain=toolchain, reviewed_version=3, **kwargs)
+
+
+def _load_parent_verified_reviewed_preservation(handle, packet_files, preparation, graph, admission, *args,
+        expected_receipt_sha256, expected_packet_sha256, expected_binary_sha256,
+        expected_preservation_sha256, expected_graph_sha256, expected_admission_sha256, toolchain, reviewed_version, **kwargs):
+    result, fence = _capture_parent_verified_reviewed_preservation(
+        handle, packet_files, preparation, graph, admission, *args,
+        expected_receipt_sha256=expected_receipt_sha256, expected_packet_sha256=expected_packet_sha256,
+        expected_binary_sha256=expected_binary_sha256, expected_preservation_sha256=expected_preservation_sha256,
+        expected_graph_sha256=expected_graph_sha256, expected_admission_sha256=expected_admission_sha256,
+        toolchain=toolchain, reviewed_version=reviewed_version, **kwargs)
+    return result
+
+
+def _capture_parent_verified_reviewed_preservation(handle, packet_files, preparation, graph, admission, *args,
+        expected_receipt_sha256, expected_packet_sha256, expected_binary_sha256,
+        expected_preservation_sha256, expected_graph_sha256, expected_admission_sha256, toolchain, reviewed_version, **kwargs):
+    """Join original admitted-parent custody to exact bytes and current review.
+
+    Runs no compiler, process, release, retry or resource acquisition. Retained
+    metadata alone cannot issue or reconstruct this live parent capability.
+    """
+    if (_reviewed_parent_guard is not _REVIEWED_PARENT_GUARD_OBJECT
+            or _reviewed_parent_guard.__code__ is not _REVIEWED_PARENT_GUARD_CODE):
+        raise ValueError("reviewed parent callable bindings changed: guard")
+    entry = _reviewed_parent_capability_entry(handle)
+    _reviewed_parent_guard()
+    evidence = json_object(entry[4]); binding = evidence["binding"]
+    domain = _reviewed_parent_domain(reviewed_version)
+    need(evidence.get("reviewed_version", 2) == reviewed_version and binding["schema"] == domain[2],
+         "original parent capability belongs to a different reviewed version")
+    if reviewed_version == 3:
+        need(evidence["expected_packet_paths"] == evidence["operation"]["expected_packet_paths"]
+             == binding["expected_packet_paths"],
+             "original V3 opening packet population differs")
+    supplied = {"receipt_sha256": expected_receipt_sha256, "packet_sha256": expected_packet_sha256,
+        "preparation_sha256": expected_preservation_sha256, "graph_sha256": expected_graph_sha256,
+        "admission_sha256": expected_admission_sha256, "toolchain": toolchain,
+        "binary_sha256": expected_binary_sha256}
+    need(all(binding[key] == value for key, value in supplied.items()), "exact original parent native commitments required")
+    supplied_raw = canonical(supplied)
+    native = _parent_native_owner(evidence, reviewed_version=reviewed_version)
+    contents, inventory = native._reviewed_retained_packet(packet_files)
+    need(inventory == binding["packet_inventory"]
+         and hashlib.sha256(native._wire(inventory, native.MAX_RECORD_BYTES)).hexdigest() == expected_packet_sha256,
+         "exact original parent77-file packet required")
+    original = native._live_original_inputs(preparation, graph, admission, args, kwargs)
+
+    def fence():
+        need(_reviewed_parent_capability_entry(handle) is entry, "same original parent capability required")
+        _reviewed_parent_guard(); _parent_native_owner(evidence, reviewed_version=reviewed_version)
+        need(native._live_original_inputs(preparation, graph, admission, args, kwargs) == original,
+             "current reviewed inputs changed during admitted parent replay")
+        need(canonical(supplied) == supplied_raw
+             and native._reviewed_retained_packet(packet_files)[1] == binding["packet_inventory"],
+             "original parent packet or expected commitments changed during replay")
+        for pin in (evidence["request"], evidence["plan"], evidence["wait"], evidence["closeout"], evidence["durability"]):
+            checked_descriptor(pin)
+        for path, size, sha, device, inode in evidence["inventory"]:
+            artifact = Path(evidence["attempt_directory"]) / path
+            observed = descriptor(artifact); info = artifact.lstat()
+            need((observed["bytes"], observed["sha256"], info.st_dev, info.st_ino) == (size, sha, device, inode),
+                 "original parent durable native artifact changed")
+    load = (native.load_reviewed_norm_preservation_native_v2 if reviewed_version == 2
+            else native.load_reviewed_norm_preservation_native_v3)
+    validate = (native.validate_reviewed_norm_preservation_native_v2 if reviewed_version == 2
+                else native.validate_reviewed_norm_preservation_native_v3)
+    replay = load(packet_files, preparation, graph, admission, *args,
+        expected_receipt_sha256=expected_receipt_sha256, expected_packet_sha256=expected_packet_sha256,
+        expected_binary_sha256=expected_binary_sha256, expected_preservation_sha256=expected_preservation_sha256,
+        expected_graph_sha256=expected_graph_sha256, expected_admission_sha256=expected_admission_sha256,
+        toolchain=toolchain, **kwargs)
+    fence()
+    receipt = native._parse(contents["build-receipt.json"], native.MAX_RECEIPT_BYTES)
+    need(native._sha(native._wire(receipt["reviewed_execution_evidence"], native.MAX_RECEIPT_BYTES))
+         == binding["execution_projection_sha256"], "original parent execution projection differs")
+    checked = validate(preparation, graph, admission, *args,
+        expected_preservation_sha256=expected_preservation_sha256, expected_graph_sha256=expected_graph_sha256,
+        expected_admission_sha256=expected_admission_sha256, toolchain=toolchain, **kwargs)
+    fence()
+    persisted = native._live_read_persisted_packet(Path(evidence["attempt_directory"]) / binding["packet_root"],
+        checked, receipt, native._owners()[1], reviewed_version=reviewed_version)
+    need(tuple(sorted(contents.items())) == persisted, "closed original durable native packet differs")
+    fence()
+    result = native._owners()[1].contracts.seal_record({**{key: value for key, value in replay.items()
+        if key not in {"schema", "profile", "record_cid", "cid_scope", "missing_prerequisites"}},
+        "schema": ("reviewed-preservation-admitted-parent-success/v1" if reviewed_version == 2
+                   else "reviewed-preservation-admitted-parent-success/v3"),
+        "profile": ("original-admitted-parent-exact-reviewed-native-custody/v1" if reviewed_version == 2
+                    else "original-admitted-parent-exact-reviewed-native-custody/v3"),
+        "original_success_authenticated": True, "native_execution_authenticated": True,
+        "original_admitted_parent_custody_authenticated": True, "native_execution_performed": False,
+        "olean_kernel_rechecked": False, "release_ready": False, "Lean_admitted": False,
+        "training_mask": 0, "evaluation_gold_mask": 0, "authority": dict(native.AUTHORITY),
+        "parent_request_sha256": evidence["request"]["sha256"],
+        "parent_closeout_sha256": evidence["closeout"]["sha256"],
+        "parent_durability_sha256": evidence["durability"]["sha256"],
+        "missing_prerequisites": ["Reviewed release-native consumer and corpus admission remain separate.",
+            "Source meaning, source edition, legal applicability and legal review remain separate."],
+        "scope": "Original Source/native/process/storage parent custody for this exact packet and current reviewed replay; no new execution, legal truth, training/gold or release admission."})
+    fence()
+    return result, fence
+
+
+def run_reviewed_preservation_parent_v1(policy_path, expected_policy_sha256, *, invocation_directory):
+    """Run this explicit reviewed domain through the unchanged original parent owner."""
+    if (_reviewed_parent_guard is not _REVIEWED_PARENT_GUARD_OBJECT
+            or _reviewed_parent_guard.__code__ is not _REVIEWED_PARENT_GUARD_CODE):
+        raise ValueError("reviewed parent callable bindings changed: guard")
+    _reviewed_parent_guard()
+    return _run_reviewed_preservation_parent(policy_path, expected_policy_sha256,
+        invocation_directory=invocation_directory, reviewed_version=2)
+
+
+def run_reviewed_preservation_parent_v3(policy_path, expected_policy_sha256, *, invocation_directory):
+    """Run this explicit reviewed domain through the unchanged original parent owner."""
+    if (_reviewed_parent_guard is not _REVIEWED_PARENT_GUARD_OBJECT
+            or _reviewed_parent_guard.__code__ is not _REVIEWED_PARENT_GUARD_CODE):
+        raise ValueError("reviewed parent callable bindings changed: guard")
+    _reviewed_parent_guard()
+    return _run_reviewed_preservation_parent(policy_path, expected_policy_sha256,
+        invocation_directory=invocation_directory, reviewed_version=3)
+
+
+_JOIN_RELEASE_EXPECTED_MODULES_V1 = (
+    "ipfs_datasets_py.logic.autoformal.legal_release_coordinator_v1",
+    "ipfs_datasets_py.logic.autoformal.corpus_contracts",
+    "ipfs_datasets_py.optimizers.logic_theorem_optimizer.uscode_dataset",
+    "ipfs_datasets_py.logic.autoformal.uscode_ingest",
+    "ipfs_datasets_py.logic.autoformal.legal_entity_index_intake",
+    "ipfs_datasets_py.logic.autoformal.constitution_inventory",
+    "ipfs_datasets_py.logic.autoformal.legal_parent_text_views",
+    "ipfs_datasets_py.logic.autoformal.meta_ontology",
+)
+
+
+def _joined_literal_signature_v1(value):
+    """Bounded native scalar/code metadata only; never arbitrary equality."""
+    remaining = [200000, 8 * 1024**2]
+
+    def visit(item, depth):
+        remaining[0] -= 1
+        need(remaining[0] >= 0 and depth <= 64, "bounded joined identity metadata required")
+        kind = type(item)
+        if item is None:
+            return ("none",)
+        if item is Ellipsis:
+            return ("ellipsis",)
+        if kind is bool:
+            return ("bool", item)
+        if kind is int:
+            need(item.bit_length() <= 4096, "bounded joined identity integer required")
+            return ("int", item)
+        if any(kind is allowed for allowed in (str, bytes)):
+            remaining[1] -= len(item.encode("utf-8")) if kind is str else len(item)
+            need(remaining[1] >= 0, "bounded joined identity literal bytes required")
+            return (kind.__name__, item)
+        if kind is float:
+            return ("float", item.hex())
+        if kind is complex:
+            return ("complex", item.real.hex(), item.imag.hex())
+        if any(kind is allowed for allowed in (tuple, list, set, frozenset)):
+            need(len(item) <= remaining[0], "bounded joined identity population required")
+            children = tuple(visit(child, depth + 1) for child in item)
+            if any(kind is allowed for allowed in (set, frozenset)):
+                children = tuple(sorted(children))
+            return (kind.__name__, children)
+        if kind is dict:
+            need(len(item) <= remaining[0], "bounded joined identity mapping required")
+            return ("dict", tuple((visit(key, depth + 1), visit(child, depth + 1))
+                                  for key, child in item.items()))
+        if kind is types.CodeType:
+            fields = ("co_argcount", "co_posonlyargcount", "co_kwonlyargcount", "co_nlocals",
+                "co_stacksize", "co_flags", "co_code", "co_consts", "co_names", "co_varnames",
+                "co_freevars", "co_cellvars", "co_filename", "co_name", "co_qualname",
+                "co_firstlineno", "co_linetable", "co_exceptiontable")
+            return ("code", tuple((name, visit(getattr(item, name), depth + 1)) for name in fields))
+        raise ValueError("ordinary native joined identity metadata required")
+
+    return visit(value, 0)
+
+
+def _same_joined_owner_binding_v1(current, expected):
+    # Bindings contain private strong refs. Compare only bounded scalar signatures.
+    if not (type(current) is tuple and len(current) == 2
+            and type(expected) is tuple and len(expected) == 2):
+        return False
+    return (_joined_literal_signature_v1(current[0])
+            == _joined_literal_signature_v1(expected[0]))
+
+
+def _joined_guard_function_binding_v1(function):
+    need(type(function) is types.FunctionType, "ordinary joined guard function required")
+    cells, references = [], [function, function.__code__, function.__defaults__,
+        function.__kwdefaults__, function.__globals__, function.__dict__]
+    for cell in function.__closure__ or ():
+        references.append(cell)
+        try:
+            value = cell.cell_contents
+        except ValueError:
+            cells.append((id(cell), "empty"))
+        else:
+            references.append(value); cells.append((id(cell), id(value)))
+    kwargs = function.__kwdefaults__
+    need(kwargs is None or type(kwargs) is dict and all(type(key) is str for key in kwargs),
+         "ordinary joined guard keyword defaults required")
+    entries = () if kwargs is None else tuple(sorted(kwargs.items()))
+    references.extend(value for _key, value in entries)
+    return ((id(function), id(function.__code__), id(function.__defaults__),
+        id(function.__kwdefaults__), id(function.__globals__), id(function.__dict__),
+        tuple((key, id(value)) for key, value in entries), tuple(cells)), tuple(references))
+
+
+def _joined_contracts_primitive_binding_v1(contracts, source_raw, source_path):
+    """Authenticate new helper code, defaults, aliases and registry from Source.
+
+    Compilation obtains metadata only and executes no module. The unchanged
+    Native guard is not claimed as coverage of the added primitive or registry.
+    """
+    import ast
+    import importlib
+    tree = ast.parse(source_raw, filename=str(source_path))
+    _parent_source_builtin_bindings_v1(vars(contracts), tree)
+    compiled = _ORIGINAL_COMPILE(source_raw, str(source_path), "exec",
+                                 dont_inherit=True, optimize=sys.flags.optimize)
+    pending, codes = [compiled], {}
+    while pending:
+        code = pending.pop()
+        need(len(codes) <= 4096, "bounded primitive source code tree required")
+        codes[code.co_qualname] = code
+        pending.extend(value for value in code.co_consts if type(value) is types.CodeType)
+    namespace = vars(contracts)
+    need(all(type(name) is str for name in namespace), "ordinary primitive namespace keys required")
+    names = ("_loaded_owner_shape_v1", "_loaded_owner_state_v1",
+        "_loaded_owner_guard_identity_v1", "_capture_loaded_owner_guard_v1",
+        "_loaded_owner_guard_binding_v1", "_loaded_owner_registry_binding_v1")
+    selected = {name: value for name, value in namespace.items()
+        if name.startswith(("_loaded_owner_", "_capture_loaded_owner_"))
+        and type(value) is types.FunctionType}
+    need(set(selected) == set(names) and "_new_loaded_owner_registry_v1" not in namespace,
+         "complete original non-resettable loaded-owner primitive required")
+    signatures, references, registry_objects = [], [compiled, contracts], []
+    for name in names:
+        function = selected[name]
+        qualified = (name if name in codes
+                     else "_new_loaded_owner_registry_v1.<locals>." + name)
+        expected = codes.get(qualified)
+        need(type(expected) is types.CodeType and function.__globals__ is namespace
+             and _joined_literal_signature_v1(function.__code__) == _joined_literal_signature_v1(expected),
+             "loaded-owner primitive code differs from independently pinned Source")
+        nodes = [node for node in ast.walk(tree)
+            if type(node) is ast.FunctionDef and node.name == name]
+        need(len(nodes) == 1, "unambiguous primitive declaration required")
+        node = nodes[0]
+        defaults = tuple(ast.literal_eval(value) for value in node.args.defaults)
+        current_defaults = () if function.__defaults__ is None else function.__defaults__
+        need(type(current_defaults) is tuple
+             and _joined_literal_signature_v1(current_defaults) == _joined_literal_signature_v1(defaults),
+             "loaded-owner primitive positional defaults differ")
+        wanted_kwargs = {argument.arg: ast.literal_eval(value)
+            for argument, value in zip(node.args.kwonlyargs, node.args.kw_defaults, strict=True)
+            if value is not None}
+        current_kwargs = {} if function.__kwdefaults__ is None else function.__kwdefaults__
+        need(type(current_kwargs) is dict
+             and _joined_literal_signature_v1(current_kwargs) == _joined_literal_signature_v1(wanted_kwargs),
+             "loaded-owner primitive keyword defaults differ")
+        cells = function.__closure__ or ()
+        need(len(cells) == len(expected.co_freevars), "exact primitive closure shape required")
+        for cell_name, cell in zip(expected.co_freevars, cells, strict=True):
+            try:
+                value = cell.cell_contents
+            except ValueError as error:
+                raise ValueError("empty original primitive closure refused") from error
+            if cell_name == "registrations":
+                need(type(value) is dict, "original private registry identity required")
+                registry_objects.append(value)
+            else:
+                need(cell_name in selected and value is selected[cell_name],
+                     "original primitive factory closure changed")
+        signature, refs = _joined_guard_function_binding_v1(function)
+        signatures.append((name, signature)); references.extend(refs)
+    need(len(registry_objects) == 3 and all(value is registry_objects[0] for value in registry_objects),
+         "one original private primitive registry required")
+    standard = {"dataclasses", "re", "sys", "types", "importlib.machinery", "pathlib",
+                "os", "json", "hashlib", "stat", "builtins", "typing"}
+    aliases = []
+    for node in tree.body:
+        if type(node) is ast.Import:
+            for item in node.names:
+                bound = item.asname or item.name.partition(".")[0]
+                if item.name in standard:
+                    target = importlib.import_module(item.name if item.asname else bound)
+                    need(namespace.get(bound) is target, "loaded-owner runtime module alias changed")
+                    aliases.append((bound, id(target))); references.append(target)
+        elif type(node) is ast.ImportFrom and node.module in standard:
+            owner = importlib.import_module(node.module)
+            for item in node.names:
+                bound = item.asname or item.name
+                target = vars(owner).get(item.name)
+                need(target is not None and namespace.get(bound) is target,
+                     "loaded-owner runtime type/function alias changed")
+                aliases.append((bound, id(target))); references.append(target)
+    literal_flags = []
+    for node in tree.body:
+        if type(node) is ast.Assign and len(node.targets) == 1 and type(node.targets[0]) is ast.Name:
+            name = node.targets[0].id
+            if name.startswith("_LOADED_OWNER_"):
+                try:
+                    value = ast.literal_eval(node.value)
+                except (ValueError, TypeError):
+                    continue
+                need(_joined_literal_signature_v1(namespace.get(name)) == _joined_literal_signature_v1(value),
+                     "loaded-owner primitive bound/flag changed")
+                literal_flags.append((name, _joined_literal_signature_v1(value)))
+    for stem, class_name in (("FIELD", "_LOADED_OWNER_FIELD_V1"), ("PARAM", "_LOADED_OWNER_PARAMS_V1")):
+        owner = namespace[class_name]
+        fields = type.__getattribute__(owner, "__dict__")
+        wanted = tuple((name, fields[name]) for name in fields["__slots__"] if name != "__weakref__")
+        observed = namespace.get("_LOADED_OWNER_" + stem + "_SLOTS_V1")
+        need(type(observed) is tuple and len(observed) == len(wanted)
+             and all(type(pair) is tuple and len(pair) == 2 and type(pair[0]) is str
+                 and pair[0] == name and pair[1] is descriptor
+                 for pair, (name, descriptor) in zip(observed, wanted, strict=True)),
+             "original native dataclass slot table changed")
+        aliases.append((stem + "_SLOTS", id(observed))); references.extend((observed, *wanted))
+    registry = selected["_loaded_owner_registry_binding_v1"]()
+    need(type(registry) is tuple and len(registry) == 2
+         and type(registry[0]) is tuple and registry[0] == (id(registry_objects[0]),)
+         and type(registry[1]) is tuple and len(registry[1]) == 2
+         and registry[1][0] is selected["_capture_loaded_owner_guard_v1"]
+         and registry[1][1] is selected["_loaded_owner_guard_binding_v1"],
+         "original private registration anchor required")
+    references.extend(registry[1])
+    return ((tuple(signatures), tuple(aliases), tuple(literal_flags), registry[0]), tuple(references))
+
+
+def _parent_release_owner_binding_v3(evidence):
+    """Resolve only the fixed R owners, independently pinned before the build."""
+    import importlib
+    expected_modules = (
+        "ipfs_datasets_py.logic.autoformal.legal_release_coordinator_v1",
+        "ipfs_datasets_py.logic.autoformal.corpus_contracts",
+        "ipfs_datasets_py.optimizers.logic_theorem_optimizer.uscode_dataset",
+        "ipfs_datasets_py.logic.autoformal.uscode_ingest",
+        "ipfs_datasets_py.logic.autoformal.legal_entity_index_intake",
+        "ipfs_datasets_py.logic.autoformal.constitution_inventory",
+        "ipfs_datasets_py.logic.autoformal.legal_parent_text_views",
+        "ipfs_datasets_py.logic.autoformal.meta_ontology")
+    need(type(_JOIN_RELEASE_EXPECTED_MODULES_V1) is tuple
+         and len(_JOIN_RELEASE_EXPECTED_MODULES_V1) == len(expected_modules)
+         and all(type(a) is str and a == b
+                 for a, b in zip(_JOIN_RELEASE_EXPECTED_MODULES_V1, expected_modules, strict=True)),
+         "fixed joined-owner source population changed")
+    root = Path(evidence["datasets_root"])
+    source_pins = evidence["source_pins"]
+    need(type(source_pins) is dict and all(type(key) is str and type(value) is str
+                                         for key, value in source_pins.items()),
+         "ordinary independently pinned joined sources required")
+    for name in expected_modules:
+        source_path = root.joinpath(*name.split(".")).with_suffix(".py")
+        pin = source_pins.get(str(source_path))
+        need(type(pin) is str and _SHA.fullmatch(pin),
+             "joined owner must be independently pinned before Native issuance")
+    native = _parent_native_owner(evidence, reviewed_version=3)
+    contracts = native._owners()[1].contracts
+    release = importlib.import_module(expected_modules[0])
+    need(type(release) is types.ModuleType, "canonical release module required")
+    release_namespace = vars(release)
+    need(type(release_namespace) is dict and all(type(key) is str for key in release_namespace),
+         "ordinary joined coordinator namespace keys required")
+    modules = release_namespace.get("_JOIN_RELEASE_OWNER_MODULES_V1")
+    need(type(modules) is tuple and len(modules) == len(expected_modules)
+         and all(type(module) is types.ModuleType for module in modules),
+         "fixed original joined-owner population required")
+    source_rows = []
+    identity_keys = ("st_dev", "st_ino", "st_mode", "st_nlink", "st_uid", "st_gid",
+                     "st_size", "st_mtime_ns", "st_ctime_ns")
+    for module, name in zip(modules, expected_modules, strict=True):
+        namespace = vars(module)
+        need(type(namespace) is dict and all(type(key) is str for key in namespace),
+             "ordinary joined-owner namespace keys required")
+        path = root.joinpath(*name.split(".")).with_suffix(".py")
+        spec = namespace.get("__spec__")
+        need(type(spec) is importlib.machinery.ModuleSpec,
+             "ordinary joined-owner module spec required")
+        spec_fields = object.__getattribute__(spec, "__dict__")
+        need(type(spec_fields) is dict and all(type(key) is str for key in spec_fields),
+             "ordinary joined-owner module spec fields required")
+        need(type(namespace.get("__name__")) is str and namespace["__name__"] == name
+             and sys.modules.get(name) is module
+             and type(namespace.get("__file__")) is str and namespace["__file__"] == str(path)
+             and type(spec_fields.get("origin")) is str and spec_fields["origin"] == str(path)
+             and type(spec_fields.get("name")) is str and spec_fields["name"] == name
+             and path.resolve(strict=True) == path,
+             "canonical joined-owner module identity required")
+        expected = evidence["source_pins"].get(str(path))
+        need(type(expected) is str and _SHA.fullmatch(expected),
+             "joined owner must be independently pinned before Native issuance")
+        before = path.lstat()
+        raw = ordinary_bytes(path, 4 * 1024**2)
+        identity = tuple(getattr(before, key) for key in identity_keys)
+        need(identity == tuple(getattr(path.lstat(), key) for key in identity_keys)
+             and hashlib.sha256(raw).hexdigest() == expected, "joined-owner Source generation changed")
+        source_rows.append((name, module, path, expected, raw, identity))
+    need(modules[1] is contracts, "joined primitive is not the canonical contracts owner")
+    primitive = _joined_contracts_primitive_binding_v1(contracts, source_rows[1][4], source_rows[1][2])
+    signatures, references = [], [release, modules, native, native._LIVE_NATIVE_FUNCTIONS, *primitive[1]]
+    for name, module, path, sha, raw, identity in source_rows:
+        verifier = vars(module).get("_JOIN_LOADED_OWNER_GUARD_V1")
+        binding = contracts._loaded_owner_guard_binding_v1(vars(module), verifier)
+        need(type(binding) is tuple and len(binding) == 2, "original owner registration required")
+        verifier()
+        signatures.append((name, sha, identity, binding[0]))
+        references.extend((module, verifier, *binding[1]))
+    native_signatures = tuple((name, _joined_guard_function_binding_v1(function)[0])
+        for name, function in ((key, vars(native).get(key)) for key, _state in native._LIVE_NATIVE_FUNCTIONS))
+    return release, ((id(release), id(modules), id(native), native_signatures,
+        primitive[0], tuple(signatures)), tuple(references))
+
+
+def _reviewed_parent_joined_opening_v3(policy):
+    operation = policy["operation"]
+    root = Path(policy["datasets_root"])
+    path = str(root / "ipfs_datasets_py/logic/autoformal/legal_release_coordinator_v1.py")
+    if _reviewed_parent_version(policy) != 3:
+        return None
+    # Explicit existing-field opt-in: a direct coordinator descriptor selects
+    # this implementation join; Native receipt producer pins keep their scope.
+    sources = policy["source_descriptors"]
+    if not any(pin["path"] == path for pin in sources):
+        return None
+    pins = {pin["path"]: pin["sha256"] for pin in (
+        *policy["source_descriptors"], *policy["validation"]["import_sources"],
+        *policy["validation"]["trusted_tests"], policy["validation"]["pytest_module"])}
+    _release, binding = _parent_release_owner_binding_v3({
+        "datasets_root": str(root), "operation": operation, "source_pins": pins})
+    return binding
+
+
+def _joined_closing_note_v1(error, message):
+    # Native exception dictionary access avoids arbitrary __str__/attribute hooks.
+    try:
+        namespace = BaseException.__dict__["__dict__"].__get__(error, BaseException)
+        previous = dict.get(namespace, "__notes__")
+        notes = (list(previous) if type(previous) is list
+                 and len(previous) <= 32 and all(type(note) is str for note in previous) else [])
+        notes.append(message)
+        dict.__setitem__(namespace, "__notes__", notes)
+    except BaseException:
+        # Diagnostic decoration must never interrupt remaining closing checks.
+        pass
+
+
+def _joined_complete_checks_v1(checks, *, primary=None, _closing_failures=None):
+    """Run independent final custody checks without hiding prior failures."""
+    failures = [] if _closing_failures is None else _closing_failures
+    need(type(failures) is list and len(failures) <= 32,
+         "bounded private joined closing failure state required")
+    for label, check in checks:
+        try:
+            check()
+        except BaseException as error:
+            if failures:
+                _joined_closing_note_v1(failures[0], "additional joined closing failure in " + label)
+            if len(failures) < 32:
+                failures.append(error)
+    if failures:
+        failure = failures[0]
+        if primary is not None and primary is not failure:
+            _joined_closing_note_v1(failure, "prior joined replay failure retained as cause")
+            raise failure from primary
+        raise failure
+
+
+def load_parent_verified_uscode_physical_closure_v3(handle, request_raw, *, expected_request_sha256):
+    """Join one actual original parent to one current physical replay.
+
+    The returned value is an A-owned engineering diagnostic, never a portable
+    capability, legal review, corpus admission, or authorization to run tools.
+    """
+    if (_reviewed_parent_guard is not _REVIEWED_PARENT_GUARD_OBJECT
+            or _reviewed_parent_guard.__code__ is not _REVIEWED_PARENT_GUARD_CODE):
+        raise ValueError("reviewed parent callable bindings changed: guard")
+    entry = _reviewed_parent_capability_entry(handle)
+    _reviewed_parent_guard()
+    evidence = json_object(entry[4])
+    need(evidence.get("reviewed_version", 2) == 3 and len(entry) == 6 and entry[5] is not None,
+         "original parent was not issued with this joined V3 owner binding")
+    need(type(request_raw) is bytes and type(expected_request_sha256) is str
+         and _SHA.fullmatch(expected_request_sha256)
+         and hashlib.sha256(request_raw).hexdigest() == expected_request_sha256,
+         "exact independently pinned physical request bytes required")
+    release, observed_binding = _parent_release_owner_binding_v3(evidence)
+    need(_same_joined_owner_binding_v1(observed_binding, entry[5]),
+         "joined owner generation differs from original parent issuance")
+    state = {}
+
+    def observe(context):
+        need(not state and type(context) is dict and context.get("reviewed_version") == 3
+             and context.get("physical_request_sha256") == expected_request_sha256,
+             "one exact physical V3 context required")
+        selected = context["native"]
+        need(type(selected) is dict and set(selected) == {
+            "packet_files", "receipt_raw", "expected_packet_sha256", "expected_binary_sha256"}
+             and type(selected["receipt_raw"]) is bytes,
+             "joined physical replay requires the actual retained Native selection")
+        context_snapshot = release._physical_replay_context_snapshot(context)
+        pins = context["pins"]
+        parent, fence = _capture_parent_verified_reviewed_preservation(
+            handle, selected["packet_files"], context["preparation"], context["graph"],
+            context["admission"], *context["args"],
+            expected_receipt_sha256=hashlib.sha256(selected["receipt_raw"]).hexdigest(),
+            expected_packet_sha256=selected["expected_packet_sha256"],
+            expected_binary_sha256=selected["expected_binary_sha256"],
+            expected_preservation_sha256=pins["preservation"], expected_graph_sha256=pins["graph"],
+            expected_admission_sha256=pins["admission"], toolchain=context["toolchain"],
+            reviewed_version=3, **context["kwargs"])
+        state.update(parent=parent, fence=fence, context=context, context_snapshot=context_snapshot)
+        need(release._physical_replay_context_snapshot(context) == context_snapshot,
+             "complete physical context changed during the fixed parent observer")
+
+    def owner_fence():
+        current, current_binding = _parent_release_owner_binding_v3(evidence)
+        need(current is release and _same_joined_owner_binding_v1(current_binding, entry[5]),
+             "joined owner changed during physical replay")
+
+    def context_fence():
+        if "context" in state:
+            owner_fence()
+            need(release._physical_replay_context_snapshot(state["context"]) == state["context_snapshot"],
+                 "same complete physical context required after finalized traversal")
+            release._physical_postclose_fence_v1(state["context"])
+
+    def parent_fence():
+        if "fence" in state:
+            state["fence"]()
+        else:
+            _reviewed_parent_capability_entry(handle)
+            _reviewed_parent_guard()
+
+    pending_error = None
+    closing_failures = []
+    try:
+        physical = release._validate_uscode_release_physical_closure(
+            request_raw, expected_request_sha256=expected_request_sha256,
+            reviewed_version=3, _observe_checked_context=observe)
+    except BaseException as error:
+        pending_error = error
+        # R is the authenticated fixed traversal; its refusal stays first.
+        closing_failures.append(error)
+        raise
+    finally:
+        _joined_complete_checks_v1((
+            ("loaded joined owners", owner_fence),
+            ("closed physical generation", context_fence),
+            ("original parent/current inputs", parent_fence)),
+            primary=pending_error, _closing_failures=closing_failures)
+    need(set(state) == {"parent", "fence", "context", "context_snapshot"} and type(physical) is dict
+         and physical["schema"] == release.CLOSURE_SCHEMA_V3
+         and physical["profile"] == release.CLOSURE_PROFILE_V3
+         and physical["request_sha256"] == expected_request_sha256,
+         "same completed physical replay result required")
+    need(all(physical[name] is False for name in (
+        "release_ready", "closure_complete", "admitted", "formalized", "proof_verified",
+        "source_semantics_verified", "source_authenticity_verified", "source_metadata_arrow_bytes_verified",
+        "original_native_parent_custody_verified", "remote_readback_verified",
+        "model_or_compiler_execution_performed"))
+         and all(physical[name] is True for name in ("local_replay_complete",
+             "local_source_cache_entity_bindings_verified", "independent_reviewed_crosswalk_verified",
+             "native_receipt_replayed"))
+         and "original_admitted_native_parent_custody_not_established" in physical["blockers"]
+         and all(physical[name] == evidence["binding"][field] for name, field in (
+             ("graph_sha256", "graph_sha256"), ("admission_sha256", "admission_sha256"),
+             ("preservation_sha256", "preparation_sha256"))),
+         "retained physical report must preserve its authority limits and exact target")
+    parent = state["parent"]
+    native = _parent_native_owner(evidence, reviewed_version=3)
+    result = native._owners()[1].contracts.seal_record({
+        "schema": "legal-uscode-live-parent-physical-join/v1",
+        "profile": "reviewed-v3-current-parent-and-physical-component/v1",
+        "physical_request_sha256": expected_request_sha256,
+        "physical_report_sha256": hashlib.sha256(release._canonical(physical)).hexdigest(),
+        "retained_parent_report_sha256": digest(parent),
+        "parent_request_sha256": parent["parent_request_sha256"],
+        "parent_closeout_sha256": parent["parent_closeout_sha256"],
+        "parent_durability_sha256": parent["parent_durability_sha256"],
+        "graph_sha256": evidence["binding"]["graph_sha256"],
+        "admission_sha256": evidence["binding"]["admission_sha256"],
+        "preservation_sha256": evidence["binding"]["preparation_sha256"],
+        "retained_packet_sha256": evidence["binding"]["packet_sha256"],
+        "retained_receipt_sha256": evidence["binding"]["receipt_sha256"],
+        "live_original_parent_and_current_physical_replay_joined": True,
+        "wire_report_original_parent_flag_unchanged": True,
+        "release_ready": False, "closure_complete": False, "admitted": False,
+        "formalized": False, "proof_verified": False, "source_semantics_verified": False,
+        "source_authenticity_verified": False, "remote_readback_verified": False,
+        "native_execution_performed": False, "olean_kernel_rechecked": False,
+        "training_mask": 0, "evaluation_gold_mask": 0, "authority": dict(native.AUTHORITY),
+        "missing_prerequisites": [
+            "Immutable remote Hub readback and actual statutory review remain separate.",
+            "Source meaning, source edition, legal applicability and corpus admission remain separate."],
+        "scope": "Same-process/thread original admitted Native parent joined to this exact current physical component; no new compiler/model execution or legal authority."})
+    _joined_complete_checks_v1((
+        ("loaded joined owners", owner_fence),
+        ("closed physical generation", context_fence),
+        ("original parent/current inputs", parent_fence)),
+        _closing_failures=closing_failures)
+    # No project callback or file mutation follows this final current-input fence.
+    return result
+
+
+def _run_reviewed_preservation_parent(policy_path, expected_policy_sha256, *, invocation_directory, reviewed_version):
+    """Run the fixed scientific worker with existing original V5 resource owners.
+
+    No changed repair candidate, adoption, task permission or new runner is
+    created. The returned handle stays in this original parent process/thread.
+    """
+    if (_reviewed_parent_guard is not _REVIEWED_PARENT_GUARD_OBJECT
+            or _reviewed_parent_guard.__code__ is not _REVIEWED_PARENT_GUARD_CODE):
+        raise ValueError("reviewed parent callable bindings changed: guard")
+    _reviewed_parent_guard()
+    domain = _reviewed_parent_domain(reviewed_version)
+    policy = (checked_reviewed_preservation_parent_policy_v1(policy_path, expected_policy_sha256)
+              if reviewed_version == 2 else checked_reviewed_preservation_parent_policy_v3(
+                  policy_path, expected_policy_sha256))
+    v, operation = policy["validation"], policy["operation"]
+    invocation = Path(invocation_directory)
+    need(invocation.is_absolute() and ".." not in invocation.parts
+         and not any(p.is_symlink() for p in (invocation, *invocation.parents)) and not invocation.exists(),
+         "fresh original reviewed parent invocation required")
+    invocation.mkdir(mode=0o700)
+    attempt = Path(v["attempt_root"]) / operation["operation_id"]
+    need(not attempt.exists() and not attempt.is_symlink(), "fresh named original native attempt required")
+    attempt.mkdir(mode=0o700)
+    nonce = os.urandom(32).hex(); parent_identity = proc_identity(os.getpid())
+    policy_pin = descriptor(Path(policy_path))
+    d, a = Path(policy["datasets_root"]), Path(policy["source_root"])
+    source_pins, controls = _reviewed_parent_plan_sources(policy, policy_pin)
+    plan = {"schema": domain[1], "policy": policy_pin, "operation": operation,
+        "native_inputs": operation["native_inputs"],
+        "candidate_root": str(a), "collection_root": str(a), "attempt_directory": str(attempt),
+        "source_pins": source_pins, "original_public_control_pins": controls,
+        "selected_checks": [operation["nodeid"]], "expected_cases": 1,
+        "required_candidate_bodies": [str(d / "ipfs_datasets_py/logic/autoformal/legal_corpus_definition_use_native_v2.py"),
+                                      operation["nodeid"].split("::", 1)[0]],
+        "ordinary_scratch_profile": dict(_V5_ORDINARY_PROFILE),
+        "normal_namespace_profiles": v["normal_namespace_profiles"],
+        "parent_source_observation_path": str(invocation / "parent-source-observation.json"),
+        "parent_nonce_sha256": hashlib.sha256(bytes.fromhex(nonce)).hexdigest(), "parent_identity": parent_identity,
+        "execution_request_path": str(invocation / "execution-request.json")}
+    plan_pin = new_json(invocation / "validation-plan.json", plan)
+    worker = a / "ipfs_accelerate_py/agent_supervisor/rescue/repair_validation_worker.py"
+    execution = {"schema": "owned-validation-request/v5", "argv": [policy["python"], "-I", "-B", str(worker),
+        "--plan", plan_pin["path"], "--plan-sha256", plan_pin["sha256"]], "cwd": str(a),
+        "selected_checks": plan["selected_checks"], "source_sha256": {**controls, plan_pin["path"]: plan_pin["sha256"]},
+        **{key: v[key] for key in ("timeout_seconds", "storage_bytes", "memory_mb", "cpu_slots", "child_process_slots",
+            "scheduler_state_path", "expected_scheduler_policy_sha256", "roots")},
+        "attempt_directory": str(attempt), "outputs": {name: str(attempt / name) for name in ("pytest", "tmp", "cache", "db", "exports", "logs")},
+        "declared_external_writable_paths": [], "process_scope": "sampled_birth_bound_descendants",
+        "ordinary_scratch_profile": dict(_V5_ORDINARY_PROFILE)}
+    _require_v5_lifecycle_source_pins(d, execution["source_sha256"])
+    need(len(execution["source_sha256"]) <= 256, "unchanged original SDK256 source cap required")
+    request_pin = new_json(invocation / "execution-request.json", execution)
+    argv = [policy["python"], "-I", "-B", str(d / "scripts/ops/legal_ir/run_owned_validation.py"),
+        "--request", request_pin["path"], "--expected-request-sha256", request_pin["sha256"],
+        "--resource-ledger", v["resource_ledger"]]
+    completed, witness, handle = original_runner_wait(policy, argv, a, 420,
+        validation_context={"plan": plan, "request_pin": request_pin, "invocation": invocation,
+            "frozen": {"schema": "reviewed-preservation-original-parent-context/v1", "parent_nonce": nonce}},
+        capture_parent_success=True)
+    need(completed.returncode == 0, "original reviewed validation did not succeed")
+    return handle
+
+
+SOURCE_QUALIFICATION_SCHEMA = "agent-supervisor/immutable-source-qualification-receipt@1"
+_SOURCE_QUALIFICATION_PROFILE = "agent-supervisor/immutable-source-qualification@1"
+_SOURCE_SNAPSHOT_SCHEMA = "agent-supervisor/immutable-source-snapshot@1"
+_SOURCE_QUALIFICATION_ROLES = ("ipfs_accelerate_py/agent_supervisor/rescue/scientific_executor.py",
+    "ipfs_accelerate_py/agent_supervisor/rescue/native_executor_health.py")
+
+
+def checked_source_qualification(policy, control=None):
+    """Authenticate unchanged sealed control bodies; confer no repair authority."""
+    if "source_qualification" not in policy["validation"]:
+        return None
+    profile = policy["validation"]["source_qualification"]
+    need(_v5_ordinary_validation(policy) and not {"validation_ledger_busy_retry",
+         "validation_admission_retry", "external_fixture_profile"} & set(policy["validation"]),
+         "immutable qualification cannot borrow repair retry or fixtures")
+    need(type(profile) is dict and set(profile) == {"schema", "snapshot", "required_source_bodies"}
+         and profile["schema"] == _SOURCE_QUALIFICATION_PROFILE, "closed immutable source qualification required")
+    authenticated = checked_control_release(policy, current_owner=False)
+    if control is not None:
+        need(all(control.get(key) == authenticated[key] for key in ("root", "manifest", "pins")),
+             "immutable source control authentication differs")
+    control = authenticated
+    snapshot_ref = profile["snapshot"]; snapshot = json_object(checked_control_descriptor(snapshot_ref))
+    need(not Path(snapshot_ref["path"]).lstat().st_mode & 0o222
+         and type(snapshot) is dict and set(snapshot) == {"schema", "binding", "source_root", "manifest", "source_commitment"}
+         and snapshot["schema"] == _SOURCE_SNAPSHOT_SCHEMA, "sealed immutable source snapshot required")
+    binding = snapshot["binding"]; root = control["root"]
+    need(type(binding) is dict and set(binding) == {"namespace", "board_id", "attempt_id"}
+         and binding["namespace"] == "ptr_lane_0" and binding["board_id"] == "legal-ir"
+         and type(binding["attempt_id"]) is str and re.fullmatch(r"[0-9a-f]{32}", binding["attempt_id"])
+         and type(snapshot["source_root"]) is str and snapshot["source_root"] == str(root),
+         "immutable source root or binding differs")
+    manifest = snapshot["manifest"]
+    need(type(manifest) is dict and 0 < len(manifest) <= 4096, "finite immutable source manifest required")
+    pins = {}
+    for relative, row in manifest.items():
+        need(type(relative) is str and relative and str(Path(relative)) == relative
+             and not Path(relative).is_absolute() and ".." not in Path(relative).parts
+             and type(row) is dict and set(row) == {"bytes", "sha256", "executable"}
+             and type(row["bytes"]) is int and type(row["executable"]) is bool,
+             "typed relative immutable source row required")
+        path = root / relative
+        checked_control_descriptor(dict(path=str(path), bytes=row["bytes"], sha256=row["sha256"]))
+        need(not path.lstat().st_mode & 0o222 and bool(path.lstat().st_mode & 0o111) == row["executable"],
+             "immutable source seal or executable mode changed")
+        pins[str(path)] = row["sha256"]
+    need(pins == control["pins"] and type(snapshot["source_commitment"]) is str
+         and snapshot["source_commitment"] == digest({"source_root": str(root), "manifest": manifest}),
+         "immutable snapshot must equal the complete authenticated control population")
+    required = profile["required_source_bodies"]
+    need(type(required) is list and 0 < len(required) <= 128
+         and all(type(pin) is dict and set(pin) == {"path", "bytes", "sha256"} and type(pin["path"]) is str for pin in required)
+         and [pin["path"] for pin in required] == sorted({pin["path"] for pin in required}),
+         "sorted unique immutable source subjects required")
+    for pin in required:
+        checked_control_descriptor(pin); path = Path(pin["path"])
+        need(path.suffix == ".py" and root in path.parents and pin["path"] in pins and pins[pin["path"]] == pin["sha256"],
+             "immutable subject is outside the exact control snapshot")
+    paths = [pin["path"] for pin in required]
+    need(all(str(root / name) in paths for name in _SOURCE_QUALIFICATION_ROLES),
+         "immutable qualification requires exact Main and health source bodies")
+    return dict(profile=profile, snapshot=snapshot, snapshot_ref=snapshot_ref, root=root,
+                required_source_bodies=paths)
+
+
+def _source_qualification_plan(policy, plan, invocation):
+    context = checked_source_qualification(policy)
+    if context is None:
+        need("source_qualification" not in plan and "required_source_bodies" not in plan,
+             "repair plan cannot carry immutable qualification fields")
+        return None
+    need(canonical(plan.get("source_qualification")) == canonical(context["profile"])
+         and plan.get("required_source_bodies") == context["required_source_bodies"]
+         and plan.get("required_candidate_bodies") == [] and plan["candidate_root"] == str(context["root"])
+         and plan["freeze"] == context["snapshot_ref"]
+         and plan["source_commitment"] == context["snapshot"]["source_commitment"]
+         and json_object(checked_descriptor(plan["policy"])) == policy,
+         "immutable source qualification plan differs")
+    expected = validation_plan(policy, plan["policy"], context["snapshot"],
+        context["snapshot_ref"], context["root"], invocation)
+    need(canonical(plan) == canonical(expected), "complete immutable source qualification plan differs")
+    return context
+
+
+def _source_qualification_report(context, plan, report):
+    if context is None:
+        need("source_qualification" not in report and "required_source_bodies" not in report,
+             "repair report cannot carry immutable qualification fields")
+        return
+    need(canonical(report.get("source_qualification")) == canonical(context["profile"])
+         and report.get("required_source_bodies") == context["required_source_bodies"]
+         and report.get("freeze") == context["snapshot_ref"]
+         and report.get("source_commitment") == context["snapshot"]["source_commitment"]
+         and report.get("semantic_negative") is False and report.get("negative_profile") is None,
+         "immutable source qualification report differs")
+    need(all(report["executed_source_buffers"].get(path) == plan["source_pins"][path]
+             and report["raw_compiled_sources"].get(path) == plan["source_pins"][path]
+             for path in context["required_source_bodies"]),
+         "immutable source body lacks original raw compilation and execution")
+
+
+def _source_qualification_failed_custody(policy, plan, request_pin, invocation, terminal, wait):
+    """Reuse original failure provenance without producing repair diagnostics."""
+    context = _source_qualification_plan(policy, plan, invocation)
+    need(context is not None, "explicit source qualification failure required")
+    need(type(wait["returncode"]) is int and wait["returncode"] != 0 and wait["request"] == request_pin
+         and wait["original_process_owner_returned"] is True and wait["actual_Popen_returned"] is True
+         and wait["actual_process_waited"] is True and wait["actual_process_returncode"] == wait["returncode"]
+         and json_object(wait["stdout"].encode()) == terminal, "original failed process wait is unknown")
+    checked_descriptor(wait["engine_source"])
+    need(wait["engine_source"] in policy["source_descriptors"], "original failed process source is not pinned")
+    need(terminal["schema"] == "owned-validation-failure-terminal/v1" and terminal["completed"] is False
+         and terminal["request_sha256"] == request_pin["sha256"]
+         and terminal["process_cleanup_error"] is None and terminal["owner_exit_error"] is None,
+         "original post-exit validation failure is incomplete")
+    reservation = terminal["reservation"]; record = reservation["record"]; native = reservation["resource_lease"]
+    identity = {"pid": record["owner_pid"], "birth": record["owner_birth"]}
+    need(record["validation_request_sha256"] == request_pin["sha256"] and identity == wait["runner_identity"]
+         and native["lease_id"] == record["native_lease_id"] and native["owner_pid"] == identity["pid"],
+         "original failed request/native/PID/birth binding differs")
+    lifecycle = terminal["source_custody_lifecycle"]
+    need(lifecycle["request_sha256"] == request_pin["sha256"] and lifecycle["owner"] == identity
+         and lifecycle["reservation_id"] == record["reservation_id"]
+         and lifecycle["events"]["owner_exit_handling_completed"] is True
+         and lifecycle["source_guards"]["errors"] == []
+         and all(lifecycle["source_guards"][key] is True for key in ("request_unchanged", "source_pins_unchanged", "owner_identity_unchanged")),
+         "original failed owner exit/source control flow is unknown")
+    producer = lifecycle["producer"]
+    need(type(producer) is dict and set(producer) == {"path", "sha256"}, "typed original failed producer required")
+    producer_pin = next(pin for pin in policy["source_descriptors"] if pin["path"] == producer["path"])
+    checked_descriptor(producer_pin)
+    need(producer_pin["sha256"] == producer["sha256"], "original failed producer identity is unpinned")
+    process = reservation["process_observation"]
+    report_path = Path(plan["attempt_directory"]) / "exports/trusted-validation.json"
+    need(not report_path.lstat().st_mode & 0o222, "failed immutable qualification report must be sealed")
+    report = json_object(ordinary_bytes(report_path))
+    need(reservation["cleanup_error"] is None and native["released"] is True
+         and reservation["status"] == record["status"] == "retained"
+         and process["live_processes"] == 0 and process["out_of_group_live_identities"] == []
+         and not process["tracking_error"] and report["worker_identity"] == record["child"]
+         and report["schema"] == WORK_SCHEMA and report["passed"] is False
+         and report["semantic_negative"] is False and report["negative_profile"] is None
+         and report["startup"] == {"python": policy["python"], "isolated": 1, "no_bytecode": True}
+         and report["plan_sha256"] == descriptor(invocation / "validation-plan.json")["sha256"]
+         and report["source_READ_closed"] is True and report["cleanup_errors"] == []
+         and report["freeze"] == context["snapshot_ref"]
+         and report["source_commitment"] == context["snapshot"]["source_commitment"]
+         and canonical(report.get("source_qualification")) == canonical(context["profile"])
+         and report.get("required_source_bodies") == context["required_source_bodies"]
+         and report["full_source_manifest_sha256"] == digest(plan["source_pins"])
+         and report["full_source_file_count"] == len(plan["source_pins"]),
+         "original source qualification failure custody remains unknown")
+    return {"source_closed": True, "native_closed": True, "processes_closed": True,
+            "storage_closed": False, "semantic_negative": False, "negative_profile": None}
+
+
+def _source_qualification_arguments(args, context):
+    need(context is not None and Path(context["snapshot_ref"]["path"]) == args.freeze_path
+         and args.candidate_root == context["root"]
+         and args.source_commitment == context["snapshot"]["source_commitment"],
+         "immutable qualification original arguments differ")
+    return context["snapshot"]
+
+
+def verify_source_qualification(args):
+    policy = checked_policy(args.policy, args.policy_sha256)
+    context = checked_source_qualification(policy); _source_qualification_arguments(args, context)
+    need(args.receipt_path.parent == args.invocation_root and args.freeze_path.parent == args.invocation_root.parent,
+         "immutable qualification receipt or invocation binding differs")
+    receipt = json_object(ordinary_bytes(args.receipt_path))
+    need(type(receipt) is dict and set(receipt) == {"schema", "snapshot", "source_qualification", "source_commitment",
+         "passed", "source_closed", "native_closed", "processes_closed", "storage_closed", "cleanup_errors",
+         "original_receipt_reference", "original_receipt_descriptor", "verified_checks", "parent_source_closeout",
+         "repair_authority", "adoption_authority", "activation_authority", "completion_authority"}
+         and receipt.get("schema") == SOURCE_QUALIFICATION_SCHEMA
+         and receipt.get("passed") is True and receipt.get("snapshot") == context["snapshot_ref"]
+         and receipt.get("source_commitment") == context["snapshot"]["source_commitment"]
+         and receipt.get("source_qualification") == context["profile"]
+         and receipt.get("cleanup_errors") == []
+         and receipt.get("original_receipt_reference") == receipt.get("original_receipt_descriptor", {}).get("path")
+         and all(receipt.get(key) is True for key in ("source_closed", "native_closed", "processes_closed", "storage_closed"))
+         and all(receipt.get(key) is False for key in ("repair_authority", "adoption_authority",
+             "activation_authority", "completion_authority")), "positive source-only qualification required")
+    plan = json_object(ordinary_bytes(args.invocation_root / "validation-plan.json"))
+    _source_qualification_plan(policy, plan, args.invocation_root)
+    terminal = json_object(checked_descriptor(receipt["original_receipt_descriptor"]))
+    request_pin = original_execution_request(args.invocation_root)
+    summary = verify_validation_evidence(policy, plan, request_pin, terminal, args.invocation_root)
+    need(receipt["verified_checks"] == summary, "immutable qualification verified summary differs")
+    verify_v5_parent_source_closeout(policy, request_pin, args.invocation_root,
+        receipt["parent_source_closeout"], summary)
+
+
+# Capture originals after all definitions; legacy repair profiles never enter
+# this new guard. This is cooperative integrity checking, not a Python sandbox.
+_REVIEWED_PARENT_SELF_PIN = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
+_REVIEWED_PARENT_COMPILE = _ORIGINAL_COMPILE
+_REVIEWED_PARENT_GUARD_OBJECT = _reviewed_parent_guard
+_REVIEWED_PARENT_GUARD_CODE = _reviewed_parent_guard.__code__
+_REVIEWED_PARENT_HANDLE_CLASS = VerifiedReviewedPreservationParentSuccess
+_REVIEWED_PARENT_FUNCTIONS = tuple((name, _reviewed_parent_function_state(value))
+    for name, value in tuple(globals().items()) if type(value) is types.FunctionType and value.__module__ == __name__)
+_REVIEWED_PARENT_CLASSES = tuple((name, value, type(value), value.__bases__, frozenset(vars(value)),
+    tuple((key, _reviewed_parent_function_state(_reviewed_parent_descriptor_function(method)))
+          for key, method in vars(value).items() if type(_reviewed_parent_descriptor_function(method)) is types.FunctionType))
+    for name, value in tuple(globals().items()) if isinstance(value, type) and value.__module__ == __name__)
+_REVIEWED_PARENT_POPEN_META = type(_ORIGINAL_POPEN)
+_REVIEWED_PARENT_POPEN_BASES = getattr(_ORIGINAL_POPEN, "__bases__", None)
+_REVIEWED_PARENT_POPEN_KEYS = frozenset(vars(_ORIGINAL_POPEN))
+_REVIEWED_PARENT_POPEN_FUNCTIONS = tuple((name, _reviewed_parent_function_state(_reviewed_parent_descriptor_function(value)))
+    for name, value in vars(_ORIGINAL_POPEN).items() if type(_reviewed_parent_descriptor_function(value)) is types.FunctionType)
 
 if __name__ == "__main__":
     raise SystemExit(main())

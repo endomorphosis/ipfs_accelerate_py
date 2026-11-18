@@ -20,6 +20,7 @@ intent-repository completion gate is enforced on every complete transition.
 from __future__ import annotations
 
 import base64
+import copy
 import hashlib
 import json
 import os
@@ -53,7 +54,10 @@ from .duckdb_state import (
     submit_quack_owner_command,
     validate_quack_owner_command,
 )
-from .quack_owner_command import false_terminal_blocked_rearm_reason
+from .quack_owner_command import (
+    QUACK_OWNER_COMMAND_STAGE_METADATA_PREREQUISITE,
+    false_terminal_blocked_rearm_reason,
+)
 from .intent_repository import (
     DEFAULT_PAGE_LIMIT,
     MAX_PAGE_LIMIT,
@@ -2223,6 +2227,179 @@ def quack_owner_command_error_code(exc: BaseException) -> str:
     return "owner_error"
 
 
+def _stage_metadata_prerequisite(
+    repository: IntentRepository,
+    payload: Mapping[str, Any],
+    *,
+    store_id: str,
+    store_generation: str,
+    prerequisite_context_factory: Any,
+) -> Mapping[str, Any]:
+    """Stage one inert prerequisite inside the existing owner replay transaction.
+
+    The injected context is exclusively a trusted FICTIONAL fixture seam.
+    There is no production registry/current-budget adapter yet. No matching
+    callback flags establish authority or mint a handler, route or budget.
+    """
+    from .execution_packet_admission import BUDGET_FIELDS, PURPOSES, authority_spec_cid
+
+    parent = repository.get_task(payload["parent_task_cid"])
+    if (parent is None or parent["task_cid"] != payload["parent_task_cid"]
+            or parent["status"] != "blocked"
+            or parent["revision"] != payload["expected_parent_revision"]
+            or list(parent["dependencies"]) != payload["expected_parent_dependencies"]
+            or authority_spec_cid(parent) != payload["expected_parent_spec_cid"]):
+        raise TaskSourceConflictError("metadata prerequisite parent binding changed")
+    if "local_planning_contract" in parent["body"]:
+        raise TaskSourceConflictError("metadata prerequisite parent dependencies are immutable")
+    if not callable(prerequisite_context_factory):
+        raise TaskSourceIntegrityError("fictional metadata prerequisite fixture context is unavailable")
+    context = prerequisite_context_factory(
+        repository=repository,
+        parent=copy.deepcopy(dict(parent)),
+        payload=copy.deepcopy(dict(payload)),
+        store_id=store_id,
+        store_generation=store_generation,
+    )
+    if not isinstance(context, Mapping):
+        raise TaskSourceIntegrityError("metadata prerequisite owner context is unavailable")
+    expected_context = {
+        key: payload[key] for key in (
+            "parent_task_cid", "work_unit_cid", "source_generation",
+            "selected_scope_cid", "requirement_cid", "prerequisite_kind",
+            "handler_registration_cid", "budget_snapshot_cid",
+        )
+    }
+    expected_context.update(
+        parent_revision=parent["revision"],
+        parent_spec_cid=payload["expected_parent_spec_cid"],
+        parent_dependencies=list(parent["dependencies"]),
+        store_id=store_id,
+        store_generation=store_generation,
+    )
+    if any(type(context.get(key)) is not type(value) or context[key] != value
+           for key, value in expected_context.items()):
+        raise TaskSourceIntegrityError("metadata prerequisite owner context binding changed")
+    if any(context.get(key) is not True for key in (
+        "scope_allows_prerequisite", "metadata_work_permitted", "handler_registered",
+    )):
+        raise TaskSourceIntegrityError("metadata prerequisite owner scope or handler unavailable")
+    purpose = context.get("handler_purpose")
+    if type(purpose) is not str or purpose not in PURPOSES:
+        raise TaskSourceIntegrityError("metadata prerequisite handler purpose is not metadata")
+    remaining = context.get("remaining_budget")
+    positive = {"cpu_threads", "memory_mib", "storage_bytes", "deadline_seconds", "max_attempts"}
+    if (not isinstance(remaining, Mapping) or set(remaining) != BUDGET_FIELDS
+            or any(type(value) is not int or not 0 <= value <= 2**63 - 1
+                   for value in remaining.values())
+            or remaining.get("max_tokens") != 0
+            or any(remaining.get(key, 0) <= 0 for key in positive)):
+        raise TaskSourceIntegrityError("metadata prerequisite cumulative budget unavailable or exhausted")
+    if repository.get_task(parent["task_cid"]) != parent:
+        raise TaskSourceConflictError("metadata prerequisite parent changed during owner check")
+
+    stable_identity = {
+        "schema": "ipfs_accelerate_py/agent-supervisor/metadata-prerequisite-identity@1",
+        **{key: payload[key] for key in (
+            "parent_task_cid", "work_unit_cid", "source_generation",
+            "selected_scope_cid", "requirement_cid", "prerequisite_kind",
+            "handler_registration_cid",
+        )},
+    }
+    child_alias = "metadata-prerequisite-" + hashlib.sha256(
+        content_identity(stable_identity).encode("utf-8")).hexdigest()[:24]
+    existing = repository.get_task(child_alias)
+    contract_parent = copy.deepcopy(dict(parent))
+    origin_revision = parent["revision"]
+    if existing is not None:
+        if existing["task_cid"] not in parent["dependencies"]:
+            raise TaskSourceConflictError("metadata prerequisite existing child edge is missing")
+        origin_revision = existing["body"].get("parent_revision")
+        if type(origin_revision) is not int or origin_revision < 1:
+            raise TaskSourceConflictError("metadata prerequisite parent provenance is missing")
+        if parent["revision"] != origin_revision + 1:
+            raise TaskSourceConflictError("metadata prerequisite parent revision changed after staging")
+        # Only this operation's own edge/revision change is normalized. A new
+        # parent specification cannot borrow a child staged for an older one.
+        contract_parent["dependencies"] = tuple(
+            cid for cid in parent["dependencies"] if cid != existing["task_cid"])
+        contract_parent["revision"] = origin_revision
+    identity = {**stable_identity, "parent_revision": origin_revision,
+                "parent_contract_cid": authority_spec_cid(contract_parent)}
+    child_cid = content_identity(identity)
+    stable_body = {
+        "schema": "ipfs_accelerate_py/agent-supervisor/metadata-prerequisite-task@1",
+        "prerequisite": identity,
+        "handler_purpose": purpose,
+        "execution_packet_required": True,
+        "requires_product_change_scope": False,
+        "execution_admitted": False,
+        "completion_authority": False,
+        "fictional_fixture": True,
+    }
+    child_identity = {**identity, "task_cid": child_cid, "task_alias": child_alias}
+    if existing is not None:
+        existing_body = dict(existing["body"])
+        # A fresh owner budget check cannot retag the initial provenance or
+        # replenish anything. Only the immutable child contract is compared.
+        original_budget = existing_body.pop("budget_snapshot_cid", None)
+        existing_body.pop("parent_revision", None)
+        if (existing["task_cid"] != child_cid or existing["task_alias"] != child_alias
+                or existing["status"] != "blocked" or existing["goal_cid"] != parent["goal_cid"]
+                or existing["plan_cid"] != parent["plan_cid"]
+                or existing["objective_id"] != parent["objective_id"]
+                or existing["ordinal"] != 0 or existing["priority"] != "P2"
+                or existing["identity"] != child_identity or existing_body != stable_body
+                or type(original_budget) is not str or not original_budget
+                or existing["dependencies"] or existing["outputs"]
+                or existing["acceptance"] or existing["validations"]
+                or child_cid not in parent["dependencies"]):
+            raise TaskSourceConflictError("metadata prerequisite existing child contract conflicts")
+        return {
+            "schema": "ipfs_accelerate_py/agent-supervisor/metadata-prerequisite-staged@1",
+            "operation": QUACK_OWNER_COMMAND_STAGE_METADATA_PREREQUISITE,
+            "parent_task_cid": parent["task_cid"], "child_task_cid": child_cid,
+            "child_task_alias": child_alias, "staged": False, "duplicate": True,
+            "parent_receipt": None, "child_receipt": None,
+            "execution_admitted": False, "completion_authority": False,
+            "fictional_fixture": True,
+        }
+    if child_cid == parent["task_cid"] or child_cid in parent["dependencies"]:
+        raise TaskSourceConflictError("metadata prerequisite child dependency already conflicts")
+    child_receipt = repository.upsert_task(
+        task_cid=child_cid, task_alias=child_alias, goal_cid=parent["goal_cid"],
+        plan_cid=parent["plan_cid"], objective_id=parent["objective_id"],
+        status="blocked", expected_revision=0, dependencies=[], identity=identity,
+        body={**stable_body, "budget_snapshot_cid": payload["budget_snapshot_cid"],
+              "parent_revision": parent["revision"]},
+    )
+    parent_receipt = repository.upsert_task(
+        task_cid=parent["task_cid"], task_alias=parent["task_alias"], goal_cid=parent["goal_cid"],
+        plan_cid=parent["plan_cid"], objective_id=parent["objective_id"], ordinal=parent["ordinal"],
+        status=parent["status"], priority=parent["priority"], body=parent["body"],
+        identity=parent["identity"], expected_revision=parent["revision"],
+        dependencies=[*parent["dependencies"], child_cid],
+        outputs=[copy.deepcopy(item["effect"]) for item in parent["outputs"]],
+        acceptance=[copy.deepcopy(item["evidence_policy"]) for item in parent["acceptance"]],
+        validations=[{**copy.deepcopy(item["policy"]), "argv": copy.deepcopy(item["argv"])}
+                     for item in parent["validations"]],
+    )
+    updated_parent = repository.get_task(parent["task_cid"])
+    if updated_parent is None or any(updated_parent[key] != parent[key] for key in (
+        "status", "body", "identity", "outputs", "acceptance", "validations",
+    )):
+        raise TaskSourceIntegrityError("metadata prerequisite changed retained parent relations")
+    return {
+        "schema": "ipfs_accelerate_py/agent-supervisor/metadata-prerequisite-staged@1",
+        "operation": QUACK_OWNER_COMMAND_STAGE_METADATA_PREREQUISITE,
+        "parent_task_cid": parent["task_cid"], "child_task_cid": child_cid,
+        "child_task_alias": child_alias, "staged": True, "duplicate": False,
+        "parent_receipt": parent_receipt.to_dict(), "child_receipt": child_receipt.to_dict(),
+        "execution_admitted": False, "completion_authority": False,
+        "fictional_fixture": True,
+    }
+
+
 def execute_quack_owner_command(
     repository: IntentRepository,
     command: str,
@@ -2232,6 +2409,8 @@ def execute_quack_owner_command(
     store_id: str = "",
     store_generation: str = "",
     typed_deferral_provider_evidence_factory: Any = None,
+    prerequisite_context_factory: Any = None,
+    fictional_prerequisite_fixture: bool = False,
 ) -> Mapping[str, Any]:
     """Execute one admitted command through canonical repository methods.
 
@@ -2247,9 +2426,25 @@ def execute_quack_owner_command(
             "typed owner command requires the exclusive owner's bound connection"
         )
     args = validate_quack_owner_command(command, payload)
+    if command == QUACK_OWNER_COMMAND_STAGE_METADATA_PREREQUISITE and not all(
+        (request_id, store_id, store_generation)
+    ):
+        raise TaskSourceIntegrityError("metadata prerequisite requires exact owner-command bindings")
+    if (command == QUACK_OWNER_COMMAND_STAGE_METADATA_PREREQUISITE
+            and fictional_prerequisite_fixture is not True):
+        # This owner-only switch is never accepted in the transport payload.
+        # The production path stays closed until native registry and current
+        # cumulative budget provenance can be jointly resolved by this owner.
+        raise TaskSourceIntegrityError(
+            "production metadata prerequisite registry/current-budget adapter is unavailable")
     source = DatabaseTaskSource(intent=repository)
 
     def execute_once() -> Mapping[str, Any]:
+        if command == QUACK_OWNER_COMMAND_STAGE_METADATA_PREREQUISITE:
+            return _stage_metadata_prerequisite(
+                repository, args, store_id=store_id, store_generation=store_generation,
+                prerequisite_context_factory=prerequisite_context_factory,
+            )
         if command == QUACK_OWNER_COMMAND_COMPARE_AND_SET_STATUS:
             result = source.compare_and_set_status(
                 args["task_cid_or_alias"],

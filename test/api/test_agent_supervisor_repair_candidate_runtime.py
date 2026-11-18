@@ -438,3 +438,190 @@ class CandidateRuntimeAPITests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+# Operational ledger-busy controls: all command/epoch/Source/native statements
+# below are explicitly modeled DATA. Only the configured verifier boundary is
+# mocked; real owner-command state transitions, files, tickets and queue logic run.
+import pytest as _operational_pytest
+from contextlib import nullcontext as _operational_nullcontext
+
+
+def _operational_put(path,value):
+    path.parent.mkdir(parents=True,exist_ok=True)
+    raw=value if type(value)is bytes else runtime._wire(value)
+    path.write_bytes(raw);path.chmod(0o400);return runtime._pin(path)
+
+
+def _operational_runtime_case(tmp_path):
+    root=tmp_path/'operational';root.mkdir();metadata=root/'candidate-metadata';metadata.mkdir()
+    invocation=metadata/'original-validate-invocation';invocation.mkdir()
+    candidate_root=root/'candidate';candidate_root.mkdir()
+    owner=_operational_put(root/'owner.py',b'# Modeled configured owner DATA, never executed.\n')
+    command=runtime.OwnerCommand(('/usr/bin/python3',owner['path'],'validate','{freeze_path}','{receipt_path}','{invocation_root}'),
+        ('/usr/bin/python3',owner['path'],'verify-validation','{freeze_path}','{receipt_path}','{invocation_root}'),(owner,),1)
+    v=object.__new__(runtime.CandidateRuntime);v.counter=0;v.directory=root/'bootstrap';v.directory.mkdir()
+    v.token='a'*32;v.attempt_number=1;v.board={'id':'legal-ir'};v.job_path=root/'job.json'
+    v.config={'repair_worker':{'candidate_runtime':{'modeled_source_pinned_policy':'DATA'}},'state_dir':str(root)}
+    v.config_ref=_operational_put(root/'config.json',v.config)
+    v.policy=SimpleNamespace(repository_root=root,state_root=root)
+    v.session=SimpleNamespace(metadata_root=metadata,candidate_root=candidate_root,stage='candidate_ready',binding={'candidate':'fictional'},
+        freeze={'freeze_sha256':'b'*64,'source_commitment':'c'*64})
+    v.runtime_policy=SimpleNamespace(validation_owner=command,validation_ledger_busy_retry=None)
+    v.authority=Mock();v._remaining_seconds=Mock(return_value=1000)
+    from ipfs_accelerate_py.agent_supervisor.rescue import fleet_repair as fleet
+    v.fleet=SimpleNamespace(lock=fleet.lock,write_json=fleet.write_json,
+        _repair_budget_spent=fleet._repair_budget_spent,_repair_limits=lambda config:{'legal-ir':3})
+    _operational_put(v.job_path,dict(status='validation_pending',board_id='legal-ir',attempts=1,repair_unit_token=v.token,
+        candidate_runtime={'candidate_metadata':str(metadata),'attempt_token':v.token,'attempt_number':1}))
+    v._job=Mock(side_effect=lambda **kw:runtime._json(runtime._read(v.job_path))) # authorization boundary only
+    pins={name:_operational_put(root/(name+'.json'),{'fictional':name})for name in('policy','plan','request','parent_source_closeout')}
+    material=dict(schema='agent-supervisor/closed-operational-ledger-busy@1',reason='pregrant_ledger_busy',
+        binding=v.session.binding,freeze_sha256='b'*64,source_commitment='c'*64,invocation_root=str(invocation),**pins,
+        source_closed=True,native_closed=True,storage_status='not_entered',record_created=False,native_grant_created=False,
+        productive_child_created=False,semantic_negative=False,retry_authorized=False,storage_release_authorized=False)
+    proof=_operational_put(invocation/'operational-ledger-busy.json',material)
+    values={'{freeze_path}':str(metadata/'candidate-ready.json'),'{receipt_path}':str(invocation/'receipt.json'),'{invocation_root}':str(invocation)}
+    intent={'schema':runtime.SCHEMA,'stage':'validate','argv':[values.get(x,x)for x in command.argv],
+        'verify_argv':[values.get(x,x)for x in command.verify_argv],'owner_source_descriptors':[owner],
+        'runtime_policy_sha256':runtime.candidate.digest(v.config['repair_worker']['candidate_runtime']),
+        'attempt_token':v.token,'attempt_number':1,'freeze_sha256':'b'*64,'source_commitment':'c'*64}
+    _operational_put(invocation/'intent.json',intent);_operational_put(invocation/'terminal.json',{'command_returncode':1,'verifier_returncode':None})
+    verified=dict(schema='agent-supervisor/verified-operational-ledger-busy@1',operational=proof,disposition=material,
+        read_only=True,retry_authorized=False,storage_release_authorized=False)
+    v.command_runner=Mock(return_value=SimpleNamespace(returncode=0,stdout=runtime._wire(verified).decode(),stderr=''))
+    return SimpleNamespace(value=v,root=root,invocation=invocation,material=material,verified=verified,proof=proof)
+
+
+def test_known_pregrant_ledger_busy_is_terminal_without_replaying_validation():
+    value=object.__new__(runtime.CandidateRuntime)
+    value.session=SimpleNamespace(stage='candidate_ready',freeze={'freeze_sha256':'a'*64})
+    value._stage=Mock(side_effect=lambda stage,**details:dict(stage=stage,**details))
+    value._owner_command=Mock(return_value={'schema':'agent-supervisor/closed-operational-ledger-busy@1'})
+    value._ledger_busy_decision=Mock(return_value={'reason':'ledger_busy_profile_not_authorized','retry_authorized':False})
+    value._run_provider=Mock()
+    with patch.object(runtime.candidate,'record_validation')as positive_acceptance:
+        observed=value.advance()
+    assert observed['stage']=='validation_needs_new_authorization'
+    assert observed['reason']=='ledger_busy_profile_not_authorized'
+    positive_acceptance.assert_not_called();value._run_provider.assert_not_called()
+    value._owner_command.assert_called_once_with('validate')
+
+
+def test_persisted_operational_owner_command_and_real_advance_close_without_semantic_acceptance(tmp_path):
+    c=_operational_runtime_case(tmp_path);v=c.value
+    before=(c.invocation/'terminal.json').read_bytes()
+    with patch.object(runtime.candidate,'record_validation')as positive:
+        result=v.advance()
+        assert result['stage']=='validation_needs_new_authorization'
+        assert result['reason']=='ledger_busy_profile_not_authorized'
+        assert runtime._json(runtime._read(v.job_path))['status']==result['stage']
+        positive.assert_not_called()
+    assert v.command_runner.call_count==1
+    assert v.command_runner.call_args.args[0][2]=='verify-operational-validation'
+    assert (c.invocation/'terminal.json').read_bytes()==before
+    # Reopening an already saved proof performs no second verifier process.
+    assert v._owner_command('validate')['semantic_negative']is False
+    assert v.command_runner.call_count==1
+
+
+@_operational_pytest.mark.parametrize('mode',['low_window','interrupted_observer','authority_expired'])
+def test_operational_marker_that_cannot_be_verified_terminates_without_replay(tmp_path,mode):
+    c=_operational_runtime_case(tmp_path);v=c.value
+    if mode=='low_window':v._remaining_seconds=Mock(return_value=0)
+    elif mode=='interrupted_observer':_operational_put(c.invocation/'operational-observer-intent.json',{'interrupted':'DATA'})
+    else:v.authority.require_current.side_effect=ValueError('modeled original epoch expired')
+    v._closed_negative_validation=Mock(side_effect=AssertionError('operational marker entered semantic-negative path'))
+    result=v.advance()
+    assert result['stage']=='validation_needs_new_authorization'
+    assert result['operational_disposition']['verified_operational']is False
+    v.command_runner.assert_not_called();v._closed_negative_validation.assert_not_called()
+
+
+@_operational_pytest.mark.parametrize('stamp',[True,-1,float('inf')])
+def test_saved_operational_observation_timestamp_cannot_shorten_cooldown(tmp_path,stamp):
+    c=_operational_runtime_case(tmp_path);v=c.value;v._owner_command('validate')
+    path=c.invocation/'operational-observer.json';body=runtime._json(runtime._read(path));body['observed_at']=stamp
+    path.chmod(0o600);path.write_bytes((__import__('json').dumps(body,sort_keys=True)+'\n').encode());path.chmod(0o400)
+    with _operational_pytest.raises(ValueError):
+        v._owner_command('validate')
+    assert v.command_runner.call_count==1
+
+
+def _operational_decision_scope(tmp_path):
+    c=_operational_runtime_case(tmp_path);v=c.value;v._owner_command('validate')
+    material,ref,pin,observation=v.known_operational_validation
+    observation=dict(observation,observed_at=900.)
+    v.known_operational_validation=(material,ref,pin,observation)
+    profile={'schema':'agent-supervisor/validation-ledger-busy-retry@1','max_additional_invocations':2,
+        'cooldown_seconds':60,'authorization_epoch_sha256':'d'*64,'expires_at':2000.}
+    v.runtime_policy.validation_ledger_busy_retry=profile
+    epoch=SimpleNamespace(commitment='d'*64,value={'not_before_observed_at':100.,'expires_at':2000.,'max_attempts':3})
+    return c,epoch
+
+
+def test_operational_cooldown_fixed_expiry_and_remaining_global_slots_are_not_reset(tmp_path):
+    c,epoch=_operational_decision_scope(tmp_path);v=c.value
+    with patch('ipfs_accelerate_py.agent_supervisor.rescue.repair_authorization.parse_authorization_epoch',return_value=epoch):
+        first=v._ledger_busy_decision(next_index=1,now=950.)
+        assert first['reason']=='ledger_busy_cooldown'and first['eligible_after']==960.
+        assert v._ledger_busy_decision(next_index=1,now=960.)['fresh_slot_eligible']is True
+        assert v._ledger_busy_decision(next_index=1,now=2000.)['reason']=='ledger_busy_original_authorization_expired'
+        assert v._ledger_busy_decision(next_index=3,now=1000.)['reason']=='ledger_busy_fixed_validation_slots_exhausted'
+        v._remaining_seconds=Mock(return_value=0)
+        assert v._ledger_busy_decision(next_index=1,now=1000.)['reason']=='ledger_busy_original_remaining_window_insufficient'
+    assert v.runtime_policy.validation_ledger_busy_retry['expires_at']==2000.
+
+
+def test_fresh_operational_slot_ticket_precedes_any_invocation_and_cannot_be_recharged(tmp_path):
+    c,epoch=_operational_decision_scope(tmp_path);v=c.value;v._remaining_seconds=Mock(return_value=1000)
+    # Only the external clock/epoch is fictional. Real O_EXCL ticket/mirror/queue code runs.
+    v._ledger_busy_decision=Mock(return_value={'fresh_slot_eligible':True,'epoch_sha256':'d'*64,'expires_at':time_future()})
+    invocation=v.session.metadata_root/'original-validate-ledger-busy-01'
+    context=v._reserve_ledger_busy_generation(1,invocation)
+    assert not invocation.exists()
+    assert runtime._pin(v.session.metadata_root/'ledger-busy-slot-01.json')==context['spent_slot_ref']
+    job=v._job();assert job['attempts']==1 and v.fleet._repair_budget_spent(job)==2
+    before=runtime._read(v.job_path)
+    with _operational_pytest.raises(ValueError,match='already spent'):
+        v._reserve_ledger_busy_generation(1,invocation)
+    assert runtime._read(v.job_path)==before
+    assert v.command_runner.call_count==1 # only the earlier modeled read-only observer
+
+
+def time_future():
+    import time
+    return time.time()+1000
+
+
+def test_epoch_expiry_during_queue_wait_spends_no_ticket(tmp_path):
+    c,epoch=_operational_decision_scope(tmp_path);v=c.value
+    v._ledger_busy_decision=Mock(side_effect=[{'fresh_slot_eligible':True,'epoch_sha256':'d'*64,'expires_at':time_future()},
+        {'reason':'ledger_busy_original_authorization_expired','retry_authorized':False}])
+    with _operational_pytest.raises(ValueError,match='changed while waiting'):
+        v._reserve_ledger_busy_generation(1,v.session.metadata_root/'original-validate-ledger-busy-01')
+    assert not (v.session.metadata_root/'ledger-busy-slot-01.json').exists()
+
+
+def test_preCLI_SourceLeaseTimeout_has_no_ledger_operational_disposition(tmp_path):
+    c=_operational_runtime_case(tmp_path);v=c.value
+    path=c.invocation/'operational-ledger-busy.json';path.chmod(0o600);path.unlink()
+    assert v._closed_operational_validation(v.runtime_policy.validation_owner,c.invocation,{'command_returncode':2,'verifier_returncode':None})is None
+    v.command_runner.assert_not_called()
+
+
+
+def test_spent_final_slot_delayed_publication_cannot_start_after_fixed_expiry(tmp_path):
+    c,epoch=_operational_decision_scope(tmp_path);v=c.value
+    expires=time_future()
+    v._ledger_busy_decision=Mock(return_value={'fresh_slot_eligible':True,'epoch_sha256':'d'*64,'expires_at':expires})
+    fresh=v.session.metadata_root/'original-validate-ledger-busy-01'
+    context=v._reserve_ledger_busy_generation(1,fresh)
+    v.ledger_busy_selected_context=context;v._ledger_busy_invocation=Mock(return_value=fresh)
+    epoch=SimpleNamespace(commitment='d'*64,value={'not_before_observed_at':100.,'expires_at':expires,'max_attempts':2})
+    with patch('ipfs_accelerate_py.agent_supervisor.rescue.repair_authorization.parse_authorization_epoch',return_value=epoch),patch.object(runtime.time,'time',return_value=expires+1):
+        assert v._owner_command('validate')is None
+    assert v.validation_operational_wait['reason']=='ledger_busy_original_remaining_window_insufficient'
+    assert (fresh/'intent.json').exists()and not(fresh/'terminal.json').exists()
+    assert v.fleet._repair_budget_spent(v._job())==2 and v.command_runner.call_count==1
+    assert (v.session.metadata_root/'ledger-busy-slot-01.json').exists()

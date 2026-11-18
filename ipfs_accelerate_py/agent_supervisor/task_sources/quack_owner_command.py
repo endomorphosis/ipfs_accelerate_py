@@ -192,6 +192,7 @@ QUACK_OWNER_COMMAND_RECORD_QUEUE_BACKOFF_AND_CAS_STATUS = (
 QUACK_OWNER_COMMAND_RECORD_QUEUE_RETRY = "record_queue_retry"
 QUACK_OWNER_COMMAND_RECORD_EVIDENCE = "record_evidence"
 QUACK_OWNER_COMMAND_RECORD_VALIDATION_RESULT = "record_validation_result"
+QUACK_OWNER_COMMAND_STAGE_METADATA_PREREQUISITE = "stage_metadata_prerequisite"
 QUACK_OWNER_COMMANDS = frozenset(
     {
         QUACK_OWNER_COMMAND_COMPARE_AND_SET_STATUS,
@@ -204,6 +205,7 @@ QUACK_OWNER_COMMANDS = frozenset(
         QUACK_OWNER_COMMAND_RECORD_QUEUE_RETRY,
         QUACK_OWNER_COMMAND_RECORD_EVIDENCE,
         QUACK_OWNER_COMMAND_RECORD_VALIDATION_RESULT,
+        QUACK_OWNER_COMMAND_STAGE_METADATA_PREREQUISITE,
     }
 )
 QUACK_OWNER_COMMAND_MAX_BYTES = 262_144
@@ -218,6 +220,15 @@ _GRANT_BROKER_SOCKET_ENV = "IPFS_ACCELERATE_AGENT_STATE_GRANT_BROKER_SOCKET"
 _GRANT_BROKER_SECRET_FD_ENV = "IPFS_ACCELERATE_AGENT_STATE_GRANT_BROKER_SECRET_FD"
 
 _QUACK_OWNER_COMMAND_FIELDS: dict[str, tuple[frozenset[str], frozenset[str]]] = {
+    QUACK_OWNER_COMMAND_STAGE_METADATA_PREREQUISITE: (
+        frozenset({
+            "parent_task_cid", "expected_parent_revision", "expected_parent_spec_cid",
+            "expected_parent_dependencies", "work_unit_cid", "source_generation",
+            "selected_scope_cid", "requirement_cid", "prerequisite_kind",
+            "handler_registration_cid", "budget_snapshot_cid",
+        }),
+        frozenset(),
+    ),
     QUACK_OWNER_COMMAND_COMPARE_AND_SET_STATUS: (
         frozenset({"task_cid_or_alias", "expected_revision", "status"}),
         frozenset({"receipt", "expected_control_receipt", "evidence_digests"}),
@@ -323,6 +334,42 @@ def _mirror_quack_owner_command(command: str) -> None:
         pass
 
 
+def _validate_staged_metadata_prerequisite(copied: dict[str, Any]) -> None:
+    """Validate references only; owner evidence must resolve every capability.
+
+    No task body, command, status, budget or authority can arrive in this
+    payload. Staging creates no runnable work and reserves no execution budget.
+    """
+
+    def reference(value: Any, field: str) -> str:
+        try:
+            text = _owner_command_text(value, field=field)
+            valid = len(text.encode("utf-8")) <= 4096
+        except UnicodeError as error:
+            raise DuckDBConnectionPolicyError("prerequisite references must be UTF-8") from error
+        if not valid or any(ord(char) < 32 or ord(char) == 127 for char in text):
+            raise DuckDBConnectionPolicyError("bounded prerequisite reference required")
+        return text
+
+    for field in set(copied) - {"expected_parent_revision", "expected_parent_dependencies"}:
+        reference(copied[field], field)
+    revision = copied["expected_parent_revision"]
+    if type(revision) is not int or not 1 <= revision < 2**63:
+        raise DuckDBConnectionPolicyError("positive bounded parent revision required")
+    dependencies = copied["expected_parent_dependencies"]
+    if (isinstance(dependencies, (str, bytes, bytearray))
+            or not isinstance(dependencies, Sequence) or len(dependencies) > 256):
+        raise DuckDBConnectionPolicyError("bounded parent dependency sequence required")
+    dependencies = [reference(value, "expected_parent_dependencies") for value in dependencies]
+    if len(set(dependencies)) != len(dependencies):
+        raise DuckDBConnectionPolicyError("duplicate parent dependency reference")
+    if dependencies != sorted(dependencies):
+        raise DuckDBConnectionPolicyError("canonical parent dependency order required")
+    copied["expected_parent_dependencies"] = dependencies
+    if re.fullmatch(r"[a-z][a-z0-9_]{0,95}", copied["prerequisite_kind"]) is None:
+        raise DuckDBConnectionPolicyError("registered prerequisite kind required")
+
+
 def validate_quack_owner_command(
     command: str,
     payload: Mapping[str, Any],
@@ -344,6 +391,8 @@ def validate_quack_owner_command(
             f"quack owner command {command!r} fields do not match its closed schema"
         )
     copied = dict(payload)
+    if command == QUACK_OWNER_COMMAND_STAGE_METADATA_PREREQUISITE:
+        _validate_staged_metadata_prerequisite(copied)
     text_fields = {
         "task_cid_or_alias",
         "goal_cid_or_alias",
