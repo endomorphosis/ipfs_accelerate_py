@@ -4239,7 +4239,10 @@ def reviewed_parent_packet_join_scope_v3(reviewed_parent_packet_join_scope):
     binding["packet_inventory"].sort(key=lambda row: row["path"])
     binding["packet_sha256"] = owners.digest(binding["packet_inventory"])
     assert len(packet) == len(durable) == len(binding["packet_inventory"]) == 83
-    return SimpleNamespace(attempt=old.attempt, operation=copy.deepcopy(old.operation), binding=binding,
+    operation = copy.deepcopy(old.operation)
+    operation["expected_packet_paths"] = [row["path"] for row in binding["packet_inventory"]]
+    binding["expected_packet_paths"] = list(operation["expected_packet_paths"])
+    return SimpleNamespace(attempt=old.attempt, operation=operation, binding=binding,
         durable=durable, packet=tuple(sorted(packet)), source=old.source)
 
 
@@ -4295,6 +4298,8 @@ def test_reviewed_parent_v3_worker_walks_the_same83_owned_files(reviewed_parent_
     s = reviewed_parent_packet_join_scope_v3
     collector = object.__new__(worker.ReviewedPreservationNativeCollectorV3)
     collector.packet_root = s.attempt / s.operation["packet_root"]
+    collector.reviewed_version = 3
+    collector.operation = s.operation
     assert collector._packet() == s.packet
     # These objects exercise only ordinary inventory; no fake valid capability.
     old = object.__new__(worker.ReviewedPreservationNativeCollectorV1)
@@ -4343,30 +4348,50 @@ def test_reviewed_parent_v3_worker_rejects_crossed_domains_before_any_operation(
         worker.reviewed_preservation_native_operation_v3({"schema": worker_schema}, {"schema": parent_schema})
 
 
-def prepare_reviewed_parent_native_fixture_inputs_v3(path, control, *, datasets_root):
-    """Encode the SAME release component, never independently regenerate it.
+def prepare_reviewed_parent_native_fixture_inputs_v3(path, control=None, *, datasets_root=None):
+    """Serialize the caller's exact V3 component; retain old fixture-call mode.
 
-    The caller's existing admitted fictional fixture owns all signing. This
-    function copies only public raw inputs and never runs a tool or issues a
-    Native/parent capability. The original preparation/graph/admission pins
-    must also appear in the exact D closure request selected by Root.
+    Explicit control never regenerates a target or signing material. Omitting
+    control keeps the existing ordinary CPU fixture helper for compatibility.
+    Neither mode runs a native tool or issues a capability.
     """
+    import tempfile
+    if datasets_root is None:
+        datasets_root = Path(__file__).resolve().parents[3] / "ipfs_datasets"
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
     helper = reviewed_parent_original_R_fixture_module_v1(Path(datasets_root))
-    assert control["admission"]["fixture_only"] is True
-    assert control["admission"]["provenance_kind"] == "fictional_fixture"
-    arguments = helper.reviewed_native_arguments_v3(control)
-    prepared = control["preparation"]
-    value = {"schema": "reviewed-preservation-fixture-native-inputs/v3", "fixture_only": True,
-        "provenance_kind": "fictional_fixture", "preparation": {"manifest_json": prepared.manifest_json,
-            "files": [[name, body] for name, body in prepared.files]},
-        **{name: reviewed_parent_fixture_tree_encode_v1(control[name]) for name in ("graph", "admission", "args", "kwargs")},
-        **{name: arguments[name] for name in ("expected_preservation_sha256", "expected_graph_sha256",
-                                            "expected_admission_sha256", "toolchain")}}
-    raw = owners.canonical(value) + b"\n"
-    assert len(raw) <= 4 * 1024**2
-    reference = put(Path(path), raw)
-    return {"native_inputs": reference, **{name: value[name] for name in
-        ("expected_preservation_sha256", "expected_graph_sha256", "expected_admission_sha256", "toolchain")}}
+
+    def encode(selected):
+        assert selected["admission"]["fixture_only"] is True
+        assert selected["admission"]["provenance_kind"] == "fictional_fixture"
+        arguments = helper.reviewed_native_arguments_v3(selected)
+        prepared = selected["preparation"]
+        value = {"schema": "reviewed-preservation-fixture-native-inputs/v3",
+            "fixture_only": True, "provenance_kind": "fictional_fixture",
+            "preparation": {"manifest_json": prepared.manifest_json,
+                "files": [[name, body] for name, body in prepared.files]},
+            **{name: reviewed_parent_fixture_tree_encode_v1(selected[name])
+                for name in ("graph", "admission", "args", "kwargs")},
+            **{name: arguments[name] for name in ("expected_preservation_sha256",
+                "expected_graph_sha256", "expected_admission_sha256", "toolchain")}}
+        paths = owners._reviewed_parent_packet_paths_v3(value)
+        raw = owners.canonical(value) + b"\n"
+        assert len(raw) <= 4 * 1024**2
+        reference = put(path, raw)
+        return {"native_inputs": reference, "expected_packet_paths": paths,
+            **{name: value[name] for name in ("expected_preservation_sha256",
+                "expected_graph_sha256", "expected_admission_sha256", "toolchain")}}
+
+    if control is not None:
+        return encode(control)
+    with tempfile.TemporaryDirectory(prefix="reviewed-v3-inputs-", dir=path.parent) as scratch:
+        factory = SimpleNamespace(mktemp=lambda label, **_options: Path(
+            tempfile.mkdtemp(prefix=label + "-", dir=scratch)))
+        seed = helper.reviewed_native_seed_v3.__wrapped__(factory)
+        selected = helper.reviewed_native_control_v3.__wrapped__(seed)
+        assert helper.reviewed_native_validate_v3(selected) == selected["preparation"]
+        return encode(selected)
 
 
 def test_reviewed_preservation_parent_actual_native_child_v3():
@@ -4462,6 +4487,10 @@ def _reviewed_parent_public_depth_policy(scope, value, label, *, version=3):
         "native_argv": None, "native_data": None, "native_inputs": native,
         **{key: value[key] for key in ("expected_graph_sha256", "expected_admission_sha256",
                                       "expected_preservation_sha256", "toolchain")}}
+    if version == 3:
+        # This parser-only policy must still stop at its deliberately invalid ID.
+        # Empty population is never accepted as an executable V3 declaration.
+        policy["operation"]["expected_packet_paths"] = []
     reference = put(scope.root / (label + "-policy.json"), policy)
     return Path(reference["path"]), reference["sha256"], native
 
@@ -5551,6 +5580,10 @@ def reviewed_parent_persisted_reader_version_model(request, tmp_path, monkeypatc
         projection = {"fixture_only": True, "modeled_execution": "not-an-original"}
         binding["execution_projection_sha256"] = owners.digest(projection)
         evidence = {"binding": binding, "attempt_directory": str(s.attempt),
+            "reviewed_version": packet_version,
+            **({"operation": copy.deepcopy(s.operation),
+                "expected_packet_paths": list(s.operation["expected_packet_paths"])}
+               if packet_version == 3 else {}),
             "inventory": [[row["path"], row["bytes"], row["sha256"], row["device"], row["inode"]]
                           for row in s.durable]}
         for name in ("request", "plan", "wait", "closeout", "durability"):
@@ -5612,7 +5645,8 @@ def reviewed_parent_persisted_reader_version_model(request, tmp_path, monkeypatc
             load_reviewed_norm_preservation_native_v3=replay_for(3),
             validate_reviewed_norm_preservation_native_v2=validate_for(2),
             validate_reviewed_norm_preservation_native_v3=validate_for(3))
-        def native_owner(value):
+        def native_owner(value, *, reviewed_version):
+            assert type(reviewed_version) is int and reviewed_version == packet_version
             assert value == evidence
             native_resolutions.append(True)
             return native
@@ -5648,3 +5682,1124 @@ def test_reviewed_parent_persisted_reader_crossed_domain_refuses_before_native_r
     with pytest.raises(ValueError, match="capability belongs to another reviewed native domain"):
         loader(s.handle, s.packet, object(), {}, {}, **s.args)
     assert s.native_resolutions == s.calls == s.persisted_versions == s.sealed == []
+
+
+@pytest.fixture(scope="module")
+def reviewed_parent_v3_complete_packet_scope(tmp_path_factory):
+    """Real reviewed V3 project; modeled compiled bytes and no Native authority."""
+    directory = tmp_path_factory.mktemp("reviewed-parent-v3-pure")
+    base = reviewed_parent_packet_join_scope.__wrapped__(directory)
+    prepared = prepare_reviewed_parent_native_fixture_inputs_v3(directory / "public-v3-inputs.json")
+    data = owners.json_object(owners.checked_descriptor(prepared["native_inputs"]))
+    manifest = json.loads(data["preparation"]["manifest_json"])
+    assert owners.digest(data["preparation"]) == data["expected_preservation_sha256"]
+    assert [name for name, _ in data["preparation"]["files"]] == sorted(manifest["file_sha256"])
+    attempt = directory / "modeled-v3-attempt"; attempt.mkdir()
+    operation = copy.deepcopy(base.operation)
+    operation.update(prepared)
+    operation["operation_id"] += "-v3"
+    operation["nodeid"] = str(Path(__file__).absolute()) + "::test_reviewed_parent_v3_complete_project_worker_declaration_and_pure_packet_join"
+    bodies = {"build-receipt.json": b"Modeled receipt only; no original success.\n",
+        "stdout.txt": b"", "stderr.txt": b"", "runner-error.txt": b"",
+        "project/corpus-manifest.json": data["preparation"]["manifest_json"].encode("utf-8")}
+    for name, body in data["preparation"]["files"]:
+        bodies["project/" + name] = bodies["executed-inputs/" + name] = body.encode("utf-8")
+    for module in manifest["expected_modules"]:
+        bodies["compiled/" + module.replace(".", "/") + ".olean"] = (
+            "Modeled compiled bytes only: " + module).encode("utf-8")
+    assert sorted(bodies) == prepared["expected_packet_paths"]
+    inventory, durable, packet = [], [], []
+    for name in sorted(bodies):
+        raw = bodies[name]
+        ref = put(attempt / operation["packet_root"] / name, raw)
+        info = Path(ref["path"]).stat()
+        packet.append((name, raw))
+        inventory.append({"path": name, "bytes": ref["bytes"], "sha256": ref["sha256"]})
+        durable.append({"path": operation["packet_root"] + "/" + name,
+            "bytes": ref["bytes"], "sha256": ref["sha256"], "device": info.st_dev, "inode": info.st_ino})
+    binding = dict(copy.deepcopy(base.binding),
+        schema="reviewed-preservation-native-binding/v3",
+        operation_id=operation["operation_id"],
+        preparation_sha256=operation["expected_preservation_sha256"],
+        graph_sha256=operation["expected_graph_sha256"], admission_sha256=operation["expected_admission_sha256"],
+        toolchain=operation["toolchain"], packet_inventory=inventory,
+        expected_packet_paths=list(prepared["expected_packet_paths"]),
+        packet_sha256=owners.digest(inventory),
+        receipt_sha256=next(row["sha256"] for row in inventory if row["path"] == "build-receipt.json"))
+    packet_scope = SimpleNamespace(attempt=attempt, operation=operation, binding=binding,
+        durable=durable, packet=tuple(packet), source=base.source)
+    declared = reviewed_parent_worker_declaration_scope.__wrapped__(packet_scope)
+    declared.policy["schema"] = "reviewed-preservation-parent/v3"
+    declared.plan["schema"] = "reviewed-preservation-native-worker/v3"
+    return SimpleNamespace(packet=packet_scope, declaration=declared, data=data, metadata=prepared)
+
+def test_reviewed_parent_v3_complete_project_worker_declaration_and_pure_packet_join(
+        reviewed_parent_v3_complete_packet_scope):
+    s = reviewed_parent_v3_complete_packet_scope
+    before = copy.deepcopy((s.declaration.plan, s.declaration.policy))
+    # This call is the focused missing-route RED after complete genuine V3
+    # preparation and the full modeled durable packet have been constructed.
+    operation = s.declaration.worker.reviewed_preservation_native_operation_v3(
+        s.declaration.plan, s.declaration.policy)
+    assert operation == s.declaration.policy["operation"]
+    assert operation is not s.declaration.plan["operation"]
+    assert (s.declaration.plan, s.declaration.policy) == before
+    assert owners._reviewed_parent_packet_paths_v3(s.data) == s.metadata["expected_packet_paths"]
+    result = owners._reviewed_parent_packet_binding_v3(
+        s.packet.operation, s.packet.binding, s.packet.durable, attempt_directory=s.packet.attempt)
+    expected = tuple((row["path"], row["bytes"], row["sha256"], row["device"], row["inode"])
+        for row in sorted(s.packet.durable, key=lambda row: row["path"]))
+    assert result == expected and len(result) == len(s.metadata["expected_packet_paths"])
+    assert all(type(row) is tuple and len(row) == 5 for row in result)
+
+@pytest.mark.parametrize("initial_mode, expected_chmods", [(0o600, []), (0o640, [0o600])])
+def test_normal_api_evidence_seed_is_idempotent_and_corrects_permissions(
+        tmp_path, monkeypatch, pytestconfig, initial_mode, expected_chmods):
+    import stat
+    expected = str(Path(__file__).with_name("conftest.py"))
+    plugins = [plugin for plugin in pytestconfig.pluginmanager.get_plugins()
+        if getattr(plugin, "__file__", None) == expected]
+    assert len(plugins) == 1
+    hook = plugins[0]
+    assert hook._seed_r45_receipt_evidence.__globals__ is vars(hook)
+    assert hook._seed_r45_receipt_evidence.__code__.co_filename == expected
+    monkeypatch.setattr(hook, "repo_root", tmp_path)
+    dest = tmp_path / "data/aseh/evidence/bootstrap" / hook._R45_EVIDENCE_NAME
+    dest.parent.mkdir(parents=True)
+    raw = b'{"fixture_only":true,"scope":"private hook permission regression"}\n'
+    dest.write_bytes(raw)
+    dest.chmod(initial_mode)
+    before = dest.stat()
+    chmods = []
+    original_chmod = Path.chmod
+    def record_chmod(path, mode, *args, **kwargs):
+        if path == dest:
+            chmods.append(mode)
+        return original_chmod(path, mode, *args, **kwargs)
+    monkeypatch.setattr(Path, "chmod", record_chmod)
+    hook._seed_r45_receipt_evidence()
+    hook._seed_r45_receipt_evidence()
+    after = dest.stat()
+    assert chmods == expected_chmods
+    assert stat.S_IMODE(after.st_mode) == 0o600
+    assert dest.read_bytes() == raw
+    assert (after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns) == (
+        before.st_dev, before.st_ino, before.st_size, before.st_mtime_ns)
+    if initial_mode == 0o600:
+        assert after.st_ctime_ns == before.st_ctime_ns
+
+def test_reviewed_parent_v3_worker_operation_is_detached(reviewed_parent_v3_complete_packet_scope):
+    s = reviewed_parent_v3_complete_packet_scope.declaration
+    before = copy.deepcopy((s.plan, s.policy))
+    observed = s.worker.reviewed_preservation_native_operation_v3(s.plan, s.policy)
+    observed["expected_packet_paths"].clear()
+    observed["native_argv"].clear()
+    assert (s.plan, s.policy) == before
+
+@pytest.mark.parametrize("fault", ["plan_v1", "policy_v1", "unsupported_plan", "missing_population",
+    "duplicate_population", "unsorted_population", "escaping_population", "overbound_population",
+    "source_pin", "multiple_nodes", "changed_command", "extra_command",
+    "cpu_budget", "memory_budget", "storage_budget", "child_budget", "time_budget"])
+def test_reviewed_parent_v3_worker_rejects_downgrade_population_and_envelope_changes(
+        reviewed_parent_v3_complete_packet_scope, fault):
+    s = reviewed_parent_v3_complete_packet_scope.declaration
+    plan, policy = copy.deepcopy(s.plan), copy.deepcopy(s.policy)
+    op = policy["operation"]
+    if fault == "plan_v1": plan["schema"] = "reviewed-preservation-native-worker/v1"
+    elif fault == "policy_v1": policy["schema"] = "reviewed-preservation-parent/v1"
+    elif fault == "unsupported_plan": plan["schema"] = "reviewed-preservation-native-worker/v4"
+    elif fault == "missing_population": op.pop("expected_packet_paths")
+    elif fault == "duplicate_population": op["expected_packet_paths"].append(op["expected_packet_paths"][-1])
+    elif fault == "unsorted_population": op["expected_packet_paths"].reverse()
+    elif fault == "escaping_population": op["expected_packet_paths"] = ["../foreign"]
+    elif fault == "overbound_population": op["expected_packet_paths"] = [f"file-{index:03d}" for index in range(173)]
+    elif fault == "source_pin": op["expected_source_sha256"][next(iter(op["expected_source_sha256"]))] = "e" * 64
+    elif fault == "multiple_nodes": plan["selected_checks"].append(op["nodeid"] + "-other")
+    elif fault == "changed_command": op["native_argv"][-1][-1] = "another-target"
+    elif fault == "extra_command": op["native_argv"].append(["/bin/true"])
+    else:
+        key = {"cpu_budget": "cpu_slots", "memory_budget": "memory_mb", "storage_budget": "storage_bytes",
+            "child_budget": "child_process_slots", "time_budget": "timeout_seconds"}[fault]
+        policy["validation"][key] += 1
+    plan["operation"] = copy.deepcopy(op)
+    with pytest.raises(ValueError):
+        s.worker.reviewed_preservation_native_operation_v3(plan, policy)
+
+@pytest.mark.parametrize("fault", ["body_without_new_pin", "manifest_without_new_pin", "v2_schema",
+    "foreign_profile", "two_units", "nine_units", "missing_file", "duplicate_file", "file_hash",
+    "escaping_file", "duplicate_module", "escaping_module", "overbound_modules"])
+def test_reviewed_parent_v3_opening_population_refuses_changed_or_incomplete_preparation(
+        reviewed_parent_v3_complete_packet_scope, fault):
+    data = copy.deepcopy(reviewed_parent_v3_complete_packet_scope.data)
+    preparation = data["preparation"]
+    manifest = json.loads(preparation["manifest_json"])
+    if fault == "body_without_new_pin": preparation["files"][0][1] += "\n-- changed source\n"
+    elif fault == "manifest_without_new_pin": preparation["manifest_json"] += " "
+    elif fault == "v2_schema": manifest["schema"] = "legal-corpus-reviewed-preservation-preparation/v2"
+    elif fault == "foreign_profile": manifest["profile"] = "reviewed-multi-unit-relational-preservation/v2"
+    elif fault == "two_units": manifest["units"] = manifest["units"][:2]
+    elif fault == "nine_units": manifest["units"] = [copy.deepcopy(manifest["units"][0]) for _ in range(9)]
+    elif fault == "missing_file": preparation["files"].pop()
+    elif fault == "duplicate_file": preparation["files"].append(copy.deepcopy(preparation["files"][-1]))
+    elif fault == "file_hash": manifest["file_sha256"][preparation["files"][0][0]] = "e" * 64
+    elif fault == "escaping_file":
+        old = preparation["files"][0][0]
+        preparation["files"][0][0] = "../foreign.lean"
+        manifest["file_sha256"]["../foreign.lean"] = manifest["file_sha256"].pop(old)
+    elif fault == "duplicate_module": manifest["expected_modules"].append(manifest["expected_modules"][-1])
+    elif fault == "escaping_module": manifest["expected_modules"][0] = "../Foreign"
+    elif fault == "overbound_modules": manifest["expected_modules"] = [f"Module{index}" for index in range(12)]
+    if fault not in ("body_without_new_pin", "manifest_without_new_pin"):
+        preparation["manifest_json"] = owners.canonical(manifest).decode("utf-8")
+        data["expected_preservation_sha256"] = owners.digest(preparation)
+    with pytest.raises(ValueError):
+        owners._reviewed_parent_packet_paths_v3(data)
+
+@pytest.mark.parametrize("fault", ["v1_binding", "missing_population", "crossed_population", "omitted_packet",
+    "duplicate_packet", "missing_durable", "extra_durable", "changed_durable_bytes", "boolean_inode",
+    "source_pin", "graph_pin", "admission_pin", "preparation_pin", "toolchain", "packet_pin",
+    "resealed_missing_receipt", "resealed_missing_log"])
+def test_reviewed_parent_v3_packet_join_refuses_crossed_and_resealed_incomplete_population(
+        reviewed_parent_v3_complete_packet_scope, fault):
+    s = reviewed_parent_v3_complete_packet_scope.packet
+    operation, binding, durable = copy.deepcopy(s.operation), copy.deepcopy(s.binding), copy.deepcopy(s.durable)
+    if fault == "v1_binding": binding["schema"] = "reviewed-preservation-native-binding/v1"
+    elif fault == "missing_population": binding.pop("expected_packet_paths")
+    elif fault == "crossed_population": binding["expected_packet_paths"] = binding["expected_packet_paths"][:-1]
+    elif fault == "omitted_packet":
+        binding["packet_inventory"].pop()
+        binding["packet_sha256"] = owners.digest(binding["packet_inventory"])
+    elif fault == "duplicate_packet":
+        binding["packet_inventory"].append(copy.deepcopy(binding["packet_inventory"][-1]))
+        binding["packet_sha256"] = owners.digest(binding["packet_inventory"])
+    elif fault == "missing_durable": durable.pop()
+    elif fault == "extra_durable": durable.append(dict(durable[-1], path=operation["packet_root"] + "/foreign.bin"))
+    elif fault == "changed_durable_bytes": durable[0]["bytes"] += 1
+    elif fault == "boolean_inode": durable[0]["inode"] = True
+    elif fault == "source_pin": binding["producer_pins"][s.source["path"]] = "e" * 64
+    elif fault in ("graph_pin", "admission_pin", "preparation_pin"):
+        binding[fault.removesuffix("_pin") + "_sha256"] = "e" * 64
+    elif fault == "toolchain": binding["toolchain"] = "leanprover/lean4:v4.35.0"
+    elif fault == "packet_pin": binding["packet_sha256"] = "e" * 64
+    else:
+        omitted = "build-receipt.json" if fault == "resealed_missing_receipt" else "stdout.txt"
+        operation["expected_packet_paths"].remove(omitted)
+        binding["expected_packet_paths"].remove(omitted)
+        binding["packet_inventory"] = [row for row in binding["packet_inventory"] if row["path"] != omitted]
+        binding["packet_sha256"] = owners.digest(binding["packet_inventory"])
+        durable = [row for row in durable if row["path"] != operation["packet_root"] + "/" + omitted]
+    match = "top-level receipt and log" if fault.startswith("resealed_missing_") else None
+    with pytest.raises(ValueError, match=match):
+        owners._reviewed_parent_packet_binding_v3(operation, binding, durable, attempt_directory=s.attempt)
+
+def test_reviewed_parent_v3_worker_packet_collection_matches_complete_opening_roster(
+        reviewed_parent_v3_complete_packet_scope):
+    s = reviewed_parent_v3_complete_packet_scope
+    # Exercise the collector's real private-file walker without constructing its
+    # live Source/Native observer or manufacturing an original-parent handle.
+    collector = SimpleNamespace(packet_root=s.packet.attempt / s.packet.operation["packet_root"],
+        reviewed_version=3, operation=s.packet.operation)
+    observed = s.declaration.worker.ReviewedPreservationNativeCollectorV1._packet(collector)
+    assert observed == s.packet.packet
+    assert [name for name, _ in observed] == s.metadata["expected_packet_paths"]
+
+@pytest.mark.parametrize("fault", ["omitted_opening_path", "extra_opening_path"])
+def test_reviewed_parent_v3_worker_packet_collection_refuses_incomplete_roster(
+        reviewed_parent_v3_complete_packet_scope, fault):
+    s = reviewed_parent_v3_complete_packet_scope
+    operation = copy.deepcopy(s.packet.operation)
+    if fault == "omitted_opening_path": operation["expected_packet_paths"].pop()
+    else: operation["expected_packet_paths"] = sorted(operation["expected_packet_paths"] + ["foreign.bin"])
+    collector = SimpleNamespace(packet_root=s.packet.attempt / s.packet.operation["packet_root"],
+        reviewed_version=3, operation=operation)
+    with pytest.raises(ValueError):
+        s.declaration.worker.ReviewedPreservationNativeCollectorV1._packet(collector)
+
+@pytest.mark.parametrize("offered", ["none", "object", "dict", "unissued"])
+def test_reviewed_parent_v3_success_rejects_unissued_before_native_owners(monkeypatch, offered):
+    if offered == "none": value = None
+    elif offered == "object": value = object()
+    elif offered == "dict": value = {"original_success_authenticated": True, "reviewed_version": 3}
+    else: value = object.__new__(owners.VerifiedReviewedPreservationParentSuccess)
+    def forbidden(*args, **kwargs):
+        pytest.fail("native owner resolution preceded invalid V3 parent handle refusal")
+    monkeypatch.setattr(owners, "_parent_native_owner", forbidden)
+    with pytest.raises(ValueError, match="(?i)(issued|handle)"):
+        owners.load_parent_verified_reviewed_preservation_v3(
+            value, (), None, {}, {},
+            expected_receipt_sha256="a" * 64, expected_packet_sha256="b" * 64,
+            expected_binary_sha256={}, expected_preservation_sha256="c" * 64,
+            expected_graph_sha256="d" * 64, expected_admission_sha256="e" * 64,
+            toolchain="leanprover/lean4:v4.34.1")
+
+@pytest.mark.parametrize("target", ["_reviewed_parent_packet_paths_v3", "_reviewed_parent_packet_binding_v3",
+    "_load_parent_verified_reviewed_preservation", "load_parent_verified_reviewed_preservation_v3",
+    "_checked_reviewed_preservation_parent_policy", "run_reviewed_preservation_parent_v3"])
+@pytest.mark.parametrize("mutation", ["identity", "code", "defaults"])
+def test_reviewed_parent_v3_new_helpers_remain_in_original_callable_snapshot(monkeypatch, target, mutation):
+    function = getattr(owners, target)
+    if mutation == "identity": monkeypatch.setattr(owners, target, reviewed_parent_forbidden_callable_v1)
+    elif mutation == "code": monkeypatch.setattr(function, "__code__", reviewed_parent_forbidden_callable_v1.__code__)
+    else: monkeypatch.setattr(function, "__defaults__", (object(),))
+    with pytest.raises(ValueError, match="(?i)(changed|binding|original|canonical)"):
+        owners._reviewed_parent_guard()
+
+def _legacy_native_guard_source_evidence_v1(monkeypatch):
+    import importlib
+    datasets_root = Path(__file__).resolve().parents[3] / "ipfs_datasets"
+    monkeypatch.syspath_prepend(str(datasets_root))
+    # Fixed approved R46 path population. Hash current Source directly before
+    # any mutation; a Native callback never discovers or supplies this evidence.
+    # The existing API requires the Native leaf pin and uses its genuine guard
+    # for canonical imported-Source provenance. This is not a claim that every
+    # transitive import is independently parent-custodied.
+    relatives = (
+        'ipfs_datasets_py/logic/autoformal/corpus_norm_definition_adapter.py',
+        'ipfs_datasets_py/logic/autoformal/legal_corpus_definition_use_native_v2.py',
+        'ipfs_datasets_py/logic/autoformal/legal_corpus_shared_lake.py',
+        'ipfs_datasets_py/logic/autoformal/legal_release_coordinator_v1.py',
+        'scripts/ops/legal_ir/validate_uscode_corpus_release.py',
+        'tests/unit/logic/autoformal/test_corpus_release_cli.py',
+        'tests/unit/logic/autoformal/test_corpus_norm_definition_adapter.py',
+        'ipfs_datasets_py/logic/autoformal/legal_native_ast_preservation.py',
+        'ipfs_datasets_py/logic/autoformal/legal_native_ast_preservation_native.py',
+        'ipfs_datasets_py/logic/autoformal/corpus_graph.py',
+        'ipfs_datasets_py/logic/autoformal/legal_corpus_definition_use_lake_v2.py',
+        'ipfs_datasets_py/logic/autoformal/legal_corpus_lake.py',
+        'ipfs_datasets_py/logic/autoformal/legal_norm_definition_evidence_v1.py',
+        'ipfs_datasets_py/logic/autoformal/legal_pilot_lake.py',
+        'ipfs_datasets_py/logic/autoformal/legal_corpus_definition_use_preservation_packet_v2.py',
+        'ipfs_datasets_py/logic/autoformal/legal_reviewed_norm_admission_v3.py',
+        'tests/unit/logic/autoformal/test_legal_reviewed_norm_admission_v3.py',
+        'tests/unit/logic/autoformal/test_legal_corpus_definition_use_lake_v2.py',
+        'tests/unit/logic/autoformal/test_legal_corpus_shared_lake.py',
+        'tests/unit/logic/autoformal/test_legal_corpus_definition_use_native_v2.py',
+        'pytest.ini',
+        'conftest.py',
+        'tests/conftest.py',
+        'tests/unit/conftest.py',
+        'tests/unit/logic/autoformal/test_corpus_definition_use_review_v2.py',
+        'tests/unit/logic/autoformal/test_corpus_definition_use_v2.py',
+        'tests/unit/logic/autoformal/test_corpus_definition_review_v2.py',
+        'tests/unit/logic/autoformal/test_corpus_definition_adapter_v2.py',
+        'ipfs_datasets_py/logic/backends/process.py',
+        'ipfs_datasets_py/logic/autoformal/corpus_source_bindings.py',
+        'ipfs_datasets_py/logic/autoformal/legal_norm_content_adjudication_v1.py',
+        'ipfs_datasets_py/optimizers/logic_theorem_optimizer/legal_span_consumer_binding.py',
+        'tests/unit/logic/autoformal/test_corpus_source_bindings.py',
+        'tests/unit/logic/autoformal/test_legal_norm_content_adjudication_v1.py',
+        'ipfs_datasets_py/logic/autoformal/legal_semantic_graph.py',
+        'ipfs_datasets_py/logic/autoformal/legal_graph_review.py',
+        'ipfs_datasets_py/logic/autoformal/corpus_contracts.py',
+        'ipfs_datasets_py/logic/formalization/autoencoder/native_family_lean_emitters.py',
+        'ipfs_datasets_py/logic/formalization/autoencoder/native_legal_qualified_lean.py',
+        'ipfs_datasets_py/logic/formalization/autoencoder/native_qualified_lean.py',
+        'ipfs_datasets_py/optimizers/logic_theorem_optimizer/uscode_dataset.py',
+        'ipfs_datasets_py/logic/autoformal/uscode_ingest.py',
+        'ipfs_datasets_py/logic/autoformal/legal_entity_index_intake.py',
+        'ipfs_datasets_py/logic/autoformal/constitution_inventory.py',
+        'ipfs_datasets_py/logic/autoformal/meta_ontology.py',
+        'ipfs_datasets_py/logic/autoformal/legal_parent_text_views.py',
+    )
+    source_pins = {
+        str(datasets_root / relative): hashlib.sha256((datasets_root / relative).read_bytes()).hexdigest()
+        for relative in relatives
+    }
+    native = importlib.import_module(
+        "ipfs_datasets_py.logic.autoformal.legal_corpus_definition_use_native_v2")
+    assert str(Path(native.__file__).resolve()) in source_pins
+    return native, {"datasets_root": str(datasets_root), "source_pins": source_pins}
+
+@pytest.mark.parametrize("reviewed_version", (2, 3))
+def test_parent_native_owner_existing_api_accepts_genuine_source(monkeypatch, reviewed_version):
+    native, evidence = _legacy_native_guard_source_evidence_v1(monkeypatch)
+    assert owners._parent_native_owner(evidence, reviewed_version=reviewed_version) is native
+
+@pytest.mark.parametrize("reviewed_version", (2, 3))
+@pytest.mark.parametrize("snapshot_kind", ("empty", "resealed"))
+def test_parent_native_owner_refuses_empty_or_resealed_snapshots_before_callbacks(
+        monkeypatch, reviewed_version, snapshot_kind):
+    native, evidence = _legacy_native_guard_source_evidence_v1(monkeypatch)
+    # The SAME complete existing-API evidence must pass the genuine route
+    # before mutation. Missing Source pins or unrelated genuine-guard failures
+    # cannot make this negative test pass.
+    assert owners._parent_native_owner(evidence, reviewed_version=reviewed_version) is native
+    callbacks = []
+    original_states = native._LIVE_NATIVE_FUNCTIONS
+
+    def forged_matcher(*args, **kwargs):
+        callbacks.append("matcher")
+        return True
+
+    def forged_guard(*args, **kwargs):
+        callbacks.append("guard")
+        return native._live_callable_matches(None, None)
+
+    with monkeypatch.context() as change:
+        change.setattr(native, "_live_callable_matches", forged_matcher)
+        change.setattr(native, "_live_success_guard", forged_guard)
+        if snapshot_kind == "empty":
+            replacement_states = ()
+        else:
+            # Reseal current mutable metadata to the substituted callbacks.
+            # No product predicate is called to manufacture this snapshot.
+            replacement_states = tuple(
+                (name, (function, function.__code__, function.__defaults__,
+                        tuple(sorted(({} if function.__kwdefaults__ is None
+                                      else function.__kwdefaults__).items()))))
+                for name, _old_state in original_states
+                for function in (vars(native)[name],)
+            )
+        change.setattr(native, "_LIVE_NATIVE_FUNCTIONS", replacement_states)
+        refused = False
+        try:
+            owners._parent_native_owner(evidence, reviewed_version=reviewed_version)
+        except ValueError:
+            refused = True
+        assert callbacks == [], ("mutable Native callback ran before independent authentication", callbacks)
+        assert refused is True, "empty/resealed Native metadata was accepted"
+
+@pytest.mark.parametrize("offered", ["none", "object", "dict", "json", "unissued"])
+def test_live_physical_join_refuses_unissued_before_any_R_resolution(monkeypatch, offered):
+    value = {"none": None, "object": object(), "dict": {"admitted": True},
+             "json": json.loads('{"original_success_authenticated":true}'),
+             "unissued": object.__new__(owners.VerifiedReviewedPreservationParentSuccess)}[offered]
+    def forbidden(*args, **kwargs):
+        pytest.fail("R resolution preceded genuine parent handle refusal")
+    monkeypatch.setattr(owners, "_parent_release_owner_binding_v3", forbidden)
+    with pytest.raises(ValueError, match="(?i)(issued|handle)"):
+        owners.load_parent_verified_uscode_physical_closure_v3(
+            value, b"request", expected_request_sha256=hashlib.sha256(b"request").hexdigest())
+
+@pytest.mark.parametrize("crossed", ["process", "native_thread", "thread_object"])
+def test_live_physical_join_capability_entry_refuses_crossed_custody_without_parsing_evidence(
+        monkeypatch, crossed):
+    import os
+    import threading
+    import weakref
+    handle = object.__new__(owners.VerifiedReviewedPreservationParentSuccess)
+    # Deliberately modeled private entry: this tests only refusal ordering and
+    # never constitutes an actual original-parent receipt or successful handle.
+    values = [os.getpid(), threading.get_native_id(),
+              weakref.ref(threading.current_thread()), weakref.ref(handle), b"not evidence"]
+    if crossed == "process": values[0] += 1
+    elif crossed == "native_thread": values[1] += 1
+    else: values[2] = lambda: None
+    monkeypatch.setitem(owners._REVIEWED_PARENT_CAPABILITIES, handle, tuple(values))
+    with pytest.raises(ValueError, match="(?i)(issued|handle|process|thread)"):
+        owners._reviewed_parent_capability_entry(handle)
+
+@pytest.mark.parametrize("target", [
+    "load_parent_verified_uscode_physical_closure_v3",
+    "_parent_release_owner_binding_v3", "_joined_contracts_primitive_binding_v1",
+    "_capture_parent_verified_reviewed_preservation", "_reviewed_parent_joined_opening_v3"])
+@pytest.mark.parametrize("mutation", ["identity", "code", "defaults"])
+def test_live_physical_join_helpers_are_in_original_A_callable_guard(monkeypatch, target, mutation):
+    function = getattr(owners, target)
+    if mutation == "identity":
+        monkeypatch.setattr(owners, target, reviewed_parent_forbidden_callable_v1)
+    elif mutation == "code":
+        monkeypatch.setattr(function, "__code__", reviewed_parent_forbidden_callable_v1.__code__)
+    else:
+        monkeypatch.setattr(function, "__defaults__", (object(),))
+    with pytest.raises(ValueError, match="(?i)(changed|binding|original|canonical)"):
+        owners._reviewed_parent_guard()
+
+@pytest.mark.parametrize("kind", ["metaclass", "tuple", "list", "dict", "set"])
+def test_joined_identity_refuses_unsupported_types_without_user_callbacks(kind):
+    called = []
+    def trap(*args, **kwargs):
+        called.append(True)
+        raise AssertionError("identity refusal invoked a user callback")
+    class TrappingMeta(type):
+        __eq__ = trap
+    class TrappingValue(metaclass=TrappingMeta):
+        pass
+    base = {"tuple": tuple, "list": list, "dict": dict, "set": set}.get(kind)
+    if base is None:
+        value = TrappingValue()
+    else:
+        value = type("Trapping" + kind, (base,), {
+            "__len__": trap, "__iter__": trap, "items": trap, "__eq__": trap})()
+    with pytest.raises(ValueError, match="ordinary native joined identity"):
+        owners._joined_literal_signature_v1(value)
+    assert called == []
+
+def _current_joined_owner_software_evidence():
+    """Current Source pins only; no parent capability or Native success evidence."""
+    root = Path(owners.__file__).resolve().parents[4] / "ipfs_datasets"
+    paths = (
+        "ipfs_datasets_py/logic/autoformal/corpus_norm_definition_adapter.py",
+        "ipfs_datasets_py/logic/autoformal/legal_corpus_definition_use_native_v2.py",
+        "ipfs_datasets_py/logic/autoformal/legal_corpus_shared_lake.py",
+        "ipfs_datasets_py/logic/autoformal/legal_release_coordinator_v1.py",
+        "scripts/ops/legal_ir/validate_uscode_corpus_release.py",
+        "tests/unit/logic/autoformal/test_corpus_release_cli.py",
+        "tests/unit/logic/autoformal/test_corpus_norm_definition_adapter.py",
+        "ipfs_datasets_py/logic/autoformal/legal_native_ast_preservation.py",
+        "ipfs_datasets_py/logic/autoformal/legal_native_ast_preservation_native.py",
+        "ipfs_datasets_py/logic/autoformal/corpus_graph.py",
+        "ipfs_datasets_py/logic/autoformal/legal_corpus_definition_use_lake_v2.py",
+        "ipfs_datasets_py/logic/autoformal/legal_corpus_lake.py",
+        "ipfs_datasets_py/logic/autoformal/legal_norm_definition_evidence_v1.py",
+        "ipfs_datasets_py/logic/autoformal/legal_pilot_lake.py",
+        "ipfs_datasets_py/logic/autoformal/legal_corpus_definition_use_preservation_packet_v2.py",
+        "ipfs_datasets_py/logic/autoformal/legal_reviewed_norm_admission_v3.py",
+        "tests/unit/logic/autoformal/test_legal_reviewed_norm_admission_v3.py",
+        "tests/unit/logic/autoformal/test_legal_corpus_definition_use_lake_v2.py",
+        "tests/unit/logic/autoformal/test_legal_corpus_shared_lake.py",
+        "tests/unit/logic/autoformal/test_legal_corpus_definition_use_native_v2.py",
+        "pytest.ini",
+        "conftest.py",
+        "tests/conftest.py",
+        "tests/unit/conftest.py",
+        "tests/unit/logic/autoformal/test_corpus_definition_use_review_v2.py",
+        "tests/unit/logic/autoformal/test_corpus_definition_use_v2.py",
+        "tests/unit/logic/autoformal/test_corpus_definition_review_v2.py",
+        "tests/unit/logic/autoformal/test_corpus_definition_adapter_v2.py",
+        "ipfs_datasets_py/logic/backends/process.py",
+        "ipfs_datasets_py/logic/autoformal/corpus_source_bindings.py",
+        "ipfs_datasets_py/logic/autoformal/legal_norm_content_adjudication_v1.py",
+        "ipfs_datasets_py/optimizers/logic_theorem_optimizer/legal_span_consumer_binding.py",
+        "tests/unit/logic/autoformal/test_corpus_source_bindings.py",
+        "tests/unit/logic/autoformal/test_legal_norm_content_adjudication_v1.py",
+        "ipfs_datasets_py/logic/autoformal/legal_semantic_graph.py",
+        "ipfs_datasets_py/logic/autoformal/legal_graph_review.py",
+        "ipfs_datasets_py/logic/autoformal/corpus_contracts.py",
+        "ipfs_datasets_py/logic/formalization/autoencoder/native_family_lean_emitters.py",
+        "ipfs_datasets_py/logic/formalization/autoencoder/native_legal_qualified_lean.py",
+        "ipfs_datasets_py/logic/formalization/autoencoder/native_qualified_lean.py",
+        "ipfs_datasets_py/optimizers/logic_theorem_optimizer/uscode_dataset.py",
+        "ipfs_datasets_py/logic/autoformal/uscode_ingest.py",
+        "ipfs_datasets_py/logic/autoformal/legal_entity_index_intake.py",
+        "ipfs_datasets_py/logic/autoformal/constitution_inventory.py",
+        "ipfs_datasets_py/logic/autoformal/meta_ontology.py",
+        "ipfs_datasets_py/logic/autoformal/legal_parent_text_views.py",
+    )
+    # Fixed approved Source roster, with current bytes read under the ordinary
+    # Source epoch. Native callbacks never discover this pin population.
+    pins = {str(root / relative): hashlib.sha256((root / relative).read_bytes()).hexdigest()
+            for relative in paths}
+    return {"datasets_root": str(root), "operation": {"expected_source_sha256": dict(pins)},
+            "source_pins": pins}
+
+def test_joined_owner_binding_replays_real_current_loaded_owners_without_minting():
+    evidence = _current_joined_owner_software_evidence()
+    module, first = owners._parent_release_owner_binding_v3(evidence)
+    reopened, second = owners._parent_release_owner_binding_v3(evidence)
+    assert reopened is module
+    assert owners._same_joined_owner_binding_v1(first, second)
+    assert type(first) is tuple and len(first) == 2
+    assert not isinstance(first, owners.VerifiedReviewedPreservationParentSuccess)
+
+@pytest.mark.parametrize("omitted", ["legal_release_coordinator_v1", "corpus_contracts",
+                                    "legal_entity_index_intake"])
+def test_joined_owner_binding_requires_every_predeclared_source_before_dispatch(omitted):
+    evidence = _current_joined_owner_software_evidence()
+    path = next(path for path in evidence["source_pins"] if Path(path).stem == omitted)
+    evidence["source_pins"].pop(path)
+    with pytest.raises(ValueError, match="independently pinned"):
+        owners._parent_release_owner_binding_v3(evidence)
+
+@pytest.mark.parametrize("version", [2, 3])
+def test_unjoined_legacy_and_v3_policy_do_not_resolve_R(monkeypatch, tmp_path, version):
+    def forbidden(*args, **kwargs):
+        pytest.fail("unjoined policy resolved a new owner")
+    monkeypatch.setattr(owners, "_parent_release_owner_binding_v3", forbidden)
+    policy = {"schema": owners._reviewed_parent_domain(version)[0],
+              "datasets_root": str(tmp_path), "source_descriptors": [],
+              "operation": {"expected_source_sha256": {}}}
+    assert owners._reviewed_parent_joined_opening_v3(policy) is None
+
+@pytest.mark.parametrize("position", ["defaults", "kwdefaults"])
+def test_joined_primitive_authentication_refuses_bad_defaults_without_equality_callbacks(
+        monkeypatch, position):
+    from ipfs_datasets_py.logic.autoformal import corpus_contracts as contracts
+    called = []
+    class TrappingMeta(type):
+        def __eq__(self, other):
+            called.append("metaclass equality")
+            raise AssertionError("default authentication invoked equality")
+    class TrappingValue(metaclass=TrappingMeta):
+        pass
+    if position == "defaults":
+        target = contracts._loaded_owner_shape_v1
+        monkeypatch.setattr(target, "__defaults__", (TrappingValue(),))
+    else:
+        target = contracts._capture_loaded_owner_guard_v1
+        changed = dict(target.__kwdefaults__)
+        changed["value_names"] = TrappingValue()
+        monkeypatch.setattr(target, "__kwdefaults__", changed)
+    path = Path(contracts.__file__)
+    with pytest.raises(ValueError, match="ordinary native joined identity"):
+        owners._joined_contracts_primitive_binding_v1(contracts, path.read_bytes(), path)
+    assert called == []
+
+@pytest.mark.parametrize("has_primary", [False, True])
+def test_joined_closing_checks_do_not_render_hostile_errors_or_skip_fences(has_primary):
+    called = []
+    class HostileError(ValueError):
+        def __str__(self):
+            raise AssertionError("closing custody rendered arbitrary exception")
+    first = HostileError()
+    second = HostileError()
+    primary = HostileError() if has_primary else None
+    def check(index):
+        called.append(index)
+        if index == 0: raise first
+        if index == 1: raise second
+    with pytest.raises(HostileError) as caught:
+        owners._joined_complete_checks_v1(tuple(
+            (str(index), lambda index=index: check(index)) for index in range(3)), primary=primary)
+    assert called == [0, 1, 2] and caught.value is first
+    if primary is not None:
+        assert caught.value.__cause__ is primary
+
+@pytest.fixture
+def live_physical_join_software_route(monkeypatch):
+    """Explicit routing doubles; no genuine parent or Native receipt is issued."""
+    calls = []
+    raw = b"software route request only"
+    request_sha = hashlib.sha256(raw).hexdigest()
+    binding = (("software-only binding",), ())
+    evidence = {"reviewed_version": 3, "binding": {
+        "graph_sha256": "a" * 64, "admission_sha256": "b" * 64,
+        "preparation_sha256": "c" * 64, "packet_sha256": "d" * 64,
+        "receipt_sha256": hashlib.sha256(b"not a Native receipt").hexdigest()}}
+    handle = object()
+    entry = (None, None, None, None, owners.canonical(evidence), binding)
+    parent = {name: str(index) * 64 for index, name in enumerate(
+        ("parent_request_sha256", "parent_closeout_sha256", "parent_durability_sha256"), 1)}
+    context = {"reviewed_version": 3, "physical_request_sha256": request_sha,
+        "native": {"packet_files": (("build-receipt.json", b"not a Native receipt"),),
+            "receipt_raw": b"not a Native receipt", "expected_packet_sha256": "d" * 64,
+            "expected_binary_sha256": {}},
+        "preparation": object(), "graph": {}, "admission": {}, "args": (),
+        "kwargs": {"current_source": "unchanged"},
+        "pins": {"graph": "a" * 64, "admission": "b" * 64, "preservation": "c" * 64},
+        "toolchain": "leanprover/lean4:v4.34.1"}
+    false_fields = ("release_ready", "closure_complete", "admitted", "formalized",
+        "proof_verified", "source_semantics_verified", "source_authenticity_verified",
+        "source_metadata_arrow_bytes_verified", "original_native_parent_custody_verified",
+        "remote_readback_verified", "model_or_compiler_execution_performed")
+    physical = dict.fromkeys(false_fields, False)
+    physical.update(schema="software-schema/v3", profile="software-profile/v3",
+        request_sha256=request_sha, graph_sha256="a" * 64, admission_sha256="b" * 64,
+        preservation_sha256="c" * 64, local_replay_complete=True,
+        local_source_cache_entity_bindings_verified=True,
+        independent_reviewed_crosswalk_verified=True, native_receipt_replayed=True,
+        blockers=["original_admitted_native_parent_custody_not_established"])
+    scope = SimpleNamespace(calls=calls, raw=raw, request_sha=request_sha, handle=handle,
+        entry=entry, evidence=evidence, binding=binding, context=context, physical=physical,
+        after_observer=None, replay_error=None, fence_error=None, current_binding=binding, captured=[])
+    def guard():
+        calls.append("A.guard")
+    monkeypatch.setattr(owners, "_reviewed_parent_guard", guard)
+    monkeypatch.setattr(owners, "_REVIEWED_PARENT_GUARD_OBJECT", guard)
+    monkeypatch.setattr(owners, "_REVIEWED_PARENT_GUARD_CODE", guard.__code__)
+    monkeypatch.setattr(owners, "_reviewed_parent_capability_entry", lambda value: scope.entry)
+    def snapshot(value):
+        return (value["pins"]["graph"], value["kwargs"]["current_source"])
+    def postclose(value):
+        calls.append("R.postclose")
+    def replay(offered, *, expected_request_sha256, reviewed_version, _observe_checked_context,
+            _native_transport):
+        assert offered is raw and expected_request_sha256 == request_sha and reviewed_version == 3
+        assert _native_transport == "direct-packet/v1"
+        calls.append("R.open")
+        try:
+            _observe_checked_context(context)
+            if scope.after_observer is not None:
+                scope.after_observer()
+            if scope.replay_error is not None:
+                raise scope.replay_error
+            return physical
+        finally:
+            calls.append("R.final")
+    release = SimpleNamespace(_validate_uscode_release_physical_closure=replay,
+        _physical_replay_context_snapshot=snapshot, _physical_postclose_fence_v1=postclose,
+        CLOSURE_SCHEMA_V3=physical["schema"], CLOSURE_PROFILE_V3_DIRECT=physical["profile"],
+        _canonical=owners.canonical)
+    def resolve(offered):
+        assert offered == json.loads(owners.canonical(evidence))
+        calls.append("A.owners")
+        return release, scope.current_binding
+    monkeypatch.setattr(owners, "_parent_release_owner_binding_v3", resolve)
+    def capture(offered, packet, preparation, graph, admission, *args, **kwargs):
+        calls.append("A.capture")
+        assert offered is handle and packet is context["native"]["packet_files"]
+        assert preparation is context["preparation"] and graph is context["graph"]
+        assert admission is context["admission"] and args == context["args"]
+        scope.captured.append(kwargs)
+        def fence():
+            calls.append("A.current")
+            if scope.fence_error is not None:
+                raise scope.fence_error
+        return parent, fence
+    monkeypatch.setattr(owners, "_capture_parent_verified_reviewed_preservation", capture)
+    def seal(value):
+        calls.append("A.seal")
+        return value
+    native = SimpleNamespace(_owners=lambda: (None, SimpleNamespace(
+        contracts=SimpleNamespace(seal_record=seal))), AUTHORITY={"software_double": False})
+    monkeypatch.setattr(owners, "_parent_native_owner", lambda *args, **kwargs: native)
+    return scope
+
+def test_live_physical_join_fixed_route_is_once_finalized_and_retains_false_authority(
+        live_physical_join_software_route):
+    s = live_physical_join_software_route
+    result = owners.load_parent_verified_uscode_physical_closure_v3(
+        s.handle, s.raw, expected_request_sha256=s.request_sha)
+    assert s.calls.count("R.open") == s.calls.count("R.final") == s.calls.count("A.capture") == 1
+    assert s.calls.index("R.final") < s.calls.index("A.seal")
+    assert s.calls[-1] == "A.current"
+    assert s.captured[0]["expected_graph_sha256"] == s.context["pins"]["graph"]
+    assert s.captured[0]["expected_admission_sha256"] == s.context["pins"]["admission"]
+    assert s.captured[0]["expected_preservation_sha256"] == s.context["pins"]["preservation"]
+    assert result["live_original_parent_and_current_physical_replay_joined"] is True
+    assert result["wire_report_original_parent_flag_unchanged"] is True
+    assert all(result[name] is False for name in (
+        "release_ready", "closure_complete", "admitted", "formalized", "proof_verified",
+        "source_semantics_verified", "source_authenticity_verified", "remote_readback_verified"))
+
+@pytest.mark.parametrize("fault", ["wire_authority", "wire_parent_flag", "wire_target",
+    "changed_loaded_binding", "changed_current_context", "missing_native"])
+def test_live_physical_join_routing_doubles_refuse_crossed_or_authoritative_results(
+        live_physical_join_software_route, fault):
+    s = live_physical_join_software_route
+    if fault == "wire_authority": s.physical["admitted"] = True
+    elif fault == "wire_parent_flag": s.physical["original_native_parent_custody_verified"] = True
+    elif fault == "wire_target": s.physical["graph_sha256"] = "e" * 64
+    elif fault == "changed_loaded_binding":
+        s.after_observer = lambda: setattr(s, "current_binding", (("changed binding",), ()))
+    elif fault == "changed_current_context":
+        s.after_observer = lambda: s.context["kwargs"].update(current_source="changed")
+    else: s.context["native"] = None
+    with pytest.raises(ValueError):
+        owners.load_parent_verified_uscode_physical_closure_v3(
+            s.handle, s.raw, expected_request_sha256=s.request_sha)
+    assert s.calls.count("R.final") == 1 and "A.seal" not in s.calls
+    if fault != "missing_native":
+        assert "A.current" in s.calls
+
+@pytest.mark.parametrize("fault", ["version", "unbound_entry", "request_pin"])
+def test_live_physical_join_refuses_before_traversal_when_opening_binding_is_wrong(
+        live_physical_join_software_route, fault):
+    s = live_physical_join_software_route
+    pin = s.request_sha
+    if fault == "version":
+        changed = dict(s.evidence, reviewed_version=2)
+        s.entry = (*s.entry[:4], owners.canonical(changed), s.binding)
+    elif fault == "unbound_entry": s.entry = s.entry[:5]
+    else: pin = "0" * 64
+    with pytest.raises(ValueError):
+        owners.load_parent_verified_uscode_physical_closure_v3(
+            s.handle, s.raw, expected_request_sha256=pin)
+    assert "R.open" not in s.calls and "A.capture" not in s.calls and "A.seal" not in s.calls
+
+def test_live_physical_join_keeps_unchanged_R_exception_and_runs_all_final_fences(
+        live_physical_join_software_route):
+    s = live_physical_join_software_route
+    sentinel = RuntimeError("unchanged finalized R failure")
+    s.replay_error = sentinel
+    with pytest.raises(RuntimeError) as caught:
+        owners.load_parent_verified_uscode_physical_closure_v3(
+            s.handle, s.raw, expected_request_sha256=s.request_sha)
+    assert caught.value is sentinel
+    assert s.calls.count("R.final") == 1 and "A.seal" not in s.calls
+    assert "R.postclose" in s.calls and s.calls[-1] == "A.current"
+
+@pytest.mark.parametrize("kind", ["object_key", "str_subclass"])
+def test_joined_primitive_refuses_nonexact_namespace_keys_before_string_methods(monkeypatch, kind):
+    from ipfs_datasets_py.logic.autoformal import corpus_contracts as contracts
+    called = []
+    def trap(*args, **kwargs):
+        called.append(True)
+        raise AssertionError("namespace refusal invoked key callbacks")
+    if kind == "object_key":
+        class Key:
+            startswith = trap
+            __hash__ = object.__hash__
+        key = Key()
+    else:
+        class Key(str):
+            startswith = trap
+        key = Key("private-nonexact-key")
+    monkeypatch.setitem(vars(contracts), key, None)
+    path = Path(contracts.__file__)
+    with pytest.raises(ValueError, match="namespace|binding|keys"):
+        owners._joined_contracts_primitive_binding_v1(contracts, path.read_bytes(), path)
+    assert called == []
+
+@pytest.mark.parametrize("field", ["module_name", "module_file", "spec_name", "spec_origin", "spec_dict"])
+def test_joined_owner_metadata_refusal_does_not_invoke_caller_equality_or_mapping(
+        monkeypatch, field):
+    from ipfs_datasets_py.logic.autoformal import legal_release_coordinator_v1 as release
+    evidence = _current_joined_owner_software_evidence()
+    called = []
+    class Trap:
+        def __eq__(self, other):
+            called.append("equality")
+            raise AssertionError("metadata refusal invoked equality")
+    class TrapDict(dict):
+        def get(self, *args, **kwargs):
+            called.append("get")
+            raise AssertionError("metadata refusal invoked mapping")
+    if field == "module_name": monkeypatch.setattr(release, "__name__", Trap())
+    elif field == "module_file": monkeypatch.setattr(release, "__file__", Trap())
+    elif field == "spec_name": monkeypatch.setattr(release.__spec__, "name", Trap())
+    elif field == "spec_origin": monkeypatch.setattr(release.__spec__, "origin", Trap())
+    else: monkeypatch.setattr(release.__spec__, "__dict__", TrapDict(vars(release.__spec__)))
+    with pytest.raises(ValueError, match="canonical joined-owner|ordinary joined-owner"):
+        owners._parent_release_owner_binding_v3(evidence)
+    assert called == []
+
+@pytest.mark.parametrize("position", ["defaults", "kwdefaults"])
+def test_joined_primitive_refuses_nonexact_default_containers_before_truthiness(
+        monkeypatch, position):
+    from ipfs_datasets_py.logic.autoformal import corpus_contracts as contracts
+    called = []
+    def trap(*args, **kwargs):
+        called.append(True)
+        raise AssertionError("default-container refusal invoked a callback")
+    if position == "defaults":
+        class DefaultTuple(tuple):
+            __len__ = trap
+        monkeypatch.setattr(contracts._loaded_owner_shape_v1, "__defaults__", DefaultTuple((None,)))
+    else:
+        class DefaultDict(dict):
+            __len__ = trap
+        monkeypatch.setattr(contracts._capture_loaded_owner_guard_v1, "__kwdefaults__",
+                            DefaultDict(contracts._capture_loaded_owner_guard_v1.__kwdefaults__))
+    path = Path(contracts.__file__)
+    with pytest.raises(ValueError, match="defaults differ"):
+        owners._joined_contracts_primitive_binding_v1(contracts, path.read_bytes(), path)
+    assert called == []
+
+def test_live_physical_join_keeps_first_R_refusal_when_later_A_fence_also_fails(
+        live_physical_join_software_route):
+    s = live_physical_join_software_route
+    class FirstRefusal(ValueError):
+        def __str__(self):
+            raise AssertionError("first refusal was rendered during finalization")
+    first = FirstRefusal()
+    s.replay_error = first
+    s.fence_error = ValueError("later current-parent refusal")
+    with pytest.raises(FirstRefusal) as caught:
+        owners.load_parent_verified_uscode_physical_closure_v3(
+            s.handle, s.raw, expected_request_sha256=s.request_sha)
+    assert caught.value is first
+    assert s.calls.count("R.final") == 1 and "R.postclose" in s.calls
+    assert s.calls[-1] == "A.current" and "A.seal" not in s.calls
+    assert any("original parent/current inputs" in note for note in first.__notes__)
+
+def test_joined_opening_direct_descriptor_keeps_native_producer_pin_scope(monkeypatch, tmp_path):
+    root = tmp_path / "datasets"
+    marker = root / "ipfs_datasets_py/logic/autoformal/legal_release_coordinator_v1.py"
+    native = root / "ipfs_datasets_py/logic/autoformal/legal_corpus_definition_use_native_v2.py"
+    operation = {"expected_source_sha256": {str(native): "a" * 64}}
+    descriptor = {"path": str(marker), "bytes": 1, "sha256": "b" * 64}
+    native_descriptor = {"path": str(native), "bytes": 1, "sha256": "a" * 64}
+    policy = {"schema": owners._reviewed_parent_domain(3)[0],
+        "datasets_root": str(root), "source_descriptors": [descriptor, native_descriptor],
+        "operation": operation, "validation": {"import_sources": [], "trusted_tests": [],
+                                               "pytest_module": native_descriptor}}
+    binding = (("software-only implementation pin join",), ())
+    observed = []
+    def resolve(evidence):
+        observed.append(evidence)
+        return None, binding
+    monkeypatch.setattr(owners, "_parent_release_owner_binding_v3", resolve)
+    assert owners._reviewed_parent_joined_opening_v3(policy) is binding
+    assert len(observed) == 1 and observed[0]["operation"] is operation
+    assert observed[0]["source_pins"][str(marker)] == descriptor["sha256"]
+    assert operation["expected_source_sha256"] == {str(native): "a" * 64}
+
+def _current_native_bootstrap_fixture(reviewed_version):
+    # Reuse the owning fixture's fixed, previously approved canonical Source
+    # roster and current post-CAS pins; never discover authority via a callback.
+    evidence = _current_joined_owner_software_evidence()
+    native = owners._parent_native_owner(evidence, reviewed_version=reviewed_version)
+    path = Path(native.__file__).resolve()
+    raw = path.read_bytes()
+    assert evidence["source_pins"][str(path)] == hashlib.sha256(raw).hexdigest()
+    return native, evidence, raw, path
+
+def _native_bootstrap_private_cell(native, name):
+    integrity = native._live_integrity_checker
+    cells = dict(zip(integrity.__code__.co_freevars, integrity.__closure__, strict=True))
+    if name == "states":
+        verifier = cells["verify_native_functions"].cell_contents
+        cells = dict(zip(verifier.__code__.co_freevars, verifier.__closure__, strict=True))
+    elif name == "integrity_state":
+        wrapper = native.build_verified_reviewed_norm_preservation_native_v2
+        cells = dict(zip(wrapper.__code__.co_freevars, wrapper.__closure__, strict=True))
+    return cells[name]
+
+@pytest.mark.parametrize("reviewed_version", (2, 3))
+def test_parent_native_bootstrap_accepts_actual_source_chain_without_build(monkeypatch, reviewed_version):
+    native, evidence, raw, path = _current_native_bootstrap_fixture(reviewed_version)
+    with monkeypatch.context() as change:
+        for key in ("_LIVE_MODULE_BINDINGS", "_LIVE_REVIEW_BINDINGS", "_LIVE_MIXED_REVIEW_BINDINGS"):
+            change.setattr(native, key, None)
+        assert owners._parent_native_bootstrap_v1(native, raw, path, evidence["source_pins"],
+                                                   reviewed_version=reviewed_version) is None
+        # Exercise the actual authenticated binder with no owner traversal or
+        # packet/handle/build operation, then the unchanged versioned A route.
+        assert native._live_entry_guard(reviewed_version) is None
+        assert owners._parent_native_owner(evidence, reviewed_version=reviewed_version) is native
+
+@pytest.mark.parametrize("reviewed_version", (2, 3))
+@pytest.mark.parametrize("target", (
+    "empty_native_states", "resealed_native_states", "replaced_guard", "replaced_matcher",
+    "replaced_runtime_alias", "hostile_subprocess_alias", "injected_builtin", "injected_exception", "unexpected_global",
+    "replaced_builtins", "empty_handle_table", "empty_popen_table", "malformed_handle_state",
+    "hostile_handle_table", "hostile_popen_table", "hostile_import_table", "hostile_review_table",
+    "hostile_kwdefaults", "hostile_class_kwdefaults", "hostile_spec_fields", "hostile_module_metadata", "hostile_package_metadata",
+    "hostile_private_states", "hostile_private_integrity", "hostile_class_metaclass",
+    "hostile_native_class_descriptor", "hostile_dependency_field_descriptor",
+    "hostile_dependency_namespace_key",
+))
+def test_parent_native_bootstrap_refuses_before_mutable_native_callbacks(monkeypatch, reviewed_version, target):
+    import types
+    from collections.abc import Mapping
+    native, evidence, raw, path = _current_native_bootstrap_fixture(reviewed_version)
+    callbacks = []
+
+    def called(label):
+        callbacks.append(label)
+        raise AssertionError("untrusted Native callback ran")
+
+    class Trap:
+        def __call__(self, *args, **kwargs):
+            return called("call")
+        def __iter__(self):
+            return called("iter")
+        def __len__(self):
+            return called("len")
+        def __bool__(self):
+            return called("bool")
+        def __eq__(self, other):
+            return called("eq")
+        def __getitem__(self, key):
+            return called("getitem")
+        def get(self, *args):
+            return called("get")
+        def items(self):
+            return called("items")
+
+    class TrapDict(dict):
+        def __iter__(self):
+            return called("dict.iter")
+        def __len__(self):
+            return called("dict.len")
+        def __bool__(self):
+            return called("dict.bool")
+        def __getitem__(self, key):
+            return called("dict.getitem")
+        def get(self, *args):
+            return called("dict.get")
+        def items(self):
+            return called("dict.items")
+        def __eq__(self, other):
+            return called("dict.eq")
+
+    class TrapTuple(tuple):
+        def __iter__(self):
+            return called("tuple.iter")
+        def __len__(self):
+            return called("tuple.len")
+        def __bool__(self):
+            return called("tuple.bool")
+        def __getitem__(self, key):
+            return called("tuple.getitem")
+        def __eq__(self, other):
+            return called("tuple.eq")
+
+    class TrapMapping(Mapping):
+        def __getitem__(self, key):
+            return called("mapping.getitem")
+        def __iter__(self):
+            return called("mapping.iter")
+        def __len__(self):
+            return called("mapping.len")
+
+    def predicate(*args, **kwargs):
+        return called("predicate")
+
+    proxy = types.MappingProxyType(TrapMapping())
+    with monkeypatch.context() as change:
+        if target == "empty_native_states":
+            change.setattr(native, "_LIVE_NATIVE_FUNCTIONS", ())
+        elif target == "resealed_native_states":
+            change.setattr(native, "_live_callable_matches", predicate)
+            rows = []
+            for name, _state in native._LIVE_NATIVE_FUNCTIONS:
+                function = vars(native)[name]
+                kwargs = {} if function.__kwdefaults__ is None else function.__kwdefaults__
+                rows.append((name, (function, function.__code__, function.__defaults__,
+                                    tuple(sorted(kwargs.items())))))
+            resealed = tuple(rows)
+            change.setattr(native, "_LIVE_NATIVE_FUNCTIONS", resealed)
+            change.setattr(_native_bootstrap_private_cell(native, "states"), "cell_contents", resealed)
+        elif target == "replaced_guard":
+            change.setattr(native, "_live_success_guard", predicate)
+        elif target == "replaced_matcher":
+            change.setattr(native, "_live_callable_matches", predicate)
+        elif target == "replaced_runtime_alias":
+            change.setattr(native, "Path", Trap())
+        elif target == "hostile_subprocess_alias":
+            class SubprocessAlias:
+                @property
+                def Popen(self):
+                    return called("native.subprocess.Popen")
+            change.setattr(native, "subprocess", SubprocessAlias())
+        elif target == "injected_builtin":
+            change.setattr(native, "type", Trap(), raising=False)
+        elif target == "injected_exception":
+            change.setattr(native, "ValueError", Trap(), raising=False)
+        elif target == "unexpected_global":
+            change.setattr(native, "_caller_native_success", True, raising=False)
+        elif target == "replaced_builtins":
+            change.setattr(native, "__builtins__", proxy)
+        elif target == "empty_handle_table":
+            change.setattr(native, "_LIVE_HANDLE_FUNCTIONS", ())
+        elif target == "empty_popen_table":
+            change.setattr(native, "_LIVE_POPEN_FUNCTIONS", ())
+        elif target == "malformed_handle_state":
+            table = native._LIVE_HANDLE_FUNCTIONS
+            change.setattr(native, "_LIVE_HANDLE_FUNCTIONS", ((table[0][0], (Trap(),)), *table[1:]))
+        elif target == "hostile_handle_table":
+            change.setattr(native, "_LIVE_HANDLE_FUNCTIONS", TrapTuple())
+        elif target == "hostile_popen_table":
+            change.setattr(native, "_LIVE_POPEN_FUNCTIONS", proxy)
+        elif target == "hostile_import_table":
+            change.setattr(native, "_LIVE_MODULE_BINDINGS", proxy)
+        elif target == "hostile_review_table":
+            change.setattr(native, "_LIVE_REVIEW_BINDINGS" if reviewed_version == 2
+                           else "_LIVE_MIXED_REVIEW_BINDINGS", Trap())
+        elif target == "hostile_kwdefaults":
+            change.setattr(native._owners, "__kwdefaults__", TrapDict())
+        elif target == "hostile_class_kwdefaults":
+            function = vars(native.VerifiedReviewedPreservationNativeSuccess)["__new__"].__func__
+            change.setattr(function, "__kwdefaults__", TrapDict())
+        elif target == "hostile_spec_fields":
+            change.setattr(native.__spec__, "__dict__", TrapDict(vars(native.__spec__)))
+        elif target == "hostile_module_metadata":
+            change.setattr(native, "__name__", Trap())
+        elif target == "hostile_package_metadata":
+            change.setattr(native, "__package__", Trap())
+        elif target == "hostile_private_states":
+            change.setattr(_native_bootstrap_private_cell(native, "states"), "cell_contents", TrapTuple())
+        elif target == "hostile_private_integrity":
+            change.setattr(_native_bootstrap_private_cell(native, "integrity_state"), "cell_contents", proxy)
+        elif target == "hostile_native_class_descriptor":
+            class EqualityMeta(type):
+                def __eq__(self, other):
+                    return called("descriptor.metaclass.eq")
+                __hash__ = type.__hash__
+            class Descriptor(metaclass=EqualityMeta):
+                pass
+            descriptor = Descriptor()
+            callbacks.clear()
+            change.setattr(native.VerifiedReviewedPreservationNativeSuccess, "__new__", descriptor)
+        elif target == "hostile_dependency_field_descriptor":
+            class EqualityMeta(type):
+                def __eq__(self, other):
+                    return called("dependency.field.metaclass.eq")
+                __hash__ = type.__hash__
+            class Descriptor(metaclass=EqualityMeta):
+                pass
+            dependency_class = next(row[1] for snapshot in native._LIVE_MODULE_BINDINGS
+                                    for row in snapshot[3])
+            descriptor = Descriptor()
+            callbacks.clear()
+            change.setattr(dependency_class, "_caller_descriptor", descriptor, raising=False)
+            change.setattr(native, "_LIVE_MODULE_BINDINGS", None)
+            change.setattr(native, "_LIVE_REVIEW_BINDINGS", None)
+            change.setattr(native, "_LIVE_MIXED_REVIEW_BINDINGS", None)
+        elif target == "hostile_dependency_namespace_key":
+            dependency = native._LIVE_MODULE_BINDINGS[0][0]
+            class Key:
+                def __hash__(self):
+                    return hash("__name__")
+                def __eq__(self, other):
+                    return called("dependency.namespace.key.eq")
+            key = Key()
+            namespace = vars(dependency)
+            change.delitem(namespace, "__name__")
+            change.setitem(namespace, key, None)
+        elif target == "hostile_class_metaclass":
+            class Meta(type):
+                def __getattribute__(self, name):
+                    return called("metaclass.getattribute")
+            replacement = Meta("VerifiedReviewedPreservationNativeSuccess", (), {})
+            callbacks.clear()
+            change.setattr(native, "VerifiedReviewedPreservationNativeSuccess", replacement)
+        else:
+            raise AssertionError("unknown mutation")
+        with pytest.raises(ValueError):
+            owners._parent_native_owner(evidence, reviewed_version=reviewed_version)
+        assert callbacks == []
+    assert callbacks == []
+
+@pytest.mark.parametrize("binding", ("type", "len", "ValueError", "__builtins__"))
+def test_source_builtin_preflight_refuses_contracts_shadow_before_callback(monkeypatch, binding):
+    import ast
+    from ipfs_datasets_py.logic.autoformal import corpus_contracts as contracts
+    raw = Path(contracts.__file__).read_bytes()
+    tree = ast.parse(raw, filename=contracts.__file__)
+    calls = []
+    class Trap:
+        def __call__(self, *args, **kwargs):
+            calls.append("call")
+            raise AssertionError("untrusted contracts builtin ran")
+        def __bool__(self):
+            calls.append("bool")
+            raise AssertionError("untrusted contracts truthiness ran")
+    assert owners._parent_source_builtin_bindings_v1(vars(contracts), tree) is None
+    with monkeypatch.context() as change:
+        change.setattr(contracts, binding, Trap(), raising=False)
+        with pytest.raises(ValueError):
+            owners._parent_source_builtin_bindings_v1(vars(contracts), tree)
+        assert calls == []
+
+def test_joined_coordinator_binding_lookup_rejects_custom_keys_before_equality(monkeypatch):
+    from ipfs_datasets_py.logic.autoformal import legal_release_coordinator_v1 as release
+    evidence = _current_joined_owner_software_evidence()
+    namespace = vars(release)
+    key_name = "_JOIN_RELEASE_OWNER_MODULES_V1"
+    called = []
+    class Key:
+        def __hash__(self):
+            return hash(key_name)
+        def __eq__(self, other):
+            called.append(True)
+            raise AssertionError("coordinator lookup invoked caller equality")
+    with monkeypatch.context() as change:
+        change.delitem(namespace, key_name)
+        change.setitem(namespace, Key(), None)
+        with pytest.raises(ValueError, match="coordinator namespace keys"):
+            owners._parent_release_owner_binding_v3(evidence)
+    assert called == []
+
+def test_live_physical_join_retains_available_parent_fence_after_postsnapshot_refusal(
+        live_physical_join_software_route, monkeypatch):
+    s = live_physical_join_software_route
+    release, _binding = owners._parent_release_owner_binding_v3(s.evidence)
+    original = release._physical_replay_context_snapshot
+    failure = ValueError("injected immediate post-capture snapshot refusal")
+    injected = []
+    def snapshot(context):
+        if "A.capture" in s.calls and not injected:
+            injected.append(True)
+            raise failure
+        return original(context)
+    monkeypatch.setattr(release, "_physical_replay_context_snapshot", snapshot)
+    with pytest.raises(ValueError) as caught:
+        owners.load_parent_verified_uscode_physical_closure_v3(
+            s.handle, s.raw, expected_request_sha256=s.request_sha)
+    assert caught.value is failure and injected == [True]
+    assert s.calls.count("A.capture") == s.calls.count("R.final") == 1
+    assert "R.postclose" in s.calls and s.calls[-1] == "A.current"
+    assert "A.seal" not in s.calls

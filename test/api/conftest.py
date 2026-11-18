@@ -115,7 +115,8 @@ def _seed_r45_receipt_evidence() -> None:
     )
     try:
         if dest.is_file():
-            dest.chmod(0o600)
+            if stat.S_IMODE(dest.stat().st_mode) != 0o600:
+                dest.chmod(0o600)
             return
     except OSError:
         pass

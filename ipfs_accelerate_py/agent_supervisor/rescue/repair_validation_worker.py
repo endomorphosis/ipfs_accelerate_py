@@ -32,6 +32,9 @@ _ORIGINAL_OS_OPEN = os.open
 _ORIGINAL_DESCRIPTOR_WRITE_FLAGS = os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC
 WORK_SCHEMA = "agent-supervisor/repair-trusted-validation@1"
 V3_VALIDATION_CAPABILITY = 'agent-supervisor/repair-validation-v3@1'
+REVIEWED_NATIVE_PARENT_SCHEMA_V3 = 'reviewed-preservation-parent/v3'
+REVIEWED_NATIVE_WORK_SCHEMA_V3 = 'reviewed-preservation-native-worker/v3'
+REVIEWED_NATIVE_BINDING_SCHEMA_V3 = 'reviewed-preservation-native-binding/v3'
 _SHA = re.compile(r"[0-9a-f]{64}\Z")
 
 def canonical(value):
@@ -1242,6 +1245,8 @@ def _reviewed_preservation_native_operation_core_v3(plan, policy, *, reviewed_ve
     fields = {'operation_id', 'packet_root', 'nodeid', 'expected_source_sha256',
         'expected_graph_sha256', 'expected_admission_sha256', 'expected_preservation_sha256',
         'toolchain', 'expected_binary_sha256', 'native_argv', 'native_data', 'native_inputs'}
+    if reviewed_version == 3:
+        fields.add('expected_packet_paths')
     need(type(operation) is dict and set(operation) == fields and operation == policy.get('operation'),
          'exact predeclared reviewed native operation required')
     need(type(operation['operation_id']) is str and re.fullmatch(r'[A-Za-z0-9_.:-]{1,128}', operation['operation_id']),
@@ -1319,6 +1324,14 @@ def _reviewed_preservation_native_operation_core_v3(plan, policy, *, reviewed_ve
          and {row['path'] for row in data} == roster and sum(row['bytes'] for row in data) <= 512 * 1024**2
          and all(next(row['sha256'] for row in data if row['path'] == path) == sha for path, sha in binaries.items()),
          'closed eight-file original native data population required')
+    if reviewed_version == 3:
+        paths = operation['expected_packet_paths']
+        need(type(paths) is list and 1 <= len(paths) <= 172
+             and all(type(path) is str and re.fullmatch(
+                 r'[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)*', path)
+                 and all(part not in ('.', '..') for part in path.split('/')) for path in paths)
+             and paths == sorted(set(paths)),
+             'exact bounded opening V3 native packet population required')
     return json_object(canonical(operation))
 
 def reviewed_preservation_native_operation_v1(plan, policy):
@@ -1572,6 +1585,7 @@ class ReviewedPreservationNativeCollectorV1:
     """Observe original frames/handles while retaining the original process API."""
     def __init__(self, plan, policy, args, guard):
         self.plan, self.policy, self.args, self.guard = plan, policy, args, guard
+        self.reviewed_version = _reviewed_native_collector_version_v3(self)
         self.operation = _reviewed_preservation_native_operation_core_v3(plan, policy, reviewed_version=_reviewed_native_collector_version_v3(self))
         self.operation_wire = canonical(self.operation)
         self.attempt = Path(plan['attempt_directory'])
@@ -1623,6 +1637,7 @@ class ReviewedPreservationNativeCollectorV1:
         self.native = importlib.import_module('ipfs_datasets_py.logic.autoformal.legal_corpus_definition_use_native_v2')
         self.process = importlib.import_module('ipfs_datasets_py.logic.backends.process')
         self.build, self.load, self.packet_sha = _reviewed_native_callables_v3(self, self.native)
+        self.packet_sha_code = self.packet_sha.__code__
         self.build_code, self.load_code = self.build.__code__, self.load.__code__
         self.native_path = str(Path(policy['datasets_root']) / 'ipfs_datasets_py/logic/autoformal/legal_corpus_definition_use_native_v2.py')
         self.process_path = str(Path(policy['datasets_root']) / 'ipfs_datasets_py/logic/backends/process.py')
@@ -1636,6 +1651,8 @@ class ReviewedPreservationNativeCollectorV1:
         self.verify_parent()
 
     def verify_parent(self):
+        need(self.reviewed_version == _reviewed_native_collector_version_v3(self),
+             'original reviewed native version changed')
         need(self.helper.verify_reviewed_preservation_parent_source_observation_v1 is self.proof_reader
              and self.proof_reader.__code__ is self.proof_code
              and hashlib.sha256(ordinary_bytes(self.owner_path, 4 * 1024**2)).hexdigest() == self.owner_pin,
@@ -1808,6 +1825,10 @@ class ReviewedPreservationNativeCollectorV1:
             self.build_frame = None
 
     def _packet(self):
+        reviewed_version = getattr(self, 'reviewed_version', None)
+        if reviewed_version is None:
+            reviewed_version = _reviewed_native_collector_version_v3(self)
+        _reviewed_native_domain_v3(reviewed_version)
         files = []; pending = [self.packet_root]; total = 0; directories = 0
         while pending:
             directory = pending.pop(); directories += 1
@@ -1824,15 +1845,21 @@ class ReviewedPreservationNativeCollectorV1:
                         need(stat.S_ISREG(info.st_mode) and info.st_uid == os.getuid() and info.st_nlink == 1,
                              'native packet must contain only owned regular unaliased files')
                         raw = ordinary_bytes(path, 8 * 1024**2); total += len(raw)
-                        need(len(files) < _reviewed_native_domain_v3(_reviewed_native_collector_version_v3(self))['files'] and total <= 48 * 1024**2, 'complete native packet exceeds its fixed profile')
+                        maximum = 77 if reviewed_version == 2 else len(self.operation['expected_packet_paths'])
+                        need(len(files) < maximum and total <= 48 * 1024**2, 'complete native packet exceeds its fixed profile')
                         files.append((path.relative_to(self.packet_root).as_posix(), raw))
-        need(len(files) == _reviewed_native_domain_v3(_reviewed_native_collector_version_v3(self))['files'], 'all seventy-seven original native packet files are required' if _reviewed_native_collector_version_v3(self) == 2 else 'all eighty-three original native packet files are required')
+        if reviewed_version == 2:
+            need(len(files) == 77, 'all seventy-seven original native packet files are required')
+        else:
+            need(sorted(name for name, _ in files) == self.operation['expected_packet_paths'],
+                 'complete original V3 native packet path population differs')
         return tuple(sorted(files))
 
     def _read_binding(self):
         self.verify_parent()
         need(all(current is original for current, original in zip(_reviewed_native_callables_v3(self, self.native), (self.build, self.load, self.packet_sha), strict=True))
-             and self.build.__code__ is self.build_code and self.load.__code__ is self.load_code,
+             and self.build.__code__ is self.build_code and self.load.__code__ is self.load_code
+             and self.packet_sha.__code__ is self.packet_sha_code,
              'native collector original producer/reader changed')
         packet = self._packet(); raw = dict(packet)['build-receipt.json']; receipt = json_object(raw)
         preparation, graph, admission, args, kwargs = self.inputs
@@ -1846,7 +1873,9 @@ class ReviewedPreservationNativeCollectorV1:
         need(result['live_native_success_authenticated'] is True and result['native_execution_authenticated'] is True
              and result['original_success_authenticated'] is result['original_admitted_parent_custody_authenticated'] is False,
              'original live native reader did not retain its limited custody scope')
-        return {'schema': _reviewed_native_domain_v3(_reviewed_native_collector_version_v3(self))['binding_schema'], 'operation_id': self.operation['operation_id'],
+        return {'schema': _reviewed_native_domain_v3(_reviewed_native_collector_version_v3(self))['binding_schema'],
+            **({'expected_packet_paths': self.operation['expected_packet_paths']} if self.reviewed_version == 3 else {}),
+            'operation_id': self.operation['operation_id'],
             'packet_root': self.operation['packet_root'], 'receipt_sha256': result['retained_receipt_sha256'],
             'packet_sha256': result['retained_packet_sha256'],
             'preparation_sha256': self.operation['expected_preservation_sha256'],
