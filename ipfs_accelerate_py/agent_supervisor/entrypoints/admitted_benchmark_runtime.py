@@ -7,7 +7,9 @@ rendezvous proves the exact marked child birth of this lifecycle run.
 from __future__ import annotations
 
 import json
+import hashlib
 import os
+import shlex
 import socket
 import stat
 import struct
@@ -58,43 +60,112 @@ from ..task_sources.typed_state_owner import (
 from .isolated_benchmark_runtime import (
     IsolatedBenchmarkRuntime,
     NativeSupervisorHealthAdapter,
-    _LocalLifecycleRecoveryBackend,
     _digest,
     _git,
 )
 
-BOOTSTRAP_FAILURE_PHASES = frozenset({
-    "validation", "peer", "request", "process_tree", "duplicate_birth", "lease",
-    "grant", "response",
-})
-BOOTSTRAP_FAILURE_REASONS = frozenset({
-    "validation_failed", "peer_mismatch", "request_mismatch",
-    "process_tree_unavailable", "process_root_missing", "process_root_ambiguous",
-    "process_child_missing", "process_child_ambiguous", "process_child_is_root",
-    "process_parent_mismatch", "process_scope_mismatch", "duplicate_birth",
-    "lease_unavailable", "lease_mismatch", "lease_expired", "grant_unavailable",
-    "grant_lifetime_exceeded", "response_failed", "unknown",
-})
+
+NATIVE_DISPATCH_DIAGNOSTICS_ENV = "IPFS_ACCELERATE_AGENT_NATIVE_DISPATCH_DIAGNOSTICS"
+CHECKED_CONTEXT_ENV_NAMES = (
+    "IPFS_ACCELERATE_CHECKED_CONTEXT_DISPATCH_SOCKET",
+    "IPFS_ACCELERATE_CHECKED_CONTEXT_DISPATCH_CID",
+    "IPFS_ACCELERATE_CHECKED_CONTEXT_OWNER_BIRTH",
+)
+CHECKED_CONTEXT_WRAPPER_ENV = "IPFS_ACCELERATE_CHECKED_CONTEXT_WRAPPER_TICKET"
 
 
-def _bootstrap_tree_rejection(tree, matches, *, pid, process, profile):
-    """Classify an exact native-child refusal without weakening its checks."""
-    roots = tree.roots
-    if not roots:
-        return "process_root_missing"
-    if len(roots) != 1:
-        return "process_root_ambiguous"
-    if not matches:
-        return "process_child_missing"
-    if len(matches) != 1:
-        return "process_child_ambiguous"
-    if pid == roots[0].pid:
-        return "process_child_is_root"
-    if matches[0].parent_pid != roots[0].pid:
-        return "process_parent_mismatch"
-    if not process.child_scope_matches(profile, matches[0]):
-        return "process_scope_mismatch"
-    return None
+def _require_observer_diagnostic_command(command, *, implement, context_bundle, candidate_runner):
+    """Select telemetry only for the installed observer command; no dispatch grant."""
+    parts = shlex.split(command)
+    critical = ("--observe-model-input-only", "--purpose", "--semantic-repository",
+        "--public-instruction-artifact", "--public-instruction-sha256", "--public-instruction-task-cid",
+        "--checked-context-artifact", "--checked-context-sha256", "--checked-context-task-cid",
+        "--checked-context-owner-scope-cid")
+    if command != shlex.join(parts) or any(part.startswith(flag+"=") for part in parts for flag in critical):
+        raise ValueError("native observer diagnostics require a canonical literal command and unique input flags")
+    forbidden = ("--preflight", "--preflight-sleep", "--doctor-candidate-artifact",
+        "--doctor-candidate-sha256", "--doctor-task-cid", "--doctor-contract-artifact",
+        "--doctor-contract-sha256", "--doctor-contract-task-cid", "--finite-repository-artifact",
+        "--finite-repository-sha256", "--finite-repository-task-cid", "--finite-proof-query-context",
+        "--finite-proof-query-sha256", "--finite-proof-query-context-cid")
+    if any(part == flag or part.startswith(flag+"=") for part in parts for flag in forbidden):
+        raise ValueError("native observer diagnostics cannot select a candidate or preflight command")
+    value_flags = {"--model", "--reasoning-effort", "--timeout", "--max-output-tokens", "--purpose",
+        "--semantic-repository", "--semantic-transport", "--intent-requirements-transport",
+        "--code-retrieval-codec", "--code-retrieval-wire-delivery", "--doctor-residual-artifact",
+        "--doctor-residual-sha256", "--doctor-residual-task-cid", "--public-instruction-artifact",
+        "--public-instruction-sha256", "--public-instruction-task-cid",
+        "--checked-context-artifact", "--checked-context-sha256", "--checked-context-task-cid",
+        "--checked-context-owner-scope-cid"}
+    index, seen_flags = 1, set()
+    while index < len(parts):
+        flag = parts[index]
+        if flag in seen_flags or flag not in value_flags | {"--observe-model-input-only"}:
+            raise ValueError("native observer diagnostics require unique exact worker options")
+        seen_flags.add(flag)
+        if flag == "--observe-model-input-only":
+            index += 1
+        else:
+            if index+1 >= len(parts) or not parts[index+1] or parts[index+1].startswith("--"):
+                raise ValueError("native observer diagnostics require complete literal worker options")
+            index += 2
+    if (implement is not True or context_bundle is None or candidate_runner is None
+            or not parts or parts[0] != "/opt/ipfs-supervisor/bin/router-worker"
+            or parts.count("--observe-model-input-only") != 1
+            or any(parts.count(flag) != 1 for flag in ("--semantic-repository",
+                "--public-instruction-artifact", "--public-instruction-sha256", "--public-instruction-task-cid"))):
+        raise ValueError("native dispatch diagnostics require the explicit isolated model-input observer")
+    for flag in ("--semantic-repository", "--public-instruction-artifact",
+            "--public-instruction-sha256", "--public-instruction-task-cid"):
+        index = parts.index(flag)
+        if index + 1 >= len(parts) or not parts[index+1] or parts[index+1].startswith("--"):
+            raise ValueError("native observer diagnostic command lacks a complete input binding")
+    if "--purpose" in parts and (parts.count("--purpose") != 1
+            or parts.index("--purpose")+1 >= len(parts) or parts[parts.index("--purpose")+1] != "coding"):
+        raise ValueError("native observer diagnostics require the coding command")
+    checked_flags = {"--checked-context-artifact", "--checked-context-sha256", "--checked-context-task-cid"}
+    owner_flag = "--checked-context-owner-scope-cid"
+    if owner_flag in seen_flags and seen_flags & checked_flags:
+        raise ValueError("owner-selected checked context cannot also select a detached artifact")
+    if seen_flags & checked_flags or owner_flag in seen_flags:
+        def option(flag, default):
+            return parts[parts.index(flag)+1] if flag in seen_flags else default
+        if ((owner_flag not in seen_flags and not checked_flags <= seen_flags)
+                or option("--semantic-transport", "identifiers") != "native"
+                or option("--intent-requirements-transport", "expanded") != "expanded"
+                or option("--code-retrieval-codec", "expanded") != "expanded"
+                or option("--code-retrieval-wire-delivery", "inline") != "inline"
+                or seen_flags & {"--doctor-residual-artifact", "--doctor-residual-sha256", "--doctor-residual-task-cid"}
+                or (owner_flag not in seen_flags
+                    and option("--checked-context-task-cid", "") != option("--public-instruction-task-cid", ""))):
+            raise ValueError("checked audit diagnostics require the exact deterministic native observer route")
+    return {flag: parts[parts.index(flag)+1] for flag in ("--semantic-repository",
+        "--public-instruction-artifact", "--public-instruction-sha256", "--public-instruction-task-cid",
+        *(sorted(checked_flags) if seen_flags & checked_flags else ()),
+        *((owner_flag,) if owner_flag in seen_flags else ()))}
+
+
+def _diagnostic_spawn_environment(environment, scope):
+    """An ambient value never enables diagnostics on a signed ordinary launch."""
+    result = dict(environment)
+    result.pop(NATIVE_DISPATCH_DIAGNOSTICS_ENV, None)
+    if scope is not None:
+        result[NATIVE_DISPATCH_DIAGNOSTICS_ENV] = json.dumps(scope, sort_keys=True, separators=(",", ":"))
+    return result
+
+
+def _checked_budget_spawn_environment(environment, signed_routing):
+    """Route only the verified native profile; ambient routing grants nothing."""
+    result = dict(environment)
+    for name in (*CHECKED_CONTEXT_ENV_NAMES, CHECKED_CONTEXT_WRAPPER_ENV):
+        result.pop(name, None)
+    if signed_routing is not None:
+        if (type(signed_routing) is not dict or set(signed_routing) != set(CHECKED_CONTEXT_ENV_NAMES)
+                or any(type(value) is not str or not value or len(value.encode()) > 4096
+                       or "\0" in value for value in signed_routing.values())):
+            raise ValueError("complete signed checked budget routing required")
+        result.update(signed_routing)
+    return result
 
 
 def _candidate_git_environment():
@@ -155,25 +226,6 @@ def _bounded_git_environment(*, candidate_runner: bool) -> dict[str, str]:
         index += 1
     environment["GIT_CONFIG_COUNT"] = str(index)
     return environment
-
-
-def _bounded_proof_resource_environment() -> dict[str, str]:
-    """Bind an explicitly selected benchmark policy to the same shared ledger."""
-    profile_key = "IPFS_DATASETS_PROOF_RESOURCE_PROFILE"
-    ledger_key = "IPFS_DATASETS_RESOURCE_SCHEDULER_PATH"
-    profile = os.environ.get(profile_key, "")
-    if not profile:
-        return {}
-    if profile != "local-benchmark@1":
-        raise ValueError("unsupported proof resource profile")
-    value = os.environ.get(ledger_key, "")
-    if not value or len(value) > 4096 or any(character in value for character in ("\x00", "\n", "\r")):
-        raise ValueError("benchmark proof resource profile requires an explicit bounded scheduler path")
-    path = Path(value)
-    if (not path.is_absolute() or path.resolve(strict=False) != path
-            or (path.exists() and not path.is_file())):
-        raise ValueError("benchmark scheduler path must be canonical and identify a regular file")
-    return {profile_key: profile, ledger_key: value}
 
 
 class AdmittedSupervisorHealthAdapter(NativeSupervisorHealthAdapter):
@@ -264,32 +316,36 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
     @classmethod
     def create(cls, directory: Path, *, admission, server, source,
                implement: bool = False, implementation_command: str = "",
-               timeout_ms: int = 30_000, start_timeout_ms: int | None = None,
-               implementation_timeout_seconds: int | None = None,
-               max_task_attempts: int = 1, context_bundle: dict | None = None,
-               lifetime_seconds: int = 300, budget_profile: str | None = None,
-               worker_worktree_root: Path | None = None,
+               timeout_ms: int = 30_000, max_task_attempts: int = 1, context_bundle: dict | None = None,
+               lifetime_seconds: int = 300, worker_worktree_root: Path | None = None,
                candidate_runner_argv=(), refresh_context_on_completion: bool = False,
-               refresh_source384_on_completion: bool = False,
-               refresh_numerical_selection_on_completion: bool = False,
                published_retrieval_policy: str | None = None,
                published_learned_artifacts: dict | None = None,
-               finite_execution_scope=None, inventory_execution_scope=None):
+               finite_execution_scope=None, inventory_execution_scope=None,
+               native_dispatch_diagnostics: bool = False, checked_observer_budget_scope=None):
+        if type(native_dispatch_diagnostics) is not bool:
+            raise ValueError("native dispatch diagnostic control must be an exact Boolean")
+        if native_dispatch_diagnostics and (finite_execution_scope is not None or inventory_execution_scope is not None):
+            raise ValueError("native observer diagnostics cannot select a candidate execution scope")
         if finite_execution_scope is not None and inventory_execution_scope is not None:
             raise ValueError("finite and inventory execution scopes are mutually exclusive")
+        cls._require_checked_budget_profile(checked_observer_budget_scope,
+            native_dispatch_diagnostics=native_dispatch_diagnostics, implement=implement,
+            implementation_command=implementation_command, finite_execution_scope=finite_execution_scope,
+            inventory_execution_scope=inventory_execution_scope,
+            published_retrieval_policy=published_retrieval_policy,
+            refresh_context_on_completion=refresh_context_on_completion)
         arguments = dict(admission=admission, server=server, source=source, implement=implement,
             implementation_command=implementation_command, timeout_ms=timeout_ms,
-            start_timeout_ms=start_timeout_ms,
-            implementation_timeout_seconds=implementation_timeout_seconds,
             max_task_attempts=max_task_attempts, context_bundle=context_bundle,
-            lifetime_seconds=lifetime_seconds, budget_profile=budget_profile, worker_worktree_root=worker_worktree_root,
+            lifetime_seconds=lifetime_seconds, worker_worktree_root=worker_worktree_root,
             candidate_runner_argv=candidate_runner_argv,
             refresh_context_on_completion=refresh_context_on_completion,
-            refresh_source384_on_completion=refresh_source384_on_completion,
-            refresh_numerical_selection_on_completion=refresh_numerical_selection_on_completion,
             published_retrieval_policy=published_retrieval_policy,
             published_learned_artifacts=published_learned_artifacts,
-            finite_execution_scope=finite_execution_scope, inventory_execution_scope=inventory_execution_scope)
+            finite_execution_scope=finite_execution_scope, inventory_execution_scope=inventory_execution_scope,
+            native_dispatch_diagnostics=native_dispatch_diagnostics,
+            checked_observer_budget_scope=checked_observer_budget_scope)
         if finite_execution_scope is not None:
             from ..runtime.finite_repository_execution import FrozenFiniteRepositoryExecutionScope
             if (type(finite_execution_scope) is FrozenFiniteRepositoryExecutionScope
@@ -334,43 +390,56 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
                 return runtime
         return cls._create(directory, **arguments)
 
+    @staticmethod
+    def _require_checked_budget_profile(scope, *, native_dispatch_diagnostics, implement,
+                                        implementation_command, finite_execution_scope,
+                                        inventory_execution_scope, published_retrieval_policy,
+                                        refresh_context_on_completion):
+        flag = "--checked-context-owner-scope-cid"
+        parts = shlex.split(implementation_command)
+        selected = any(part == flag or part.startswith(flag + "=") for part in parts)
+        if scope is None:
+            if selected:
+                raise ValueError("checked budget command requires its original owner scope")
+            return
+        from ..runtime.checked_observer_budget import CheckedObserverBudgetScope
+        if (type(scope) is not CheckedObserverBudgetScope or not selected
+                or native_dispatch_diagnostics is not True or implement is not True
+                or finite_execution_scope is not None or inventory_execution_scope is not None
+                or published_retrieval_policy is not None or refresh_context_on_completion):
+            raise ValueError("checked budget scope requires the explicit native observer profile")
+        if (parts.count(flag) != 1 or any(part.startswith(flag + "=") for part in parts)
+                or parts.index(flag) + 1 >= len(parts)
+                or parts[parts.index(flag) + 1] != scope.context_cid):
+            raise ValueError("checked budget command differs from its original owner scope")
+        if scope.bound_runtime is not None:
+            raise ValueError("checked budget scope is already bound to its original runtime")
+        scope.require_current()
+
     @classmethod
     def _create(cls, directory: Path, *, admission, server, source,
                implement: bool = False, implementation_command: str = "",
-               timeout_ms: int = 30_000, start_timeout_ms: int | None = None,
-               implementation_timeout_seconds: int | None = None,
-               max_task_attempts: int = 1, context_bundle: dict | None = None,
-               lifetime_seconds: int = 300, budget_profile: str | None = None,
-               worker_worktree_root: Path | None = None,
+               timeout_ms: int = 30_000, max_task_attempts: int = 1, context_bundle: dict | None = None,
+               lifetime_seconds: int = 300, worker_worktree_root: Path | None = None,
                candidate_runner_argv=(), refresh_context_on_completion: bool = False,
-               refresh_source384_on_completion: bool = False,
-               refresh_numerical_selection_on_completion: bool = False,
                published_retrieval_policy: str | None = None,
                published_learned_artifacts: dict | None = None,
-               finite_execution_scope=None, inventory_execution_scope=None):
-        from ..runtime.header_intent_applicability import capture_applicability_budget
-        # Capture the enclosing work scope, not a transient constructor replay
-        # ceiling: later START and its bootstrap thread receive fresh ceilings
-        # bounded by this same original deadline and the native run lifetime.
-        replay_work_scope = capture_applicability_budget()
-        creation_started = time.monotonic()
+               finite_execution_scope=None, inventory_execution_scope=None,
+               native_dispatch_diagnostics: bool = False, checked_observer_budget_scope=None):
+        if type(native_dispatch_diagnostics) is not bool:
+            raise ValueError("native dispatch diagnostic control must be an exact Boolean")
+        cls._require_checked_budget_profile(checked_observer_budget_scope,
+            native_dispatch_diagnostics=native_dispatch_diagnostics, implement=implement,
+            implementation_command=implementation_command, finite_execution_scope=finite_execution_scope,
+            inventory_execution_scope=inventory_execution_scope,
+            published_retrieval_policy=published_retrieval_policy,
+            refresh_context_on_completion=refresh_context_on_completion)
         if finite_execution_scope is not None and inventory_execution_scope is not None:
             raise ValueError("finite and inventory execution scopes are mutually exclusive")
         if type(refresh_context_on_completion) is not bool or (refresh_context_on_completion and context_bundle is None):
             raise ValueError("automatic context refresh requires an explicit context bundle")
-        if (type(refresh_source384_on_completion) is not bool
-                or (refresh_source384_on_completion and (not refresh_context_on_completion
-                    or replay_work_scope is None or finite_execution_scope is not None
-                    or inventory_execution_scope is not None))):
-            raise ValueError("Source384 refresh requires an explicit local work scope and ordinary context refresh")
-        if (type(refresh_numerical_selection_on_completion) is not bool
-                or (refresh_numerical_selection_on_completion and (not refresh_context_on_completion
-                    or replay_work_scope is None or finite_execution_scope is not None
-                    or inventory_execution_scope is not None))):
-            raise ValueError("learned numerical refresh requires explicit local work scope and ordinary context refresh")
         if published_retrieval_policy is not None and (
-                published_retrieval_policy not in {"lexical-tfidf-symbols@1", "local-safetensors-symbols@1",
-                    "native-empty-program-scope@1"}
+                published_retrieval_policy not in {"lexical-tfidf-symbols@1", "local-safetensors-symbols@1"}
                 or not refresh_context_on_completion):
             raise ValueError("published retrieval requires an explicit admitted refresh policy")
         if (published_learned_artifacts is not None) != (published_retrieval_policy == "local-safetensors-symbols@1"):
@@ -385,24 +454,19 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
             raise ValueError(f"bounded native launch timeout must fit START/STOP catalog (2000..{maximum_timeout})")
         if type(max_task_attempts) is not int or not 1 <= max_task_attempts <= 10:
             raise ValueError("coordination attempt cap must be in 1..10")
-        from ..runtime.benchmark_budget_policy import validate_native_lifetime
-        validate_native_lifetime(lifetime_seconds, budget_profile=budget_profile)
-        if implementation_timeout_seconds is not None and (
-                type(implementation_timeout_seconds) is not int
-                or not 1 <= implementation_timeout_seconds <= lifetime_seconds
-                or not implement):
-            raise ValueError("explicit implementation timeout requires live execution and an integer within the signed lifetime")
-        proof_resource_environment = _bounded_proof_resource_environment()
-        if start_timeout_ms is not None and (
-                type(start_timeout_ms) is not int or not 2_000 <= start_timeout_ms <= 120_000
-                or proof_resource_environment.get("IPFS_DATASETS_PROOF_RESOURCE_PROFILE") != "local-benchmark@1"
-                or start_timeout_ms > lifetime_seconds * 1000):
-            raise ValueError("explicit START budget requires the local benchmark profile and 2000..120000 milliseconds within its lifetime")
+        if type(lifetime_seconds) is not int or not 120 <= lifetime_seconds <= 600:
+            raise ValueError("signed launch lifetime_seconds must be in 120..600")
         from ..runtime.candidate_execution import (
             CANDIDATE_RUNNER_ENV,
             bind_candidate_runner,
         )
         candidate_runner = bind_candidate_runner(candidate_runner_argv) if candidate_runner_argv else None
+        diagnostic_command_inputs = None
+        if native_dispatch_diagnostics:
+            if finite_execution_scope is not None or inventory_execution_scope is not None:
+                raise ValueError("native observer diagnostics cannot select a candidate execution scope")
+            diagnostic_command_inputs = _require_observer_diagnostic_command(implementation_command, implement=implement,
+                context_bundle=context_bundle, candidate_runner=candidate_runner)
         if worker_worktree_root is not None:
             worker_worktree_root = Path(worker_worktree_root)
             if (not worker_worktree_root.is_absolute() or worker_worktree_root.is_symlink()
@@ -412,11 +476,13 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
                     or worker_worktree_root.stat().st_mode & 0o022):
                 raise ValueError("worker_worktree_root must be an existing exact owner-controlled directory")
         verified = verify_local_benchmark_admission(admission, initial=True)
-        from ..runtime.local_planning_admission import (
-            INVENTORY_MANIFEST_SCHEMAS, _verify_multitask_profile_sources,
-        )
-        if _verify_multitask_profile_sources(verified["manifest"]) is not None:
-            raise ValueError("reviewed multi-task profile permits administrative planning only; native execution scope is unqualified")
+        if native_dispatch_diagnostics and len(verified["graph"].tasks) != 1:
+            raise ValueError("native observer diagnostics require one admitted task")
+        if native_dispatch_diagnostics and (
+                diagnostic_command_inputs["--public-instruction-task-cid"] != verified["graph"].tasks[0].task_cid
+                or diagnostic_command_inputs["--semantic-repository"] != str(Path(verified["manifest"]["repository"]).absolute())):
+            raise ValueError("native observer diagnostic command differs from admitted task or repository")
+        from ..runtime.local_planning_admission import INVENTORY_MANIFEST_SCHEMAS
         if verified["manifest"]["schema"] in INVENTORY_MANIFEST_SCHEMAS and inventory_execution_scope is None:
             raise ValueError("inventory admission requires an exact native inventory execution scope")
         if refresh_context_on_completion and len(verified["graph"].tasks) != 1:
@@ -462,15 +528,13 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
         directory.mkdir(parents=True, mode=0o700)
         runtime = cls()
         try:
-            runtime._replay_work_scope = replay_work_scope
-            runtime._replay_lifetime_deadline = creation_started + lifetime_seconds
-            runtime._replay_start_deadline = None
             runtime.directory, runtime.state, runtime.repository = directory, directory / "state", repository
             runtime.state.mkdir(mode=0o700)
             (runtime.state / "run").mkdir(mode=0o700)
             runtime.admission = json.loads(json.dumps(admission))
             runtime.finite_execution_scope = finite_execution_scope
             runtime.inventory_execution_scope = inventory_execution_scope
+            runtime.checked_observer_budget_scope = checked_observer_budget_scope
             runtime.server, runtime.source, runtime.owner_identity = server, source, server.identity
             if inventory_execution_scope is not None:
                 inventory_execution_scope._remember_constructor_cleanup(runtime)
@@ -480,48 +544,8 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
             runtime.repository_id = declared["repository_cid"]
             runtime.profile_dir, runtime.lifecycle_dir = Path(declared["profile_dir"]), Path(declared["lifecycle_dir"])
             runtime.local_profile, runtime.timeout_ms = profile, timeout_ms
-            runtime.start_timeout_ms = start_timeout_ms
-            runtime.implementation_timeout_seconds = implementation_timeout_seconds
-            runtime.budget_profile = budget_profile
-            runtime._startup_trace_lock = threading.Lock()
-            runtime._startup_trace = []
-            runtime._startup_trace_truncated = False
             runtime.context_bundle = dict(context_bundle) if context_bundle is not None else None
             runtime._verify_context(verified)
-            numerical_policy = learned_numerical_policy = None
-            if refresh_context_on_completion:
-                from ..runtime.task_context_bundle import read_task_context_historical_selection
-                task = verified["graph"].tasks[0]
-                selected = read_task_context_historical_selection(repository=repository,
-                    artifact=runtime.context_bundle["artifact"],
-                    expected_sha256=runtime.context_bundle["sha256"],
-                    task_cid=task.task_cid, task_id=task.task_key)
-                if "numerical_formalization" in selected:
-                    from ..runtime.published_numerical import bind_policy
-                    numerical_root = runtime.state / "published-numerical"
-                    numerical_root.mkdir(mode=0o700)
-                    numerical_policy = bind_policy(repository=repository,
-                        receipt=selected["numerical_formalization"],
-                        manifest=admission["manifest"]["payload"], output_root=numerical_root)
-                if refresh_numerical_selection_on_completion:
-                    if "numerical_selection_384" not in selected:
-                        raise ValueError("learned numerical refresh requires admitted predecessor")
-                    from ..runtime.published_numerical_selection import bind_policy
-                    learned_root = runtime.state / "published-learned-numerical"
-                    learned_root.mkdir(mode=0o700)
-                    learned_numerical_policy = bind_policy(repository=repository,
-                        receipt=selected["numerical_selection_384"], manifest=admission["manifest"]["payload"],
-                        output_root=learned_root, budget_profile=budget_profile)
-            if refresh_source384_on_completion:
-                from ..runtime.task_context_bundle import read_task_context_historical_selection
-                task = verified["graph"].tasks[0]
-                selected = read_task_context_historical_selection(repository=repository,
-                    artifact=runtime.context_bundle["artifact"],
-                    expected_sha256=runtime.context_bundle["sha256"],
-                    task_cid=task.task_cid, task_id=task.task_key)
-                if "source384_context" not in selected:
-                    raise ValueError("Source384 refresh requires the admitted Source384 predecessor")
-                (runtime.state / "published-source384").mkdir(mode=0o700)
             retrieval_binding = None
             if published_retrieval_policy is not None:
                 task = verified["graph"].tasks[0]
@@ -530,15 +554,20 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
                     retrieval_binding = bind_published_learned_retrieval_policy(repository=repository,
                         bundle=runtime.context_bundle, task_cid=task.task_cid, task_id=task.task_key,
                         artifacts=published_learned_artifacts)
-                elif published_retrieval_policy == "native-empty-program-scope@1":
-                    from ..runtime.published_task_context import bind_published_empty_retrieval_policy
-                    retrieval_binding = bind_published_empty_retrieval_policy(repository=repository,
-                        bundle=runtime.context_bundle, task_cid=task.task_cid, task_id=task.task_key)
                 else:
                     from ..runtime.published_retrieval import bind_published_retrieval_policy
                     retrieval_binding = bind_published_retrieval_policy(repository=repository,
                         bundle=runtime.context_bundle, task_cid=task.task_cid, task_id=task.task_key)
             runtime.run_id = "admitted-" + uuid.uuid4().hex
+            diagnostic_scope = None
+            if native_dispatch_diagnostics:
+                from ..runtime import native_dispatch_diagnostics as diagnostic
+                diagnostic_scope = diagnostic.validate_diagnostic_scope({
+                    "schema": "native-dispatch-diagnostic-scope@1", "run_id": runtime.run_id,
+                    "task_cid": verified["graph"].tasks[0].task_cid,
+                    "command_sha256": hashlib.sha256(implementation_command.encode("utf-8")).hexdigest(),
+                    "producer_source_sha256": hashlib.sha256(Path(diagnostic.__file__).read_bytes()).hexdigest(),
+                })
             runtime._published_context = {}
             runtime._context_refresh_attempts = {}
             runtime._context_refresh_stop_receipt = None
@@ -555,7 +584,6 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
                 inventory_execution_scope._remember_constructor_cleanup(runtime)
             runtime.bootstrap_receipts = []
             runtime.bootstrap_errors = []
-            runtime._bootstrap_failure_counts = {}
             options = [
                 "--todo-path", str(server.config.database_path), "--state-dir", str(runtime.state / "run"),
                 "--state-prefix", "admitted", "--task-prefix", "## ",
@@ -585,32 +613,25 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
                 options += ["--task-context-bundle-artifact", runtime.context_bundle["artifact"],
                             "--task-context-bundle-sha256", runtime.context_bundle["sha256"]]
             options += ["--implement", "--implementation-command", implementation_command] if implement else ["--no-implement"]
-            if implementation_timeout_seconds is not None:
-                options += ["--implementation-timeout", str(implementation_timeout_seconds)]
             from ..todo_daemon.implementation_supervisor import parse_args
             parse_args(options)
             argv = (sys.executable, "-P", "-m",
                     "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor", *options)
             pythonpath = os.pathsep.join(filter(None, (str(Path(__file__).resolve().parents[3]), os.environ.get("PYTHONPATH", ""))))
-            from ..task_sources.board_control_plane import ORCHESTRATION_DIR_ENV
-            # The signed isolated run owns its derived catalogs. An unconfigured
-            # lookup migrates account-wide legacy databases before startup.
-            orchestration = runtime.state / "orchestration"
-            orchestration.mkdir(mode=0o700)
-            environment = (("PYTHONPATH", pythonpath), ("PYTHONUNBUFFERED", "1"),
-                           (ORCHESTRATION_DIR_ENV, str(orchestration)))
-            environment += tuple(proof_resource_environment.items())
-            if replay_work_scope is not None:
-                # Receive allowance only; the owner enforces the shorter
-                # original work/lifetime/grant and whole-callback deadlines.
-                from ..task_sources.typed_state_owner import LOCAL_COMPLETION_RPC_TIMEOUT_ENV
-                environment += ((LOCAL_COMPLETION_RPC_TIMEOUT_ENV, "125"),)
-            from ..todo_daemon.native_owner_bootstrap import STARTUP_WAIT_ENV
-            # Bind the default too: ambient state must not enlarge this wait.
-            environment += ((STARTUP_WAIT_ENV, str(start_timeout_ms or 30_000)),)
+            environment = (("PYTHONPATH", pythonpath), ("PYTHONUNBUFFERED", "1"))
             environment += tuple(_bounded_git_environment(candidate_runner=candidate_runner is not None).items())
             if candidate_runner is not None:
                 environment += ((CANDIDATE_RUNNER_ENV, json.dumps(candidate_runner, sort_keys=True)),)
+            if diagnostic_scope is not None:
+                environment += ((NATIVE_DISPATCH_DIAGNOSTICS_ENV,
+                    json.dumps(diagnostic_scope, sort_keys=True, separators=(",", ":"))),)
+            if checked_observer_budget_scope is not None:
+                from ..runtime.checked_context_dispatch import SOCKET_ENV, CONTEXT_ENV, OWNER_ENV, owner_dispatch_identity
+                checked_owner_identity = json.dumps(owner_dispatch_identity(),
+                    sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+                environment += ((SOCKET_ENV, str(runtime.state / "checked-context.sock")),
+                                (CONTEXT_ENV, checked_observer_budget_scope.context_cid),
+                                (OWNER_ENV, checked_owner_identity))
             runtime.manifest = {
                 "schema": "isolated-admitted-supervisor-launch@1", "run_id": runtime.run_id,
                 "repository_root": str(repository), "repository_id": runtime.repository_id,
@@ -637,26 +658,10 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
                 } if refresh_context_on_completion else None),
                 "production_activation": False, "completion_authority": False,
             }
-            if start_timeout_ms is not None:
-                runtime.manifest["start_timeout_ms"] = start_timeout_ms
-            if implementation_timeout_seconds is not None:
-                runtime.manifest["implementation_timeout_seconds"] = implementation_timeout_seconds
-            if budget_profile is not None:
-                runtime.manifest["budget_profile"] = budget_profile
-            if refresh_source384_on_completion:
-                runtime.manifest["context_refresh_policy"].update(
-                    schema="admitted-context-refresh-policy@2",
-                    source384={"schema": "admitted-source384-successor-policy@1",
-                        "output_root": str(runtime.state / "published-source384"),
-                        "preparation_timeout_seconds": 180.,
-                        "requires_independent_manifest": True,
-                        "proof_authority": False, "completion_authority": False})
-            if numerical_policy is not None:
-                runtime.manifest["context_refresh_policy"].update(
-                    schema="admitted-context-refresh-policy@3", numerical_formalization=numerical_policy)
-            if learned_numerical_policy is not None:
-                runtime.manifest["context_refresh_policy"].update(
-                    schema="admitted-context-refresh-policy@4", numerical_selection_384=learned_numerical_policy)
+            if diagnostic_scope is not None:
+                runtime.manifest["native_dispatch_diagnostic_scope"] = diagnostic_scope
+            if checked_observer_budget_scope is not None:
+                runtime.manifest["checked_observer_budget_scope"] = checked_observer_budget_scope.material_binding
             if finite_execution_scope is not None:
                 runtime.manifest["finite_execution_scope"] = finite_execution_scope.material_binding
                 runtime.manifest["finite_worker_launcher"] = finite_execution_scope.worker_launcher_binding
@@ -702,13 +707,19 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
 
             def popen(*args, **kwargs):
                 from ..task_sources.duckdb_state import QUACK_TOKEN_ENV
-                runtime._startup_validate("launch_validation")
+                runtime._verify()
                 # Resolve through this live native owner, never ambient credentials
                 # or a possibly stale filesystem handoff for another generation.
                 token = server._vault.resolve(runtime.owner_identity.secret_handle)
                 if not token:
                     raise ValueError("native owner's read-only Quack transport credential is unavailable")
-                environment = dict(kwargs["env"])
+                environment = _diagnostic_spawn_environment(kwargs["env"],
+                    runtime.manifest.get("native_dispatch_diagnostic_scope"))
+                signed_routing = None
+                if runtime.checked_observer_budget_scope is not None:
+                    signed_routing = {name: value for name, value in runtime.manifest["environment"]
+                                      if name in CHECKED_CONTEXT_ENV_NAMES}
+                environment = _checked_budget_spawn_environment(environment, signed_routing)
                 environment.pop(TYPED_STATE_OWNER_SOCKET_ENV, None)
                 environment.pop(TYPED_STATE_OWNER_TOKEN_ENV, None)
                 environment[QUACK_TOKEN_ENV] = token
@@ -755,32 +766,17 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
             runtime.process.owner_identity = runtime.owner_identity
             runtime.process.route_policy_id = runtime.route_policy.policy_id
             runtime.process.client_id = runtime.client_id
-            orchestrator_type = LifecycleOrchestrator
-            if replay_work_scope is not None:
-                class ReplayBoundLifecycleOrchestrator(LifecycleOrchestrator):
-                    def _start_new(self, state, profile, deadline):
-                        # The control policy performs fresh checks after issuing
-                        # its request. Charge that time before native health
-                        # polling without rewriting the signed request or saga.
-                        fixed = runtime._replay_start_deadline
-                        if fixed is None:
-                            raise TimeoutError("admitted START lacks its fixed replay deadline")
-                        bounded = min(deadline, fixed, runtime._replay_lifetime_deadline,
-                                      runtime._replay_work_scope.deadline_monotonic)
-                        return super()._start_new(state, profile, bounded)
-
-                orchestrator_type = ReplayBoundLifecycleOrchestrator
-            runtime.orchestrator = orchestrator_type(
+            runtime.orchestrator = LifecycleOrchestrator(
                 state_root=runtime.state, profiles=(runtime.profile,), process_adapter=runtime.process,
                 poll_interval_ms=50, stop_grace_ms=1_000,
             )
             runtime._permits, runtime._requests = {}, {}
             runtime.service = SupervisorControlService(
                 repository_allowlist=(repository,), state_allowlist=(runtime.state,),
-                backend=_LocalLifecycleRecoveryBackend(runtime),
+                handlers={Operation.START: runtime._bounded_lifecycle_response,
+                          Operation.STOP: runtime._bounded_lifecycle_response},
                 authorization_validator=ControlMutationAuthorizer(runtime._policy),
                 identity_validator=runtime._validate_identity, lease_validator=runtime._validate_lease,
-                local_start_timeout_ms=start_timeout_ms,
             )
             runtime._bootstrap_thread = threading.Thread(target=runtime._serve_bootstrap, daemon=True,
                                                          name="admitted-supervisor-bootstrap")
@@ -793,11 +789,6 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
                 from ..runtime.finite_proof_query_execution import PROFILE as PROOF_QUERY_PROFILE
                 from ..task_sources.board_control_plane import infer_board_namespace
                 target_branch = _git(repository, "branch", "--show-current")
-                if finite_execution_scope is None and inventory_execution_scope is None:
-                    gateway = server._command_gateway
-                    with gateway._grants_lock:
-                        runtime._ordinary_completion_binding_before = (
-                            gateway, gateway._local_task_validation_handler)
                 runtime.completion_service = bind_owner_local_completion_service(
                     server=server, portal_attempt_root=runtime.state / "run" / "admitted_database_portal_attempts",
                     repo_root=repository, merge_queue_dir=runtime.state / "merge_queue",
@@ -807,23 +798,25 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
                     candidate_runner=candidate_runner,
                     retirable=(inventory_execution_scope is not None or (finite_execution_scope is not None
                         and finite_execution_scope.to_dict()["payload"]["profile"] in {ADVISORY_PROFILE, PROOF_QUERY_PROFILE})),
-                    **({"replay_scope": runtime._replay_work_scope,
-                        "deadline_monotonic": runtime._replay_lifetime_deadline}
-                       if runtime._replay_work_scope is not None else {}),
                 )
 
+            if checked_observer_budget_scope is not None:
+                from ..runtime.checked_context_dispatch import start_owner_checked_context_dispatch_broker
+                checked_observer_budget_scope.bind_runtime(runtime, shlex.split(implementation_command))
+                runtime.checked_context_dispatch_broker = start_owner_checked_context_dispatch_broker(
+                    scope=checked_observer_budget_scope, runtime=runtime)
+                if runtime.checked_context_dispatch_broker.daemon_environment() != {
+                        SOCKET_ENV: str(runtime.state / "checked-context.sock"),
+                        CONTEXT_ENV: checked_observer_budget_scope.context_cid,
+                        OWNER_ENV: checked_owner_identity}:
+                    raise ValueError("checked budget broker differs from signed native routing")
             return runtime
         except BaseException as construction_error:
-            if inventory_execution_scope is None and (
+            if checked_observer_budget_scope is None and inventory_execution_scope is None and (
                     finite_execution_scope is None or not finite_execution_scope._uses_paired_receiving()):
-                if finite_execution_scope is None:
-                    try:
-                        runtime._close_unlaunched_construction()
-                    except BaseException as cleanup_error:
-                        runtime._construction_cleanup_failed = True
-                        raise RuntimeError("ordinary constructor cleanup unproven; resource custody retained") from cleanup_error
                 raise
-            cleanup_kind = "inventory" if inventory_execution_scope is not None else "proof-query"
+            cleanup_kind = ("checked-budget" if checked_observer_budget_scope is not None
+                            else "inventory" if inventory_execution_scope is not None else "proof-query")
             from ..runtime.local_completion_bridge import _CompletionBindingCleanupError
             if type(construction_error) is _CompletionBindingCleanupError:
                 runtime._pending_completion_binding = construction_error._custody
@@ -845,6 +838,14 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
                     broker = getattr(runtime, "proof_query_dispatch_broker", None)
                     if broker is not None:
                         broker.close_unlaunched_construction()
+                    checked_broker = getattr(runtime, "checked_context_dispatch_broker", None)
+                    if checked_broker is not None:
+                        checked_broker.close_unlaunched_construction()
+                    if checked_observer_budget_scope is not None:
+                        if checked_observer_budget_scope.bound_runtime is None:
+                            checked_observer_budget_scope.close_unlaunched_construction()
+                        else:
+                            checked_observer_budget_scope.close_unlaunched_construction(runtime)
                     listener = getattr(runtime, "_listener", None)
                     if listener is not None:
                         listener.close()
@@ -869,61 +870,7 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
                 raise RuntimeError(f"{cleanup_kind} constructor cleanup unproven; resource custody retained") from cleanup_error
             raise
 
-    def _close_unlaunched_construction(self):
-        """Dispose an ordinary failed constructor without inventing a STOP."""
-        if getattr(self, "_children", ()):
-            raise RuntimeError("ordinary construction has undisposed process custody")
-        process = getattr(self, "process", None)
-        if process is not None:
-            observed = process.snapshot(self.profile)
-            if observed.members or observed.roots:
-                raise RuntimeError("ordinary construction has a live native process tree")
-        stop = getattr(self, "_bootstrap_stop", None)
-        if stop is not None:
-            stop.set()
-        listener = getattr(self, "_listener", None)
-        if listener is not None:
-            listener.close()
-        thread = getattr(self, "_bootstrap_thread", None)
-        if thread is not None and thread.ident is not None:
-            # The bootstrap channel itself has a five-second receive bound.
-            thread.join(timeout=6)
-            if thread.is_alive():
-                raise RuntimeError("ordinary constructor bootstrap remains active")
-        before = getattr(self, "_ordinary_completion_binding_before", None)
-        if before is not None:
-            gateway, previous_handler = before
-            with gateway._grants_lock:
-                if gateway._local_task_validation_handler is not previous_handler:
-                    raise RuntimeError("ordinary construction has unresolved completion binding custody")
-        if getattr(self, "completion_service", None):
-            raise RuntimeError("ordinary construction has undisposed completion custody")
-        coordinator = getattr(self, "coordinator", None)
-        released = False
-        if coordinator is not None:
-            lease = getattr(self, "lease", None)
-            if lease is not None:
-                coordinator.release(lease, expected_fencing_token=lease.fencing_token,
-                                    expected_fence_epoch=lease.fence_epoch)
-                released = True
-            coordinator.close()
-        if getattr(self, "state", None) is not None and self.state.is_dir():
-            (self.state / "construction-cleanup.json").write_text(json.dumps({
-                "schema": "ordinary-unlaunched-constructor-cleanup@1",
-                "native_STOP_proved": False,
-                "process_observation": "empty_native_tree" if process is not None else "lifecycle_not_constructed",
-                "bootstrap_stopped": thread is None or not thread.is_alive(),
-                "run_lease_released": released,
-                "completion_authority": False,
-            }, sort_keys=True) + "\n")
-
     def _bounded_lifecycle_response(self, request):
-        if request.operation is Operation.START and self._replay_work_scope is not None:
-            if self._replay_start_deadline is None:
-                raise TimeoutError("admitted START lacks its fixed replay deadline")
-            # Refuse exhausted validation time before creating a lifecycle
-            # reservation; a new rejection must not strand a PREPARED saga.
-            self._operation_timeout_ms(Operation.START)
         response = self.orchestrator(request)
         worker_cleanup = None
         if request.operation is Operation.STOP and self.manifest.get('candidate_runner') is not None:
@@ -959,15 +906,23 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
             data['isolated_worker_cleanup'] = worker_cleanup
         return replace(response, data=data)
 
-    def _verify_tasks(self, verified):
+    def _verify_tasks(self, verified, *, owner_local=False):
         from ..task_sources.intent_repository import IntentRepository
 
-        page = self.source.list_tasks(limit=17)
-        expected = {task.task_cid: task for task in verified["graph"].tasks}
-        if page.next_cursor or {task.task_cid for task in page.tasks} != set(expected):
-            raise ValueError("native owner task population differs from signed admission")
+        if type(owner_local) is not bool:
+            raise ValueError("exact owner-local verification selection required")
+        # A broker already holding the native owner lock cannot ask that same
+        # owner's command server to service a remote list_tasks RPC. Read the
+        # same typed task records directly under the original lock instead.
+        page = None if owner_local else self.source.list_tasks(limit=17)
         with self.server._lock:
             intent = IntentRepository(bound_connection=self.server._connection, install_schema=False)
+            if owner_local:
+                from ..task_sources.database_task_source import DatabaseTaskSource
+                page = DatabaseTaskSource(intent=intent, install_schema=False).list_tasks(limit=17)
+            expected = {task.task_cid: task for task in verified["graph"].tasks}
+            if page.next_cursor or {task.task_cid for task in page.tasks} != set(expected):
+                raise ValueError("native owner task population differs from signed admission")
             for task in page.tasks:
                 envelope = task.body.get(CONTRACT_KEY, {})
                 contract = _verify_signature(envelope, verified["profile"])
@@ -991,54 +946,22 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
                         or native["plan_cid"] != expected_contract["plan_id"]):
                     raise ValueError("native task lacks the exact signed local contract")
 
-    def _verify_context(self, verified, *, completed_observation=False):
-        observations = []
+    def _verify_context(self, verified):
         if self.context_bundle is None:
-            return observations
-        from ..runtime.task_context_bundle import load_task_context_nomination, read_task_context_historical_selection
+            return
+        from ..runtime.task_context_bundle import load_task_context_nomination
         if set(self.context_bundle) != {"artifact", "sha256"}:
             raise ValueError("context bundle requires exact artifact and digest")
-        published_observation = (completed_observation
-            and _git(self.repository, "rev-parse", "HEAD") != verified["profile"].baseline_commit)
         for task in verified["graph"].tasks:
-            if published_observation:
-                selected = read_task_context_historical_selection(repository=self.repository,
-                    artifact=self.context_bundle["artifact"], expected_sha256=self.context_bundle["sha256"],
-                    task_cid=task.task_cid, task_id=task.task_key)
-                if "numerical_selection_384" in selected:
-                    from ..runtime.published_task_context import observe_learned_numerical_successor_unavailable
-                    observations.append(observe_learned_numerical_successor_unavailable(server=self.server,
-                        admission=self.admission, predecessor_bundle=self.context_bundle, task_cid=task.task_cid))
-                    continue
-                if "source384_context" in selected:
-                    from ..runtime.published_task_context import observe_source384_successor_unavailable
-                    observations.append(observe_source384_successor_unavailable(server=self.server,
-                        admission=self.admission, predecessor_bundle=self.context_bundle, task_cid=task.task_cid))
-                if "numerical_formalization" in selected:
-                    from ..runtime.published_task_context import observe_numerical_successor_unavailable
-                    observations.append(observe_numerical_successor_unavailable(server=self.server,
-                        admission=self.admission, predecessor_bundle=self.context_bundle, task_cid=task.task_cid))
-                if "source384_context" in selected or "numerical_formalization" in selected:
-                    continue
             load_task_context_nomination(repository=self.repository,
                                          artifact=self.context_bundle["artifact"],
                                          expected_sha256=self.context_bundle["sha256"],
                                          task_cid=task.task_cid, task_id=task.task_key)
-        return observations
 
-    def _verify(self, *, completed_observation=False):
+    def _verify(self, *, _owner_local_tasks=False):
         from ..runtime.local_completion_bridge import verify_owner_local_benchmark_observation
-        if self.manifest.get("start_timeout_ms") != self.start_timeout_ms:
-            raise ValueError("admitted START budget differs from its signed launch")
-        if self.manifest.get("implementation_timeout_seconds") != getattr(self, "implementation_timeout_seconds", None):
-            raise ValueError("implementation timeout differs from its signed launch")
-        if self.manifest.get("budget_profile") != getattr(self, "budget_profile", None):
-            raise ValueError("benchmark budget profile differs from its signed launch")
-        if self.manifest.get("budget_profile") is not None:
-            from ..runtime.benchmark_budget_policy import validate_native_lifetime
-            validate_native_lifetime(self.manifest.get("lifetime_seconds"), budget_profile=self.budget_profile)
-        if self.service._local_start_timeout_ms != self.start_timeout_ms:
-            raise ValueError("local START service budget differs from its signed launch")
+        if type(_owner_local_tasks) is not bool:
+            raise ValueError("exact owner-local verification selection required")
         if self.manifest.get("candidate_runner") is not None:
             from ..runtime.candidate_execution import verify_candidate_runner
             verify_candidate_runner(self.manifest["candidate_runner"])
@@ -1049,10 +972,11 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
             raise ValueError("native owner is no longer ready")
         if self.source.execution_route_policy != self.route_policy:
             raise ValueError("native execution route changed")
-        self._verify_tasks(verified)
-        observations = self._verify_context(verified, completed_observation=completed_observation)
-        if dict(self.profile.environment) != dict(self.manifest["environment"]):
-            raise ValueError("admitted launch environment changed")
+        if _owner_local_tasks:
+            self._verify_tasks(verified, owner_local=True)
+        else:
+            self._verify_tasks(verified)
+        self._verify_context(verified)
         if (_digest(self.manifest) != self.manifest_id
                 or list(self.profile.argv) != self.manifest["argv"]
                 or os.fstat(self._listener.fileno()).st_ino != self.manifest["bootstrap_listener_inode"]):
@@ -1066,105 +990,21 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
             self.finite_execution_scope.require_runtime(self)
         if self.inventory_execution_scope is not None:
             self.inventory_execution_scope.require_runtime(self)
-        return observations
-
-    def _verify_observation(self):
-        from ..runtime.header_intent_applicability import resume_applicability_budget, require_applicability_budget
-        with resume_applicability_budget(self._replay_work_scope,
-                deadline_monotonic=self._replay_lifetime_deadline):
-            observations = self._verify(completed_observation=True)
-            require_applicability_budget()
-        if not observations:
-            return None
-        return {name: rows for name, schema in (
-            ("source384", "supervisor-source384-successor-observation@1"),
-            ("numerical_formalization", "supervisor-numerical-successor-observation@1"),
-            ("numerical_selection_384", "supervisor-learned-numerical-successor-observation@1"),
-        ) if (rows := [item for item in observations if item["schema"] == schema])}
-
-    def _operation_timeout_ms(self, operation):
-        configured = self._configured_operation_timeout_ms(operation)
-        if operation is Operation.START and self._replay_work_scope is not None:
-            deadline = min(self._replay_work_scope.deadline_monotonic, self._replay_lifetime_deadline)
-            if self._replay_start_deadline is not None:
-                deadline = min(deadline, self._replay_start_deadline)
-            remaining_ms = int((deadline - time.monotonic()) * 1000)
-            if remaining_ms < 2_000:
-                raise TimeoutError("admitted START has insufficient remaining replay budget")
-            return min(configured, remaining_ms)
-        return configured
-
-    def _configured_operation_timeout_ms(self, operation):
-        if operation is Operation.START and self.start_timeout_ms is not None:
-            if (type(self.start_timeout_ms) is not int
-                    or not 2_000 <= self.start_timeout_ms <= 120_000
-                    or self.manifest.get("start_timeout_ms") != self.start_timeout_ms):
-                raise ValueError("admitted START budget differs from its signed launch")
-            return self.start_timeout_ms
-        return super()._operation_timeout_ms(operation)
-
-    def _startup_validate(self, phase):
-        """Time each fresh check without reusing any validation result."""
-        if phase not in {"control_validation", "launch_validation", "bootstrap_validation"}:
-            raise ValueError("unknown native startup observation phase")
-        observation = {"phase": phase, "status": "running", "started": time.monotonic(), "finished": None}
-        with self._startup_trace_lock:
-            if len(self._startup_trace) < 16:
-                self._startup_trace.append(observation)
-            else:
-                self._startup_trace_truncated = True
-        status = "failed"
-        try:
-            from ..runtime.header_intent_applicability import resume_applicability_budget, require_applicability_budget
-            deadline = self._replay_lifetime_deadline
-            if self._replay_start_deadline is not None:
-                deadline = min(deadline, self._replay_start_deadline)
-            # Explicit handoff is required in the bootstrap thread. ContextVars
-            # from the driver or control thread are not inherited there.
-            with resume_applicability_budget(self._replay_work_scope, deadline_monotonic=deadline):
-                result = self._verify()
-                require_applicability_budget()
-            status = "completed"
-            return result
-        finally:
-            with self._startup_trace_lock:
-                observation.update(status=status, finished=time.monotonic())
-
-    def startup_diagnostics(self):
-        """Closed observations only: no credentials, errors, or source bodies."""
-        now = time.monotonic()
-        with self._startup_trace_lock:
-            observations = [{"phase": item["phase"], "status": item["status"],
-                "seconds": min(900.0, max(0.0, (item["finished"] or now) - item["started"]))}
-                for item in self._startup_trace]
-            truncated = self._startup_trace_truncated
-            failures = [{"phase": phase, "reason": reason, "count": count}
-                for (phase, reason), count in sorted(
-                    getattr(self, "_bootstrap_failure_counts", {}).items())]
-        return {"schema": "admitted-native-startup-observation@1",
-            "start_timeout_ms": self.start_timeout_ms or self.timeout_ms,
-            "stop_timeout_ms": self.timeout_ms,
-            "bootstrap_wait_seconds": (self.start_timeout_ms or 30_000) / 1000,
-            "observations": observations, "observations_truncated": truncated,
-            "bootstrap_receipt_count": min(65_535, len(self.bootstrap_receipts)),
-            "bootstrap_error_count": min(65_535, len(self.bootstrap_errors)),
-            "bootstrap_failure_counts": failures}
-
-    def _record_bootstrap_failure(self, phase, reason):
-        # Selectors are internal enum constants, never exception text or
-        # provider-controlled data. This is diagnostic, not restart authority.
-        if phase not in BOOTSTRAP_FAILURE_PHASES or reason not in BOOTSTRAP_FAILURE_REASONS:
-            raise ValueError("unknown bootstrap failure classification")
-        with self._startup_trace_lock:
-            counts = self._bootstrap_failure_counts
-            key = (phase, reason)
-            # The closed phase/reason product bounds the number of keys;
-            # retain every recognized bucket rather than silently truncating.
-            counts[key] = min(65_535, counts.get(key, 0) + 1)
+        checked_scope = getattr(self, "checked_observer_budget_scope", None)
+        declared_scope = self.manifest.get("checked_observer_budget_scope")
+        if (declared_scope is None) != (checked_scope is None):
+            raise ValueError("signed checked budget selection lost its original owner scope")
+        if checked_scope is not None:
+            from ..runtime.checked_observer_budget import CheckedObserverBudgetScope
+            if (type(checked_scope) is not CheckedObserverBudgetScope
+                    or checked_scope.bound_runtime is not self
+                    or checked_scope.material_binding != declared_scope):
+                raise ValueError("checked budget scope differs from signed native launch")
+            checked_scope.require_current()
 
     def _verify_operation(self, operation):
         if operation is not Operation.STOP:
-            return self._startup_validate("control_validation")
+            return super()._verify_operation(operation)
         # Stopping this already admitted process tree must remain possible
         # between publication and its owner validation. Source acceptance and
         # task completion grant no shutdown authority; the original immutable
@@ -1231,14 +1071,11 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
                 return
             with channel:
                 channel.settimeout(5)
-                phase, reason = "validation", "validation_failed"
                 try:
-                    self._startup_validate("bootstrap_validation")
-                    phase, reason = "peer", "peer_mismatch"
+                    self._verify()
                     pid, uid, _gid = struct.unpack("3i", channel.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, 12))
                     if uid != os.geteuid():
                         raise ValueError("bootstrap peer belongs to another owner")
-                    phase, reason = "request", "request_mismatch"
                     request = _receive_frame(channel)
                     birth = read_process_birth(pid)
                     if (set(request) != {"schema", "pid", "process_birth", "process_birth_id", "client_id", "store_id"}
@@ -1247,33 +1084,30 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
                             or request["process_birth_id"] != process_birth_id(birth)
                             or request["client_id"] != self.client_id or request["store_id"] != self.owner_identity.store_id):
                         raise ValueError("bootstrap request differs from kernel peer and exact grant")
-                    phase, reason = "process_tree", "process_tree_unavailable"
                     tree = self.process.snapshot(self.profile)
                     matches = [item for item in tree.members if item.pid == pid]
-                    rejection = _bootstrap_tree_rejection(tree, matches, pid=pid,
-                        process=self.process, profile=self.profile)
-                    if rejection is not None:
-                        reason = rejection
+                    if (len(tree.roots) != 1 or len(matches) != 1 or pid == tree.roots[0].pid
+                            or matches[0].parent_pid != tree.roots[0].pid
+                            or not self.process.child_scope_matches(self.profile, matches[0])):
                         raise ValueError(
                             "bootstrap peer is not the exact native supervisor child "
-                            f"({rejection})"
+                            f"(roots={len(tree.roots)}, matches={len(matches)}, "
+                            f"parent={matches[0].parent_pid if matches else 0}, "
+                            f"root={tree.roots[0].pid if tree.roots else 0}, "
+                            f"scope={bool(matches and self.process.child_scope_matches(self.profile, matches[0]))}, "
+                            f"option={self.process.last_scope_mismatch})"
                         )
-                    phase, reason = "duplicate_birth", "duplicate_birth"
                     if any(item["process_birth_id"] == process_birth_id(birth) for item in self.bootstrap_receipts):
                         raise ValueError("bootstrap for this child birth was already issued")
-                    phase, reason = "lease", "lease_unavailable"
                     protected = self.coordinator.protect_write(
                         self.lease, expected_fencing_token=self.lease.fencing_token,
                         expected_fence_epoch=self.lease.fence_epoch,
                     )
                     if protected.resource_id != self.run_id or protected.owner_session_id != self.local_profile.identity_did:
-                        reason = "lease_mismatch"
                         raise ValueError("bootstrap run lease changed owner")
                     remaining_seconds = (protected.expires_at_ms - time.time_ns() // 1_000_000) // 1000 - 1
                     if remaining_seconds < 1:
-                        reason = "lease_expired"
                         raise ValueError("native launch lease has no remaining child grant lifetime")
-                    phase, reason = "grant", "grant_unavailable"
                     token, _grant = self.server.issue_typed_client_grant_record(
                         client_id=self.client_id, process_birth_id=process_birth_id(birth), peer_pid=pid,
                         allowed_operations=daemon_required_owner_operations(),
@@ -1281,7 +1115,6 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
                         ttl_seconds=min(self.manifest["lifetime_seconds"], remaining_seconds),
                     )
                     if _grant.expires_at > protected.expires_at_ms:
-                        reason = "grant_lifetime_exceeded"
                         raise ValueError("child grant issuance exceeded its native run lease")
                     self.process.remember_bootstrapped_child(matches[0])
                     receipt = {"schema": "admitted-child-bootstrap-observation@1", "pid": pid,
@@ -1292,7 +1125,6 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
                                "run_lease_expires_at_ms": protected.expires_at_ms,
                                "credential_in_argv": False, "completion_authority": False}
                     self.bootstrap_receipts.append(receipt)
-                    phase, reason = "response", "response_failed"
                     self._record("child-bootstrap", receipt)
                     _send_frame(channel, {"schema": STATE_OWNER_BOOTSTRAP_RESPONSE_SCHEMA, "ok": True,
                                           "endpoint": self.owner_identity.listen_uri,
@@ -1302,27 +1134,11 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
                                           "token": token, "execution_route_policy": self.route_policy.to_dict()})
                 except Exception as exc:
                     self.bootstrap_errors.append({"type": type(exc).__name__, "message": str(exc)[:512]})
-                    self._record_bootstrap_failure(phase, reason)
 
     def start(self):
-        from ..runtime.header_intent_applicability import resume_applicability_budget, require_applicability_budget
-        if self._replay_work_scope is None:
-            return self._start_in_replay_scope()
-        deadline = min(self._replay_lifetime_deadline, self._replay_work_scope.deadline_monotonic,
-                       time.monotonic() + self._configured_operation_timeout_ms(Operation.START) / 1000)
-        # Keep the fixed deadline available to the independent bootstrap
-        # thread even if the control call times out while it is unwinding.
-        self._replay_start_deadline = deadline
-        with resume_applicability_budget(self._replay_work_scope, deadline_monotonic=deadline):
-            result = self._start_in_replay_scope()
-            if result.succeeded:
-                require_applicability_budget()
-                # Later replacement daemon births use the remaining work/run
-                # lifetime. In-flight or failed START retains its fixed cap.
-                self._replay_start_deadline = None
-            return result
-
-    def _start_in_replay_scope(self):
+        checked_scope = getattr(self, "checked_observer_budget_scope", None)
+        if checked_scope is not None:
+            checked_scope.require_current()
         if self.finite_execution_scope is not None and self.finite_execution_scope._uses_paired_receiving():
             from ..runtime.finite_proof_query_execution import _ProofQueryStartRefused, FiniteProofQueryExecutionError
             try:
@@ -1397,16 +1213,6 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
         return self.observe()["published_context"]
 
     def observe(self):
-        from ..runtime.header_intent_applicability import resume_applicability_budget, require_applicability_budget
-        # Requirement and successor observations share the same immutable
-        # work scope as their initial owner/source verification.
-        with resume_applicability_budget(self._replay_work_scope,
-                deadline_monotonic=self._replay_lifetime_deadline):
-            result = self._observe_in_replay_scope()
-            require_applicability_budget()
-            return result
-
-    def _observe_in_replay_scope(self):
         result = super().observe()
         if self.admission["manifest"]["payload"]["schema"] == "supervisor-local-benchmark-manifest@4":
             from ..runtime.intent_requirement_observation import observe_owner_intent_requirements
@@ -1461,52 +1267,11 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
                 refreshed.append({"task_cid": task.task_cid, "status": "pending_native_stop",
                                   "completion_authority": False})
                 continue
-            refresh_phase = "rebuilder_selection"
             try:
-                learned_historical = next((item for item in result.get("context_observation", {}).get(
-                    "numerical_selection_384", []) if item["task_cid"] == task.task_cid), None)
-                learned_numerical_policy = policy.get("numerical_selection_384")
-                if learned_historical is not None:
-                    missing = ("learned_numerical_successor_policy_unavailable" if learned_numerical_policy is None else
-                        "numerical_successor_not_prepared" if "numerical_formalization" in learned_historical
-                            and policy.get("numerical_formalization") is None else
-                        "source384_successor_not_prepared" if "source384_context" in learned_historical
-                            and policy.get("source384") is None else None)
-                    if missing is not None:
-                        refreshed.append({**learned_historical, "reason": missing})
-                        continue
-                numerical_historical = next((item for item in result.get("context_observation", {}).get(
-                    "numerical_formalization", []) if item["task_cid"] == task.task_cid), None)
-                numerical_policy = policy.get("numerical_formalization")
-                if numerical_historical is not None and numerical_policy is None:
-                    refreshed.append(numerical_historical)
-                    continue
-                historical = next((item for item in result.get("context_observation", {}).get("source384", [])
-                    if item["task_cid"] == task.task_cid), None)
-                source384_policy = policy.get("source384")
-                if historical is not None and source384_policy is None:
-                    refreshed.append({**numerical_historical, "reason": "source384_successor_not_prepared"}
-                        if numerical_historical is not None else historical)
-                    continue
-                refresh_options = {}
-                if source384_policy is not None or numerical_policy is not None or learned_numerical_policy is not None:
-                    refresh_options["deadline_monotonic"] = min(
-                        self._replay_lifetime_deadline,
-                        self._replay_work_scope.deadline_monotonic
-                            if self._replay_work_scope is not None else float("inf"))
-                if source384_policy is not None:
-                    refresh_options["source384_timeout_seconds"] = source384_policy["preparation_timeout_seconds"]
-                if numerical_policy is not None:
-                    refresh_options["numerical_policy"] = numerical_policy
-                if learned_numerical_policy is not None:
-                    refresh_options["learned_numerical_policy"] = learned_numerical_policy
-                cached_refresh = task.task_cid in self._published_context
-                if cached_refresh:
-                    refresh_phase = "cache_reload"
+                if task.task_cid in self._published_context:
                     cached = self._published_context[task.task_cid]
                     context = load_published_task_context(server=self.server, admission=self.admission,
-                        artifact=cached["refresh_artifact"], expected_sha256=cached["refresh_sha256"],
-                        **refresh_options)
+                        artifact=cached["refresh_artifact"], expected_sha256=cached["refresh_sha256"])
                 else:
                     count = self._context_refresh_attempts.get(task.task_cid, 0)
                     if count >= policy["max_attempts_per_task"]:
@@ -1521,68 +1286,42 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
                             from ..runtime.published_learned_retrieval import published_learned_retrieval_rebuilder
                             rebuilder = published_learned_retrieval_rebuilder(repository=self.repository,
                                 bundle=self.context_bundle, binding=binding)
-                        elif binding.get("policy") == "native-empty-program-scope@1":
-                            from ..runtime.published_task_context import validate_published_empty_retrieval_policy
-                            validate_published_empty_retrieval_policy(repository=self.repository,
-                                bundle=self.context_bundle, binding=binding)
                         else:
                             from ..runtime.published_retrieval import published_retrieval_rebuilder
                             rebuilder = published_retrieval_rebuilder(repository=self.repository,
                                 bundle=self.context_bundle, binding=binding)
-                    refresh_phase = "successor_refresh"
                     context = refresh_published_task_context(server=self.server, admission=self.admission,
                         predecessor_bundle=self.context_bundle, task_cid=task.task_cid, output=output,
-                        retrieval_rebuilder=rebuilder,
-                        **({"source384_output": Path(source384_policy["output_root"]) / (str(count + 1) + "-" + _digest(task.task_cid))}
-                           if source384_policy is not None else {}),
-                        **({"numerical_output": Path(numerical_policy["output_root"]) / (str(count + 1) + "-" + _digest(task.task_cid))}
-                           if numerical_policy is not None else {}),
-                        **({"learned_numerical_output": Path(learned_numerical_policy["output_root"]) / (str(count + 1) + "-" + _digest(task.task_cid))}
-                           if learned_numerical_policy is not None else {}), **refresh_options)
+                        retrieval_rebuilder=rebuilder)
                     self._published_context[task.task_cid] = context
-                refreshed.append({"task_cid": task.task_cid, "status": "refreshed",
+                refreshed_task = {"task_cid": task.task_cid, "status": "refreshed",
                     "refresh_artifact": context["refresh_artifact"], "refresh_sha256": context["refresh_sha256"],
                     "context_bundle": context["context_bundle"], "semantic_root_cid": context["semantic_root_cid"],
                     "world_snapshot_cid": context["world_snapshot_cid"],
                     "retrieval_status": context["retrieval"]["status"],
                     "source_scope": context["source_scope"],
-                    "task_revision": context["task_revision"], "completion_authority": False})
-                if "previous_source_population_cid" in context["retrieval"]:
-                    empty = context["retrieval"]
-                    refreshed[-1]["empty_retrieval_observation"] = {
-                        "schema": "supervisor-published-empty-retrieval-observation@1",
-                        "status": empty["status"], "source_population_cid": empty["source_population_cid"],
-                        "previous_source_population_cid": empty["previous_source_population_cid"],
-                        "embedding_calls": empty["embedding_calls"], "model_loading_calls": empty["model_loading_calls"],
-                        "execution_authority": False, "completion_authority": False}
+                    "task_revision": context["task_revision"], "completion_authority": False}
                 embedding_receipt = (context["retrieval"].get("policy_lineage") or {}).get("embedding_receipt")
                 if embedding_receipt is None:
                     embedding_receipt = context["retrieval"].get("embedding_receipt")
+                binding = self.manifest.get("published_retrieval_policy")
+                if (binding is not None and binding.get("policy") == "lexical-tfidf-symbols@1"
+                        and context["retrieval"]["status"] == "current"):
+                    from ..runtime.published_retrieval import published_lexical_retrieval_receipt
+                    embedding_receipt = published_lexical_retrieval_receipt(
+                        server=self.server, admission=self.admission, bundle=self.context_bundle,
+                        binding=binding, artifact=context["refresh_artifact"],
+                        expected_sha256=context["refresh_sha256"])
                 if embedding_receipt is not None:
-                    refreshed[-1]["embedding_receipt"] = json.loads(json.dumps(embedding_receipt))
+                    refreshed_task["embedding_receipt"] = json.loads(json.dumps(embedding_receipt))
                 if "goal_progress" in context:
-                    refreshed[-1]["goal_progress"] = json.loads(json.dumps(context["goal_progress"]))
-                if "source384_refresh" in context:
-                    refreshed[-1]["source384_refresh"] = json.loads(json.dumps(context["source384_refresh"]))
-                    refreshed[-1]["source384_refresh_reused"] = cached_refresh
-                    refreshed[-1]["requires_independent_manifest"] = True
-                if "numerical_refresh" in context:
-                    refreshed[-1]["numerical_refresh"] = json.loads(json.dumps(context["numerical_refresh"]))
-                    refreshed[-1]["numerical_refresh_reused"] = cached_refresh
-                    refreshed[-1]["requires_independent_manifest"] = True
-                if "learned_numerical_refresh" in context:
-                    from ..runtime.published_numerical_selection import execution_observation
-                    refreshed[-1]["learned_numerical_refresh"] = json.loads(json.dumps(context["learned_numerical_refresh"]))
-                    refreshed[-1]["learned_numerical_refresh_reused"] = cached_refresh
-                    refreshed[-1]["learned_numerical_refresh_execution"] = execution_observation(
-                        context["learned_numerical_refresh"], reused=cached_refresh)
-                    refreshed[-1]["requires_independent_manifest"] = True
+                    refreshed_task["goal_progress"] = json.loads(json.dumps(context["goal_progress"]))
+                refreshed.append(refreshed_task)
             except Exception as error:
                 # Retain task success and shutdown availability. A failed or
                 # stale derivative is unusable; it never authorizes dispatch.
                 refreshed.append({"task_cid": task.task_cid, "status": "unavailable",
-                    "error_type": type(error).__name__, "error_phase": refresh_phase,
-                    "completion_authority": False})
+                    "error_type": type(error).__name__, "completion_authority": False})
         result["published_context"] = refreshed
         result["published_context_observation_seconds"] = time.monotonic() - refresh_started
         self._record("published-context", {"results": refreshed,
@@ -1591,7 +1330,6 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
         return result
 
     def close(self):
-        self._require_no_live_launched_children()
         inventory_scope = getattr(self, "inventory_execution_scope", None)
         if self.finite_execution_scope is not None:
             self.finite_execution_scope.require_close(self)
@@ -1609,6 +1347,18 @@ class AdmittedBenchmarkRuntime(IsolatedBenchmarkRuntime):
         broker = getattr(self, "proof_query_dispatch_broker", None)
         if broker is not None:
             self._record("proof-query-dispatch-broker-close", broker.close_after_native_stop())
+        checked_broker = getattr(self, "checked_context_dispatch_broker", None)
+        if checked_broker is not None:
+            self._record("checked-context-dispatch-broker-close", checked_broker.close_after_native_stop())
+        checked_scope = getattr(self, "checked_observer_budget_scope", None)
+        if checked_scope is not None:
+            if checked_scope.bound_runtime is None:
+                if getattr(self, "_children", ()):
+                    raise RuntimeError("unbound checked budget scope cannot close native child custody")
+                receipt = checked_scope.close_unlaunched_construction()
+            else:
+                receipt = checked_scope.close_after_native_stop(self)
+            self._record("checked-observer-budget-close", receipt)
         if inventory_scope is not None:
             if self.process.snapshot(self.profile).members:
                 raise RuntimeError("stop the exact supervisor tree before closing its coordinator")
