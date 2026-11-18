@@ -59,6 +59,35 @@ def test_exact_native_table_and_cleanup(binding, policy_name, representation):
     assert not Path(binding["invocation_dir"]).exists()
 
 
+@pytest.mark.parametrize("fault", [None, "read", "retrieval"])
+def test_cleanup_preserves_valid_read_scope_without_inventing_missing_counts(binding, monkeypatch, fault):
+    from ipfs_accelerate_py.agent_supervisor.runtime import repository_source_mcp as mcp
+    from benchmarks.agent_supervisor.container_coding.test_terminal_repository_source_policy import authored_read_observation
+
+    identity = policy.create_runtime_store(binding)
+    reads = authored_read_observation(successful_reads=1)
+    summary = dict(status="observed", initializations=1, tool_calls=1, successful_reads=1,
+        compact_reads=0, canonical_edits=0, uncertain_edits=0, refreshes=0, errors=0,
+        returned_bytes=128, read_observation=reads)
+    if fault == "read":
+        reads["line_range_reads"] = True
+    elif fault == "retrieval":
+        summary["retrieval_observation"] = {"private": "invalid optional evidence"}
+    # Only the producer observation is authored; cleanup and both closed summary
+    # validators run normally, without a provider process or source contents.
+    monkeypatch.setattr(mcp, "summarize_repository_audit", lambda path: copy.deepcopy(summary))
+    usage = policy.finish_runtime_store(binding, expected_identity=identity)
+    assert usage["store_cleanup_complete"] is True
+    assert not Path(binding["invocation_dir"]).exists()
+    assert usage["status"] == "observed" and usage["successful_reads"] == 1
+    assert usage["returned_bytes"] == 128
+    assert ("read_observation" in usage) is (fault != "read")
+    if fault != "read":
+        assert usage["read_observation"] == reads
+        assert usage["read_observation"]["provider_usage_measured"] is False
+    assert "retrieval_observation" not in usage
+
+
 @pytest.mark.parametrize("field,value", [
     ("helper_script", "/tmp/foreign.py"), ("python_executable", "/tmp/../python"),
     ("invocation_dir", "/tmp/foreign"), ("config_path", "/tmp/foreign/config.json"),

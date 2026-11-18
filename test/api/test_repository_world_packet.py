@@ -5,13 +5,16 @@ import json
 
 import pytest
 
+from ipfs_accelerate_py.agent_supervisor.context.context_contracts import ContextReference, ContextTier
 from ipfs_accelerate_py.agent_supervisor.procedure_compiler.contracts import ArtifactBindings
 from ipfs_accelerate_py.agent_supervisor.procedure_compiler.world_model import (
     RepositoryWorldState, WorldProjectionStatus,
 )
 from ipfs_accelerate_py.agent_supervisor.runtime.repository_context_compiler import RepositoryContextAdapter
 from ipfs_accelerate_py.agent_supervisor.runtime.repository_world_packet import (
+    GUIDANCE, MAX_BYTES, WORLD_PROMPT_VIEW_MAX_BYTES, WORLD_PROMPT_VIEW_SCHEMA,
     RepositoryWorldPacketError, prepare_repository_world_packet, repository_world_task_binding,
+    project_repository_world_prompt, restore_repository_world_prompt,
 )
 from test.api.test_repository_context_compiler import (
     CORE, compiler, compile_context, native_session, required, scheduler,
@@ -271,3 +274,210 @@ def test_older_unbound_context_cannot_be_implicitly_upgraded(native_session, req
     compilation = compile_context(adapter, required)
     with pytest.raises(RepositoryWorldPacketError, match="task_binding_mismatch"):
         prepare(adapter, compilation)
+
+
+def view_json(value):
+    return json.dumps(value, sort_keys=True, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
+
+
+def view_wire(prompt):
+    return json.loads(prompt[len(GUIDANCE) + 1:])
+
+
+def view_text(wire):
+    return GUIDANCE + "\n" + view_json(wire)
+
+
+def authored_view_prompt(count=16):
+    """Representation-only fixtures; no source admission or provider facts."""
+    references = []
+    for index in range(count):
+        body = "  # π preserves comments, names and whitespace.\nreturn value + " + str(index) + "\n  "
+        reference = ContextReference(
+            reference_id="authored:reference:" + str(index), kind="codebase-constraint",
+            tier=ContextTier.INVARIANT, repository_id="repository:authored:" + "a" * 256,
+            tree_id="sha256:" + "b" * 64, path="src/" + "module_" * 16 + "arithmetic.py",
+            referenced_content_id="sha256:" + hashlib.sha256(body.encode()).hexdigest(),
+            summary=body, byte_count=len(body.encode()), token_count=7,
+            metadata={"required": True, "coverage_ids": ("requirement:" + str(index),),
+                      "unknown": {"false": False, "zero": 0, "null": None}},
+        ).to_record()
+        # Unknown representation data stays literal; this codec does not admit
+        # it as a new native ContextReference or recertify its content identity.
+        reference = json.loads(view_json(reference))
+        reference["unknown_representation"] = {"integer": 1, "float": 1.0, "array": [False, 0, None]}
+        references.append(dict(kind="evidence", item_id="item:" + str(index),
+            payload=dict(evidence_id="context-reference:" + reference["reference_id"],
+                         summary="Selected context reference", reference=reference)))
+    return view_text(dict(schema="repository-world-packet@1", delivery_mode="self_contained",
+        packet=dict(members=references, unknown_core={"acceptance": "retain π\n  ", "missing": None})))
+
+
+def test_inline_view_restores_actual_prepared_packet_without_changing_native_ownership(compiled):
+    source, _session, adapter, compilation = compiled
+    prepared = prepare(adapter, compilation)
+    original_receipt = prepared.receipt()
+    view = project_repository_world_prompt(prepared.prompt)
+    assert restore_repository_world_prompt(view.provider_prompt, view.receipt) == prepared.prompt
+    assert view.native_prompt == prepared.prompt
+    assert view_wire(view.provider_prompt)["schema"] == WORLD_PROMPT_VIEW_SCHEMA
+    assert {"schema", "contract_version"} <= set(view.receipt["shared_reference_fields"])
+    assert view.receipt["reference_count"] == len(compilation.capsule.evidence)
+    assert view.receipt["source_freshness_verified"] is False
+    assert view.receipt["program_semantics_proved"] is False
+    assert view.receipt["provider_token_savings_measured"] is False
+    assert prepared.validate_current(workspace=source, task_text=TASK) == original_receipt
+    # The inverse remains historical data after the original source fence fails.
+    (source / "calc.py").write_text("def add(value):\n    return value + 2\n")
+    with pytest.raises(ValueError, match="source|changed|refresh"):
+        prepared.validate_current(workspace=source, task_text=TASK)
+    assert restore_repository_world_prompt(view.provider_prompt, view.receipt) == prepared.prompt
+    assert view.receipt["source_freshness_verified"] is False
+
+
+def test_inline_view_shares_metadata_and_keeps_all_bodies_and_typed_unknowns():
+    native = authored_view_prompt()
+    view = project_repository_world_prompt(native)
+    candidate = view_wire(view.provider_prompt)
+    assert len(view.provider_prompt.encode()) < len(native.encode())
+    assert candidate["reference_common_bindings"]["contract_version"] == 1
+    assert set(candidate["reference_common_bindings"]) == {
+        "schema", "contract_version", "kind", "tier", "repository_id", "tree_id", "path"}
+    for original, projected in zip(view_wire(native)["packet"]["members"], candidate["packet"]["members"]):
+        before, after = original["payload"]["reference"], projected["payload"]["reference"]
+        for key in ("reference_id", "content_id", "referenced_content_id", "summary", "metadata",
+                    "byte_count", "token_count", "unknown_representation"):
+            assert view_json(after[key]) == view_json(before[key])
+        assert set(candidate["reference_common_bindings"]).isdisjoint(after)
+        assert "π" in after["summary"] and after["summary"].endswith("\n  ")
+    assert candidate["packet"]["unknown_core"] == view_wire(native)["packet"]["unknown_core"]
+    assert restore_repository_world_prompt(view.provider_prompt, view.receipt) == native
+    with pytest.raises(FrozenInstanceError):
+        view.provider_prompt = "changed"
+    changed = view.receipt
+    changed["shared_reference_fields"].clear()
+    assert view.receipt["shared_reference_fields"]
+
+
+@pytest.mark.parametrize("value", [True, 1.0, None, "1"])
+def test_inline_view_never_factors_equal_looking_different_scalar_types(value):
+    wire = view_wire(authored_view_prompt(count=2))
+    wire["packet"]["members"][1]["payload"]["reference"]["contract_version"] = value
+    native = view_text(wire)
+    view = project_repository_world_prompt(native)
+    assert "contract_version" not in view.receipt["shared_reference_fields"]
+    assert restore_repository_world_prompt(view.provider_prompt, view.receipt) == native
+    restored = view_wire(restore_repository_world_prompt(view.provider_prompt, view.receipt))
+    assert type(restored["packet"]["members"][1]["payload"]["reference"]["contract_version"]) is type(value)
+
+
+@pytest.mark.parametrize("count", [0, 1])
+def test_no_shared_population_is_valid_even_when_candidate_is_larger(count):
+    native = authored_view_prompt(count=count)
+    view = project_repository_world_prompt(native)
+    assert view.receipt["shared_reference_fields"] == []
+    assert view.receipt["factored_reference_count"] == 0
+    assert view.receipt["candidate_prompt_bytes"] > view.receipt["native_prompt_bytes"]
+    assert restore_repository_world_prompt(view.provider_prompt, view.receipt) == native
+
+
+def test_near_native_ceiling_keeps_no_gain_candidate_available_for_native_fallback():
+    wire = view_wire(authored_view_prompt(count=0))
+    wire["packet"]["verbatim_source"] = ""
+    wire["packet"]["verbatim_source"] = "x" * (MAX_BYTES - len(view_text(wire).encode()))
+    native = view_text(wire)
+    assert len(native.encode()) == MAX_BYTES
+    view = project_repository_world_prompt(native)
+    assert MAX_BYTES < len(view.provider_prompt.encode()) <= WORLD_PROMPT_VIEW_MAX_BYTES
+    assert restore_repository_world_prompt(view.provider_prompt, view.receipt) == native
+    with pytest.raises(RepositoryWorldPacketError, match="world_prompt_view_limit"):
+        project_repository_world_prompt(native + " ")
+
+
+def test_native_packet_member_ceiling_does_not_drop_any_literal_member():
+    wire = view_wire(authored_view_prompt(count=0))
+    wire["packet"]["members"] = [dict(kind="obligation", payload=dict(index=index, unknown=False))
+                                   for index in range(512)]
+    native = view_text(wire)
+    view = project_repository_world_prompt(native)
+    assert len(view_wire(view.provider_prompt)["packet"]["members"]) == 512
+    assert restore_repository_world_prompt(view.provider_prompt, view.receipt) == native
+    wire["packet"]["members"].append(dict(kind="obligation", payload={}))
+    with pytest.raises(RepositoryWorldPacketError, match="world_prompt_view_members_invalid"):
+        project_repository_world_prompt(view_text(wire))
+
+
+@pytest.mark.parametrize("change,code", [
+    ("override", "world_prompt_view_reference_override"),
+    ("forbidden_shared", "world_prompt_view_shared_fields_invalid"),
+    ("body", "world_prompt_view_receipt_mismatch"),
+    ("coverage", "world_prompt_view_receipt_mismatch"),
+    ("missing_reference", "world_prompt_view_receipt_mismatch"),
+    ("shared_binding", "world_prompt_view_receipt_mismatch"),
+    ("guidance", "world_prompt_view_guidance_mismatch"),
+])
+def test_inline_view_refuses_body_coverage_binding_and_inheritance_tampering(change, code):
+    view = project_repository_world_prompt(authored_view_prompt())
+    wire = view_wire(view.provider_prompt)
+    reference = wire["packet"]["members"][0]["payload"]["reference"]
+    if change == "override":
+        reference["schema"] = wire["reference_common_bindings"]["schema"]
+    elif change == "forbidden_shared":
+        wire["reference_common_bindings"]["summary"] = "Do something else."
+    elif change == "body":
+        reference["summary"] = "Do something else."
+    elif change == "coverage":
+        reference["metadata"]["coverage_ids"] = []
+    elif change == "missing_reference":
+        wire["packet"]["members"].pop()
+    elif change == "shared_binding":
+        wire["reference_common_bindings"]["tree_id"] = "sha256:another-tree"
+    candidate = view_text(wire) if change != "guidance" else "changed\n" + view_json(wire)
+    with pytest.raises(RepositoryWorldPacketError) as caught:
+        restore_repository_world_prompt(candidate, view.receipt)
+    assert caught.value.code == code
+
+
+@pytest.mark.parametrize("field,value", [
+    ("reference_count", 16.0), ("reference_count", True),
+    ("native_prompt_bytes", -1), ("candidate_prompt_sha256", "0" * 64),
+    ("source_freshness_verified", 0), ("provider_token_savings_measured", True),
+    ("invented_provider_usage", 100),
+])
+def test_inline_view_receipt_is_closed_and_type_exact(field, value):
+    view = project_repository_world_prompt(authored_view_prompt())
+    receipt = view.receipt
+    receipt[field] = value
+    with pytest.raises(RepositoryWorldPacketError) as caught:
+        restore_repository_world_prompt(view.provider_prompt, receipt)
+    assert caught.value.code == "world_prompt_view_receipt_mismatch"
+
+
+@pytest.mark.parametrize("change,code", [
+    ("duplicate", "world_prompt_view_duplicate_key"),
+    ("nonfinite", "world_prompt_view_nonfinite"),
+    ("deep", "world_prompt_view_structure_limit"),
+    ("noncanonical", "world_prompt_view_noncanonical"),
+    ("overlimit", "world_prompt_view_limit"),
+])
+def test_inline_view_rejects_ambiguous_or_unbounded_representation(change, code):
+    native = authored_view_prompt(count=0)
+    wire = view_wire(native)
+    if change == "duplicate":
+        native = native.replace('"unknown_core":{', '"unknown_core":{"missing":null,', 1)
+    elif change == "nonfinite":
+        native = native.replace('"missing":null', '"missing":1e400', 1)
+    elif change == "deep":
+        nested = None
+        for _ in range(41):
+            nested = [nested]
+        wire["packet"]["unknown_core"] = nested
+        native = view_text(wire)
+    elif change == "noncanonical":
+        native = GUIDANCE + "\n" + json.dumps(wire, ensure_ascii=False, indent=2)
+    elif change == "overlimit":
+        wire["packet"]["unknown_core"] = "x" * MAX_BYTES
+        native = view_text(wire)
+    with pytest.raises(RepositoryWorldPacketError) as caught:
+        project_repository_world_prompt(native)
+    assert caught.value.code == code

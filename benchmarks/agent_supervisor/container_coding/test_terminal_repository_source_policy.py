@@ -41,6 +41,92 @@ def dispatch_report(mode):
                     model_prompt_bytes=True, workspace_advisory_sha256=True, workspace_advisory_bytes=True))]))
 
 
+def authored_read_observation(*, successful_reads=3, compact_reads=0, line_reads=1, legacy_reads=0):
+    """Closed authored counters, never a native provider usage observation."""
+    from ipfs_accelerate_py.agent_supervisor.runtime import repository_source_mcp as mcp
+    modern = successful_reads - legacy_reads
+    return dict(schema="repository-source-read-observation@1", complete=legacy_reads == 0,
+        event_chain_sha256="c" * 64, **{**dict.fromkeys(mcp.READ_COUNTERS, 0),
+            "read_calls": modern, "successful_reads": modern, "full_file_reads": modern - line_reads,
+            "line_range_reads": line_reads, "original_reads": modern - compact_reads,
+            "compact_reads": compact_reads, "generation_bindings_observed": modern,
+            "exposed_content_utf8_bytes": 32 * modern, "line_range_selected_lines": 2 * line_reads,
+            "line_range_total_lines": 10 * line_reads, "line_range_omitted_lines": 8 * line_reads,
+            "legacy_read_calls": legacy_reads, "legacy_successful_reads": legacy_reads},
+        **dict.fromkeys(mcp.READ_FALSE, False))
+
+
+def test_read_scope_adoption_keeps_failed_provider_attempts_and_unknown_history(mode):
+    for status in ("provider_returned", "failed"):
+        report = dispatch_report(mode)
+        row = report["provider_invocations"][1]
+        row["status"] = status
+        usage = row["repository_source_policy"]["usage"]
+        usage["read_observation"] = authored_read_observation(compact_reads=usage["compact_reads"])
+        observed = policy.repository_source_dispatch_observation(report, mode)["invocations"][0]
+        assert observed["provider_attempt_status"] == status
+        assert observed["read_observation_valid"] is True
+        assert observed["line_reads_observed"] is True
+        assert observed["read_observation"]["source_displacement_verified"] is False
+        usage.pop("read_observation")
+        historical = policy.repository_source_dispatch_observation(report, mode)["invocations"][0]
+        assert historical["successful_reads"] == 3
+        assert historical["line_reads_observed"] is None
+
+
+def test_read_scope_known_absence_and_incomplete_history_remain_distinct():
+    mode = policy.RAW_REPOSITORY_SOURCE_POLICY
+    report = dispatch_report(mode)
+    usage = report["provider_invocations"][1]["repository_source_policy"]["usage"]
+    usage["read_observation"] = authored_read_observation(line_reads=0)
+    complete = policy.repository_source_dispatch_observation(report, mode)["invocations"][0]
+    assert complete["line_reads_observed"] is False
+    usage["read_observation"] = authored_read_observation(line_reads=0, legacy_reads=1)
+    mixed = policy.repository_source_dispatch_observation(report, mode)["invocations"][0]
+    assert mixed["read_observation_valid"] is True
+    assert mixed["read_observation"]["complete"] is False
+    assert mixed["line_reads_observed"] is None
+
+
+def test_read_scope_requires_existing_input_configuration_and_cleanup_joins(mode):
+    for missing in ("input", "configuration", "cleanup"):
+        report = dispatch_report(mode)
+        row = report["provider_invocations"][1]
+        usage = row["repository_source_policy"]["usage"]
+        usage["read_observation"] = authored_read_observation(compact_reads=usage["compact_reads"])
+        if missing == "input":
+            report["context_input_audit"]["matches"][0]["model_input_verified"] = False
+        elif missing == "configuration":
+            row["usage"]["codex_repository_source_configured"] = False
+        else:
+            usage.update(store_cleanup_complete=False, artifacts_retained_after_invocation=True)
+        result = policy.repository_source_dispatch_observation(report, mode)
+        assert result["invocations"][0]["line_reads_observed"] is None
+        assert result["token_savings_established"] is False
+
+
+def test_invalid_optional_read_scope_preserves_valid_scalar_usage(mode):
+    for fault in ("boolean", "join", "authority", "extra"):
+        report = dispatch_report(mode)
+        usage = report["provider_invocations"][1]["repository_source_policy"]["usage"]
+        reads = authored_read_observation(compact_reads=usage["compact_reads"])
+        usage["read_observation"] = reads
+        if fault == "boolean":
+            reads["line_range_reads"] = True
+        elif fault == "join":
+            reads["legacy_successful_reads"] = 1
+        elif fault == "authority":
+            reads["token_savings_measured"] = True
+        else:
+            reads["content"] = "private source must not be projected"
+        observed = policy.repository_source_dispatch_observation(report, mode)["invocations"][0]
+        assert observed["server_audit_valid"] is True
+        assert observed["successful_reads"] == 3
+        assert observed["read_observation_valid"] is False
+        assert observed["read_observation"] is None
+        assert observed["line_reads_observed"] is None
+
+
 def test_explicit_modes_and_legacy_omission(mode):
     assert policy.repository_source_selection("legacy") == {}
     assert policy.repository_source_selection(mode) == {"repository_source_policy": mode}

@@ -1,11 +1,6 @@
 """One-shot original Harbor task trials for the full and no-index supervisor arms."""
 from __future__ import annotations
 
-from ipfs_accelerate_py.cli_runtime.grok_pruning import (
-    DEFAULT_GROK_PRUNING_PROFILE, GROK_PRUNING_PROFILES, grok_pruning_selection,
-    require_grok_pruning_archive, grok_pruning_runtime_matches,
-)
-
 from ipfs_accelerate_py.agent_supervisor.runtime.grok_coding_budget import (
     DEFAULT_GROK_CODING_MAX_TURNS, validate_grok_coding_max_turns, grok_coding_selection,
     require_grok_coding_archive, grok_coding_runtime_matches,
@@ -82,12 +77,6 @@ from .terminal_planning_policy import (
 from .terminal_semantic_working_set_policy import (
     DEFAULT_SEMANTIC_WORKING_SET, SEMANTIC_WORKING_SETS, validate_semantic_working_set,
     semantic_working_set_selection, semantic_working_set_observation, require_semantic_working_set_archive,
-    validate_working_set_census, working_set_census_selection, working_set_census_observation,
-    frozen_working_set_census, working_set_census_runtime_matches,
-)
-from .terminal_doctor_coding_policy import (
-    DOCTOR_CODING_POLICIES, doctor_coding_selection, doctor_coding_observation, require_doctor_coding_archive,
-    doctor_coding_runtime_declared_matches,
 )
 from .terminal_source_edit_policy import (
     DEFAULT_SOURCE_EDIT_MODE, SOURCE_EDIT_MODES, validate_source_edit_mode,
@@ -159,6 +148,28 @@ DECISION_BENCHMARK_SOURCE_NAMES = (
 )
 
 
+def _timeout_runtime_sources() -> dict[str, Path]:
+    """Unconditional deadline and declared usage owners in every runtime."""
+    from .terminal_worker_capability import USAGE_SOURCE_PATHS
+    root = Path(__file__).resolve().parents[3]
+    sources = {TIMEOUT_RUNTIME_ARCHIVE_PREFIX + name: Path(__file__).with_name(name)
+               for name in TIMEOUT_RUNTIME_SOURCE_NAMES}
+    sources.update({"source/" + name: root / name for name in USAGE_SOURCE_PATHS})
+    return sources
+
+
+def _require_current_timeout_runtime_pins(pins) -> None:
+    failure = "runtime deadline sources changed during preflight; rebuild the runtime archive"
+    sources = _timeout_runtime_sources()
+    if type(pins) is not dict or set(pins) != set(sources):
+        raise ValueError(failure)
+    for name, source in sources.items():
+        if (source.is_symlink() or not source.is_file()
+                or not 0 < source.stat().st_size <= MAX_TIMEOUT_RUNTIME_SOURCE_BYTES
+                or _hash(source) != pins[name]):
+            raise ValueError(failure)
+
+
 
 def _decision_runtime_sources(*, retrieval_query_reference: bool = False) -> dict[str, Path]:
     """Declared worker dependencies, argv adapter and historical input observers."""
@@ -193,7 +204,7 @@ def _require_current_decision_runtime_pins(pins, *, native_input: bool = False,
 def _require_current_timeout_runtime(
     archive: Path, manifest: dict, *, selected_sources: Mapping[str, Path] | None = None,
 ) -> dict[str, str]:
-    """Bind deadline and optional selected-route sources to archive bytes.
+    """Bind deadline, usage and optional selected-route sources to archive bytes.
 
     The decision list is a bounded capability check over declared direct
     dependencies, not a proof of the complete imported dependency closure.
@@ -206,12 +217,14 @@ def _require_current_timeout_runtime(
             or len(manifest["files"]) > MAX_RUNTIME_ARCHIVE_MEMBERS):
         raise ValueError(failure)
     expected = {}
-    for name in TIMEOUT_RUNTIME_SOURCE_NAMES:
-        source = Path(__file__).with_name(name)
+    required_sources = _timeout_runtime_sources()
+    for name, source in required_sources.items():
+        if source.is_symlink() or not source.is_file():
+            raise ValueError(failure)
         size = source.stat().st_size
         if not 0 < size <= MAX_TIMEOUT_RUNTIME_SOURCE_BYTES:
             raise ValueError(failure)
-        expected[TIMEOUT_RUNTIME_ARCHIVE_PREFIX + name] = (size, _hash(source))
+        expected[name] = (size, _hash(source))
     if selected_sources is not None:
         maximum_selected_sources = len(_decision_runtime_sources(retrieval_query_reference=True))
         if not isinstance(selected_sources, Mapping) or not 1 <= len(selected_sources) <= maximum_selected_sources:
@@ -221,7 +234,7 @@ def _require_current_timeout_runtime(
                 raise ValueError(failure)
             path = PurePosixPath(name)
             if (not name.startswith("source/") or path.is_absolute() or ".." in path.parts
-                    or path.as_posix() != name or name in expected):
+                    or path.as_posix() != name):
                 raise ValueError(failure)
             source = Path(source)
             if source.is_symlink() or not source.is_file():
@@ -229,7 +242,12 @@ def _require_current_timeout_runtime(
             size = source.stat().st_size
             if not 0 < size <= MAX_TIMEOUT_RUNTIME_SOURCE_BYTES:
                 raise ValueError(failure)
-            expected[name] = (size, _hash(source))
+            observed_source = (size, _hash(source))
+            if name in expected:
+                if source != required_sources[name] or observed_source != expected[name]:
+                    raise ValueError(failure)
+            else:
+                expected[name] = observed_source
     required_rows = {}
     for row in manifest["files"]:
         if type(row) is not dict:
@@ -283,12 +301,7 @@ def _require_current_timeout_runtime(
 
 
 _DECISION_FIELDS = ('semantic_decision_policy_artifact', 'semantic_decision_policy_sha256', 'semantic_decision_nomination_artifact', 'semantic_decision_nomination_source', 'semantic_decision_nomination_sha256', 'disable_semantic_typed_nomination', 'semantic_retrieval_query_reference', 'semantic_decision_max_calls', 'semantic_decision_max_total_input_tokens')
-_DECISION_ROUTE_DEFAULTS = {'planning_mode': 'model', 'semantic_transport_schema': 'supervisor-semantic-router-input@1', 'coding_reply_mode': 'legacy', 'tool_output_policy': 'legacy', 'source_view_advisory_policy': 'legacy', 'repository_source_policy': 'legacy', 'source_input_policy': 'legacy', 'query_reference_policy': 'legacy', 'semantic_metadata_view': 'legacy', 'semantic_working_set': 'legacy', 'source_view_profile': 'disabled', 'source_edit_mode': 'disabled', 'semantic_context_profile': 'legacy-bounded@1', 'capsule_selection': 'lexical-query-symbol-name@1', 'capsule_budget': 'legacy', 'numerical_formalization_profile': None, 'metadata_census_only': False, 'resource_profile': None, 'task_profile': None, 'intent_requirement_contract': None, 'source384_config': None, 'numerical_selection_config': None, 'source_view_policy': None, 'grok_coding_max_turns': 128,
-        'candidate_rounds': 1,
-        'doctor_coding_policy': None,
-        'working_set_census_only': False,
-        'grok_pruning_profile': 'legacy',
-    }
+_DECISION_ROUTE_DEFAULTS = {'planning_mode': 'model', 'semantic_transport_schema': 'supervisor-semantic-router-input@1', 'coding_reply_mode': 'legacy', 'tool_output_policy': 'legacy', 'source_view_advisory_policy': 'legacy', 'repository_source_policy': 'legacy', 'source_input_policy': 'legacy', 'query_reference_policy': 'legacy', 'semantic_metadata_view': 'legacy', 'semantic_working_set': 'legacy', 'source_view_profile': 'disabled', 'source_edit_mode': 'disabled', 'semantic_context_profile': 'legacy-bounded@1', 'capsule_selection': 'lexical-query-symbol-name@1', 'capsule_budget': 'legacy', 'numerical_formalization_profile': None, 'metadata_census_only': False, 'resource_profile': None, 'task_profile': None, 'intent_requirement_contract': None, 'source384_config': None, 'numerical_selection_config': None, 'source_view_policy': None, 'grok_coding_max_turns': 128}
 
 def _decision_options(options, *, arm, provider):
     """Validate one additive decision group while ordinary shapes stay intact."""
@@ -513,10 +526,6 @@ def _prompt_option_observation(prepared: dict, agent_kwargs: dict | None) -> dic
             'capsule_selection',
             'capsule_budget',
             'metadata_census_only',
-            'candidate_rounds',
-            'doctor_coding_policy',
-            'working_set_census_only',
-            'grok_pruning_profile',
         ) if key in agent_kwargs}
         renderer_options["provider"] = resolve_provider_profile(agent_kwargs.get("provider_profile"))["provider"]
         validate_legacy_semantic_route(policyoptions=configured, rendereroptions=renderer_options)
@@ -572,100 +581,6 @@ def _doctor_policy_observation(prepared: dict, agent_kwargs: dict | None) -> dic
         "doctor_dispatch_policy_valid": valid,
         "doctor_dispatch_policy_config_unchanged": matches,
     }
-def _metadata_tokenizer_configuration(value, *, arm, provider_profile, semantic_metadata_view,
-                                     semantic_transport_schema, verify=True):
-    """Check an explicit staged selection without discovering a tokenizer."""
-    if value is None:
-        return None, None
-    from .terminal_metadata_tokenizer_bundle import (
-        validate_metadata_tokenizer_selection, read_metadata_tokenizer_bundle,
-    )
-
-    provider = resolve_provider_profile(provider_profile)
-    options = dict(arm=arm, provider=provider["provider"], model=provider["model"],
-        semantic_metadata_view=semantic_metadata_view, semantic_transport_schema=semantic_transport_schema)
-    selected = validate_metadata_tokenizer_selection(value, **options)
-    snapshot = read_metadata_tokenizer_bundle(selected, **options) if verify else None
-    return selected, snapshot
-
-
-def _metadata_tokenizer_prepared_state(prepared, config, *, strict=False):
-    """Keep missing or edited selections observable; execution refuses them."""
-    kwargs = config["agents"][0].get("kwargs", {})
-    fields = {"semantic_metadata_tokenizer", "semantic_metadata_tokenizer_bundle"}
-    controls = prepared.get("comparison_controls")
-    experimental = controls.get("experimental_controls_sha256", {}) if type(controls) is dict else {}
-    present = (bool(fields & set(prepared)) or "semantic_metadata_tokenizer" in kwargs
-        or type(experimental) is dict and "semantic_metadata_tokenizer" in experimental)
-    if not present:
-        return None, None, True, False
-    try:
-        if (not fields.issubset(prepared) or "semantic_metadata_tokenizer" not in kwargs
-                or prepared["semantic_metadata_tokenizer"] is None
-                or kwargs["semantic_metadata_tokenizer"] is None):
-            raise ValueError("prepared metadata tokenizer selection missing")
-        selected, snapshot = _metadata_tokenizer_configuration(prepared["semantic_metadata_tokenizer"],
-            arm=prepared["arm"], provider_profile=prepared.get("provider_profile"),
-            semantic_metadata_view=prepared.get("semantic_metadata_view", DEFAULT_SEMANTIC_METADATA_VIEW),
-            semantic_transport_schema=prepared.get("semantic_transport_schema", DEFAULT_SEMANTIC_TRANSPORT_SCHEMA))
-        configured, _ = _metadata_tokenizer_configuration(kwargs["semantic_metadata_tokenizer"],
-            arm=prepared["arm"], provider_profile=kwargs.get("provider_profile"),
-            semantic_metadata_view=kwargs.get("semantic_metadata_view", DEFAULT_SEMANTIC_METADATA_VIEW),
-            semantic_transport_schema=kwargs.get("semantic_transport_schema", DEFAULT_SEMANTIC_TRANSPORT_SCHEMA))
-        same = (selected == configured and benchmark_controls._digest(snapshot.observation()) ==
-            benchmark_controls._digest(prepared["semantic_metadata_tokenizer_bundle"]))
-        if not same:
-            raise ValueError("prepared metadata tokenizer selection or bundle changed")
-        return selected, snapshot, True, True
-    except (KeyError, TypeError, ValueError, OSError):
-        if strict:
-            raise ValueError("prepared metadata tokenizer selection or bundle changed") from None
-        return prepared.get("semantic_metadata_tokenizer"), None, False, True
-
-
-def _metadata_tokenizer_dispatch_observation(report, snapshot):
-    """Join recorded runtime provenance to independently retained bundle pins."""
-    report = report if type(report) is dict else {}
-    population = report.get("provider_invocations")
-    bounded = type(population) is list and len(population) <= 4096
-    rows = ([row for row in population if type(row) is dict and row.get("phase") == "coding"]
-        if bounded else [])
-    valid_population = bounded and all(type(row) is dict for row in population)
-    expected = None
-    if snapshot is not None:
-        manifest = snapshot.manifest()
-        expected = dict(schema="supervisor-semantic-metadata-tokenizer-provenance@1",
-            **{key: manifest[key] for key in ("backend", "provider", "model", "tokenizer_id",
-                "tokenizer_revision", "special_token_policy", "descriptor_sha256", "asset_sha256",
-                "tokenizers_version", "qualification", "compatibility_basis")},
-            counter_tokenizer_revision=manifest["tokenizer_revision"] + "/special-policy-sha256:" +
-                hashlib.sha256(manifest["special_token_policy"].encode()).hexdigest(),
-            measurement_scope="complete-rendered-prompt-text@1", provider_tokenizer_equivalence_verified=False,
-            provider_usage_verified=False, provider_ingestion_verified=False,
-            complete_run_token_savings_claimed=False, completion_authority=False)
-    observations = []
-    identities = []
-    for row in rows:
-        identity = row.get("invocation_id")
-        valid_id = type(identity) is str and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.:/@+\-]{0,255}", identity)
-        identities.append(identity if valid_id else None)
-        source = row.get("semantic_metadata_tokenizer_source")
-        matched = (expected is not None and type(source) is dict and set(source) == set(expected)
-            and all(type(source[key]) is type(value) and source[key] == value for key, value in expected.items())
-            and row.get("provider") == expected["provider"] and row.get("model") == expected["model"]
-            and row.get("semantic_metadata_tokenizer_dispatch_rechecked") is True)
-        observations.append(dict(invocation_id=identity if valid_id else None,
-            retained_bundle_provenance_matches=bool(valid_id and matched)))
-    matched = (valid_population and bool(rows) and None not in identities
-        and len(identities) == len(set(identities))
-        and report.get("unreceipted_provider_attempt", False) is False
-        and all(row["retained_bundle_provenance_matches"] for row in observations))
-    return dict(schema="terminal-metadata-tokenizer-dispatch-observation@1",
-        coding_receipts_seen=len(rows), invocations=observations,
-        all_recorded_provenance_matches_retained_bundle=matched,
-        tokenizer_runtime_replayed=False, provider_execution_authenticated=False,
-        provider_ingestion_verified=False, billing_total_verified=False,
-        token_savings_established=False, completion_authority=False)
 
 
 def _load_source_view_policy(path: Path | None) -> dict | None:
@@ -851,11 +766,6 @@ def config_for(dataset: Path, output: Path, archive: Path, arm: str,
                semantic_metadata_view: str = DEFAULT_SEMANTIC_METADATA_VIEW,
                semantic_working_set: str = DEFAULT_SEMANTIC_WORKING_SET,
                grok_coding_max_turns: int = DEFAULT_GROK_CODING_MAX_TURNS,
-               semantic_metadata_tokenizer: dict | None = None,
-               working_set_census_only: bool = False,
-            grok_pruning_profile: str = DEFAULT_GROK_PRUNING_PROFILE,
-               candidate_rounds: int = 1,
-               doctor_coding_policy: str | None = None,
                capsule_selection: str = DEFAULT_CAPSULE_SELECTION,
                capsule_budget: str = DEFAULT_CAPSULE_BUDGET,
                source_view_profile: str = DEFAULT_SOURCE_VIEW_PROFILE,
@@ -881,10 +791,6 @@ def config_for(dataset: Path, output: Path, archive: Path, arm: str,
                semantic_decision_max_total_input_tokens: int | None = None,
                doctor_dispatch_policy: str = "auto",
                model_revision: str = "") -> dict:
-    benchmark_controls.validate_full_supervisor_candidate_rounds(candidate_rounds, arm=arm,
-        doctor_coding_policy=doctor_coding_policy, source_view_profile=source_view_profile,
-        source_edit_mode=source_edit_mode, numerical_formalization_profile=numerical_formalization_profile,
-        task_profile=task_profile)
     _decision_options(locals(), arm=arm,
         provider=resolve_provider_profile(provider_profile)["provider"])
     doctor_arguments = doctor_dispatch_arguments(arm=arm, doctor_dispatch_policy=doctor_dispatch_policy)
@@ -920,15 +826,7 @@ def config_for(dataset: Path, output: Path, archive: Path, arm: str,
         "capsule_selection": capsule_selection,
         "capsule_budget": capsule_budget,
         "provider": resolve_provider_profile(provider_profile)["provider"],
-
-        'candidate_rounds': candidate_rounds,
-        'doctor_coding_policy': doctor_coding_policy,
-        'working_set_census_only': working_set_census_only,
-        'grok_pruning_profile': grok_pruning_profile,
     })
-    tokenizer_selection, _ = _metadata_tokenizer_configuration(semantic_metadata_tokenizer,
-        arm=arm, provider_profile=provider_profile, semantic_metadata_view=semantic_metadata_view,
-        semantic_transport_schema=semantic_transport_schema)
     validate_planning_mode(planning_mode, intent_requirement_contract=intent_requirement_contract,
         task_profile=task_profile)
     validate_semantic_context_profile(semantic_context_profile, arm=arm)
@@ -943,10 +841,6 @@ def config_for(dataset: Path, output: Path, archive: Path, arm: str,
     validate_source_edit_mode(source_edit_mode, arm=arm, source_view_profile=source_view_profile)
     validate_semantic_working_set(semantic_working_set, arm=arm, source_view_profile=source_view_profile,
         transport_schema=semantic_transport_schema, metadata_view=semantic_metadata_view)
-    validate_working_set_census(working_set_census_only, arm=arm, planning_mode=planning_mode,
-        semantic_working_set=semantic_working_set, source_view_profile=source_view_profile,
-        transport_schema=semantic_transport_schema, metadata_view=semantic_metadata_view,
-        source_edit_mode=source_edit_mode, candidate_rounds=candidate_rounds)
     source_view_policy = validate_source_view_policy(source_view_policy, profile=source_view_profile, arm=arm)
     from .terminal_source_view_policy import validate_source_context_combination
     validate_source_context_combination(source_view_profile=source_view_profile,
@@ -956,10 +850,6 @@ def config_for(dataset: Path, output: Path, archive: Path, arm: str,
     model_revision = validate_model_revision(model_revision)
     selected_provider = resolve_provider_profile(provider_profile)
     validate_grok_coding_max_turns(grok_coding_max_turns, provider=selected_provider["provider"])
-    benchmark_controls.validate_full_supervisor_grok_pruning(grok_pruning_profile,
-        provider=selected_provider["provider"], working_set_census_only=working_set_census_only,
-        candidate_rounds=candidate_rounds, doctor_coding_policy=doctor_coding_policy,
-        source_edit_mode=source_edit_mode, planning_mode=planning_mode)
     validate_coding_reply_mode(coding_reply_mode, arm=arm, provider=selected_provider["provider"])
     validate_tool_output_policy(tool_output_policy, arm=arm, provider=selected_provider["provider"])
     validate_source_view_advisory_policy(source_view_advisory_policy, arm=arm, provider=selected_provider["provider"])
@@ -995,26 +885,19 @@ def config_for(dataset: Path, output: Path, archive: Path, arm: str,
                    **planning_selection(planning_mode),
                    **semantic_metadata_selection(semantic_metadata_view),
                    **semantic_working_set_selection(semantic_working_set),
-                   **working_set_census_selection(working_set_census_only),
                    **grok_coding_selection(grok_coding_max_turns),
-                   **grok_pruning_selection(grok_pruning_profile),
-                   **doctor_coding_selection(candidate_rounds, doctor_coding_policy),
                    **capsule_selection_options(capsule_selection),
                    **capsule_budget_options(capsule_budget),
                    **source_view_selection(source_view_profile, source_view_policy),
                    **source_edit_selection(source_edit_mode),
                    **semantic_context_selection(semantic_context_profile)},
     }]
-    if working_set_census_only:
-        config["verifier"] = {**config["verifier"], "disable": True}
     if provider_profile is not None:
         config["agents"][0]["kwargs"]["provider_profile"] = selected_provider["id"]
     if intent_requirement_contract is not None:
         config["agents"][0]["kwargs"]["intent_requirement_contract"] = _transport_intent_contract(intent_requirement_contract)
     if task_profile is not None:
         config["agents"][0]["kwargs"]["task_profile"] = _transport_task_profile(task_profile)
-    if tokenizer_selection is not None:
-        config["agents"][0]["kwargs"]["semantic_metadata_tokenizer"] = tokenizer_selection
     if resource_profile is not None:
         config["agents"][0]["kwargs"]["resource_profile"] = resource_profile
     if setup_cache_selection is not None:
@@ -1067,12 +950,6 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
             semantic_metadata_view: str = DEFAULT_SEMANTIC_METADATA_VIEW,
             semantic_working_set: str = DEFAULT_SEMANTIC_WORKING_SET,
             grok_coding_max_turns: int = DEFAULT_GROK_CODING_MAX_TURNS,
-            semantic_metadata_tokenizer_artifact: Path | None = None,
-            semantic_metadata_tokenizer_sha256: str | None = None,
-            working_set_census_only: bool = False,
-            grok_pruning_profile: str = DEFAULT_GROK_PRUNING_PROFILE,
-            candidate_rounds: int = 1,
-            doctor_coding_policy: str | None = None,
             capsule_selection: str = DEFAULT_CAPSULE_SELECTION,
             capsule_budget: str = DEFAULT_CAPSULE_BUDGET,
             source_view_profile: str = DEFAULT_SOURCE_VIEW_PROFILE,
@@ -1097,10 +974,6 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
             semantic_decision_max_total_input_tokens: int | None = None,
             doctor_dispatch_policy: str = "auto",
             planning_mode: str = DEFAULT_PLANNING_MODE) -> dict:
-    benchmark_controls.validate_full_supervisor_candidate_rounds(candidate_rounds, arm=arm,
-        doctor_coding_policy=doctor_coding_policy, source_view_profile=source_view_profile,
-        source_edit_mode=source_edit_mode, numerical_formalization_profile=numerical_formalization_profile,
-        task_profile=task_profile)
     _decision_options(locals(), arm=arm,
         provider=resolve_provider_profile(provider_profile)["provider"])
     doctor_arguments = doctor_dispatch_arguments(arm=arm, doctor_dispatch_policy=doctor_dispatch_policy)
@@ -1136,11 +1009,6 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
         "capsule_selection": capsule_selection,
         "capsule_budget": capsule_budget,
         "provider": resolve_provider_profile(provider_profile)["provider"],
-
-        'candidate_rounds': candidate_rounds,
-        'doctor_coding_policy': doctor_coding_policy,
-        'working_set_census_only': working_set_census_only,
-        'grok_pruning_profile': grok_pruning_profile,
     })
     if semantic_decision_nomination_source is not None:
         read_nomination_source(source=semantic_decision_nomination_source,
@@ -1154,10 +1022,6 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
     validate_source_edit_mode(source_edit_mode, arm=arm, source_view_profile=source_view_profile)
     validate_semantic_working_set(semantic_working_set, arm=arm, source_view_profile=source_view_profile,
         transport_schema=semantic_transport_schema, metadata_view=semantic_metadata_view)
-    validate_working_set_census(working_set_census_only, arm=arm, planning_mode=planning_mode,
-        semantic_working_set=semantic_working_set, source_view_profile=source_view_profile,
-        transport_schema=semantic_transport_schema, metadata_view=semantic_metadata_view,
-        source_edit_mode=source_edit_mode, candidate_rounds=candidate_rounds)
     source_view_policy = validate_source_view_policy(source_view_policy, profile=source_view_profile, arm=arm)
     from .terminal_source_view_policy import validate_source_context_combination
     validate_source_context_combination(source_view_profile=source_view_profile,
@@ -1167,10 +1031,6 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
     validate_semantic_transport_schema(semantic_transport_schema, arm=arm)
     selected_provider = resolve_provider_profile(provider_profile)
     validate_grok_coding_max_turns(grok_coding_max_turns, provider=selected_provider["provider"])
-    benchmark_controls.validate_full_supervisor_grok_pruning(grok_pruning_profile,
-        provider=selected_provider["provider"], working_set_census_only=working_set_census_only,
-        candidate_rounds=candidate_rounds, doctor_coding_policy=doctor_coding_policy,
-        source_edit_mode=source_edit_mode, planning_mode=planning_mode)
     validate_coding_reply_mode(coding_reply_mode, arm=arm, provider=selected_provider["provider"])
     validate_tool_output_policy(tool_output_policy, arm=arm, provider=selected_provider["provider"])
     validate_source_view_advisory_policy(source_view_advisory_policy, arm=arm, provider=selected_provider["provider"])
@@ -1182,30 +1042,6 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
         semantic_metadata_view=semantic_metadata_view, source_input_policy=source_input_policy)
     validate_semantic_metadata_view(semantic_metadata_view, arm=arm,
         transport_schema=semantic_transport_schema, provider=selected_provider["provider"])
-    tokenizer_selection = None
-    tokenizer_snapshot = None
-    tokenizer_requested = (semantic_metadata_tokenizer_artifact is not None
-        or semantic_metadata_tokenizer_sha256 is not None)
-    if tokenizer_requested:
-        if (semantic_metadata_tokenizer_artifact is None
-                or type(semantic_metadata_tokenizer_sha256) is not str
-                or re.fullmatch(r"[0-9a-f]{64}", semantic_metadata_tokenizer_sha256) is None):
-            raise ValueError("explicit metadata tokenizer artifact and SHA-256 required")
-        if (arm != "full" or semantic_metadata_view == DEFAULT_SEMANTIC_METADATA_VIEW
-                or semantic_transport_schema != DEFAULT_SEMANTIC_TRANSPORT_SCHEMA):
-            raise ValueError("metadata tokenizer requires the original full semantic coding route")
-        output = output.absolute()
-        if output.exists() or output.resolve() != output:
-            raise ValueError("fresh trial output required")
-        output.mkdir(parents=True)
-        from .terminal_metadata_tokenizer_bundle import stage_metadata_tokenizer_bundle
-
-        tokenizer_selection = stage_metadata_tokenizer_bundle(artifact=semantic_metadata_tokenizer_artifact,
-            expected_sha256=semantic_metadata_tokenizer_sha256, output=output / "metadata-tokenizer-bundle",
-            provider=selected_provider["provider"], model=selected_provider["model"])
-        tokenizer_selection, tokenizer_snapshot = _metadata_tokenizer_configuration(tokenizer_selection,
-            arm=arm, provider_profile=provider_profile, semantic_metadata_view=semantic_metadata_view,
-            semantic_transport_schema=semantic_transport_schema)
     from harbor.models.job.config import JobConfig
     dataset = dataset.resolve(strict=True)
     task = _task_path(dataset, task_name)
@@ -1217,7 +1053,7 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
     validate_planning_mode(planning_mode, task_profile=selected_task_profile)
     archive = archive.resolve(strict=True)
     output = output.absolute()
-    if (not tokenizer_requested and output.exists()) or output.resolve() != output:
+    if output.exists() or output.resolve() != output:
         raise ValueError("fresh trial output required")
     with (archive / "manifest.json").open("rb") as stream:
         manifest_bytes = stream.read(MAX_RUNTIME_MANIFEST_BYTES + 1)
@@ -1230,14 +1066,10 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
                          if semantic_retrieval_query_reference else {}))
                         if semantic_native_input or any(key in options for key in ("semantic_decision_policy_artifact", "semantic_decision_nomination_artifact", "semantic_decision_nomination_source"))
                         else None)
-    if selected_sources is None:
-        runtime_timeout_sources = _require_current_timeout_runtime(archive, manifest)
-        runtime_decision_sources = None
-    else:
-        verified_sources = _require_current_timeout_runtime(archive, manifest, selected_sources=selected_sources)
-        runtime_timeout_sources = {name: digest for name, digest in verified_sources.items()
-                                   if name not in selected_sources}
-        runtime_decision_sources = {name: verified_sources[name] for name in selected_sources}
+    verified_sources = _require_current_timeout_runtime(archive, manifest, selected_sources=selected_sources)
+    runtime_timeout_sources = {name: verified_sources[name] for name in _timeout_runtime_sources()}
+    runtime_decision_sources = ({name: verified_sources[name] for name in selected_sources}
+                                if selected_sources is not None else None)
     model_revision = selected_retrieval_revision(manifest, arm)
     from .terminal_worker_capability import require_worker_capability
     require_worker_capability(manifest, resource_profile)
@@ -1252,11 +1084,6 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
     require_semantic_metadata_archive(manifest, semantic_metadata_view)
     require_semantic_working_set_archive(manifest, semantic_working_set)
     require_grok_coding_archive(manifest, grok_coding_max_turns)
-    if tokenizer_selection is not None:
-        from .terminal_metadata_tokenizer_bundle import require_metadata_tokenizer_archive
-        require_metadata_tokenizer_archive(manifest, tokenizer_selection)
-    require_grok_pruning_archive(manifest, grok_pruning_profile)
-    require_doctor_coding_archive(manifest, candidate_rounds, doctor_coding_policy)
     require_capsule_selection_archive(manifest, capsule_selection)
     require_capsule_budget_archive(manifest, capsule_budget)
     require_source_view_archive(manifest, source_view_profile, resource_profile)
@@ -1324,10 +1151,6 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
         semantic_metadata_view=semantic_metadata_view,
         **semantic_working_set_selection(semantic_working_set),
         **grok_coding_selection(grok_coding_max_turns),
-        **({"semantic_metadata_tokenizer": tokenizer_selection} if tokenizer_selection is not None else {}),
-        **working_set_census_selection(working_set_census_only),
-        **grok_pruning_selection(grok_pruning_profile),
-        **doctor_coding_selection(candidate_rounds, doctor_coding_policy),
         capsule_selection=capsule_selection,
         capsule_budget=capsule_budget,
         source_view_profile=source_view_profile,
@@ -1340,8 +1163,7 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
     if (selected_source384 is not None or selected_numerical is not None) and arm == "full":
         validate_resource_profile(declared_config, resource_profile)
     config = JobConfig.model_validate(declared_config, extra="forbid")
-    if not tokenizer_requested:
-        output.mkdir(parents=True)
+    output.mkdir(parents=True)
     nomination_snapshot = None
     if semantic_decision_nomination_source is not None:
         nomination_snapshot = capture_nomination_snapshot(
@@ -1362,14 +1184,8 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
     (output / "dry-run.stderr").write_text(dry.stderr)
     if _task_hashes(task) != task_hashes:
         raise ValueError("original task changed during supervisor preflight")
-    if tokenizer_selection is not None:
-        _, tokenizer_snapshot = _metadata_tokenizer_configuration(tokenizer_selection,
-            arm=arm, provider_profile=provider_profile, semantic_metadata_view=semantic_metadata_view,
-            semantic_transport_schema=semantic_transport_schema)
     sources = {str(path): _hash(path) for path in Path(__file__).parent.glob("*.py")}
-    if any(sources.get(str(Path(__file__).with_name(name))) != runtime_timeout_sources[
-            TIMEOUT_RUNTIME_ARCHIVE_PREFIX + name] for name in TIMEOUT_RUNTIME_SOURCE_NAMES):
-        raise ValueError("runtime deadline sources changed during preflight; rebuild the runtime archive")
+    _require_current_timeout_runtime_pins(runtime_timeout_sources)
     if runtime_decision_sources is not None:
         _require_current_decision_runtime_pins(runtime_decision_sources, native_input=semantic_native_input,
             **({"retrieval_query_reference": True} if semantic_retrieval_query_reference else {}))
@@ -1397,12 +1213,6 @@ def prepare(*, dataset: Path, output: Path, archive: Path, arm: str,
               **semantic_metadata_observation(semantic_metadata_view),
               **semantic_working_set_observation(semantic_working_set),
               **grok_coding_selection(grok_coding_max_turns),
-              **({"semantic_metadata_tokenizer": tokenizer_selection,
-                  "semantic_metadata_tokenizer_bundle": tokenizer_snapshot.observation()}
-                 if tokenizer_selection is not None else {}),
-              **working_set_census_observation(working_set_census_only),
-              **grok_pruning_selection(grok_pruning_profile),
-              **doctor_coding_observation(candidate_rounds, doctor_coding_policy),
               **capsule_selection_observation(capsule_selection),
               **capsule_budget_observation(capsule_budget),
               **source_view_observation(source_view_profile, source_view_policy),
@@ -1439,9 +1249,8 @@ def _metadata_dispatch_observation(report, requested_mode: str) -> dict:
     """Join retained selection receipts to the separate exact-input audit.
 
     This read-only observation does not rerun the source audit or measure usage.
-    A valid legacy fallback remains a completed requested-arm attempt.
-    Exactly reconstructed inputs in the declared representation count as an
-    observed metadata treatment; this does not establish token savings.
+    A valid legacy fallback remains a completed requested-arm attempt; only
+    verified common-bindings inputs count as an effective metadata treatment.
     """
     validate_semantic_metadata_view(requested_mode)
     report = report if type(report) is dict else {}
@@ -1488,14 +1297,8 @@ def _metadata_dispatch_observation(report, requested_mode: str) -> dict:
         selection = row.get("semantic_metadata_view")
         selection = selection if type(selection) is dict else {}
         mode, fallback = selection.get("selected_mode"), selection.get("fallback_reason")
-        selection_schema = selection.get("schema")
-        selected_modes = {"legacy", requested_mode}
-        selection_requested = selection.get("requested_mode", "common-bindings@1")
-        valid_selection = (type(selection_schema) is str
-            and selection_schema in {"supervisor-semantic-metadata-selection@1",
-                                               "supervisor-semantic-metadata-selection@2"}
-            and selection_requested == requested_mode
-            and type(mode) is str and mode in selected_modes
+        valid_selection = (selection.get("schema") == "supervisor-semantic-metadata-selection@1"
+            and type(mode) is str and mode in {"legacy", "common-bindings@1"}
             and selection.get("candidate_only") is True
             and selection.get("token_proxy") == "utf8-bytes-ceil-div4@1"
             and all(selection.get(key) is False for key in (
@@ -1509,23 +1312,11 @@ def _metadata_dispatch_observation(report, requested_mode: str) -> dict:
                 and selection[prefix + "_complete_proxy_tokens"] == (selection[prefix + "_complete_bytes"] + 3) // 4
                 for prefix in ("native", "candidate", "selected")))
         if valid_selection:
-            prefix = "candidate" if mode != "legacy" else "native"
-            byte_smaller = selection["candidate_complete_bytes"] < selection["native_complete_bytes"]
-            if selection_schema == "supervisor-semantic-metadata-selection@1":
-                smaller = byte_smaller and (
-                    selection["candidate_complete_proxy_tokens"] < selection["native_complete_proxy_tokens"])
-                expected_fallback = None if smaller else "complete_input_not_smaller_under_bytes_and_proxy"
-            else:
-                from .benchmark_comparison import _semantic_metadata_observation
-                projected = _semantic_metadata_observation(selection)
-                valid_selection = projected.get("status") == "reported"
-                status = selection.get("token_counter_status")
-                smaller = (valid_selection and status == "counted" and byte_smaller
-                    and selection["candidate_complete_tokens"] < selection["native_complete_tokens"])
-                expected_fallback = (None if smaller else "complete_input_not_smaller_under_bytes_and_token_counter"
-                    if status == "counted" else "complete_input_token_counter_" + str(status))
-            valid_selection = (valid_selection and smaller == (mode != "legacy")
-                and fallback == expected_fallback
+            smaller = selection["candidate_complete_bytes"] < selection["native_complete_bytes"] and (
+                (selection["candidate_complete_bytes"] + 3) // 4 < (selection["native_complete_bytes"] + 3) // 4)
+            prefix = "candidate" if mode == "common-bindings@1" else "native"
+            valid_selection = (smaller == (mode == "common-bindings@1")
+                and fallback == (None if smaller else "complete_input_not_smaller_under_bytes_and_proxy")
                 and selection["selected_complete_sha256"] == selection[prefix + "_complete_sha256"]
                 and selection["selected_complete_bytes"] == selection[prefix + "_complete_bytes"])
         bound = (valid_selection and valid_hash(row.get("model_prompt_sha256"))
@@ -1551,17 +1342,15 @@ def _metadata_dispatch_observation(report, requested_mode: str) -> dict:
         elif not bound: row_problems.append("selected_input_binding_mismatch")
         if not verified: row_problems.append("retained_exact_input_audit_not_correlated")
         observations.append({"invocation_id": identity if valid_id(identity) else None,
-            "selected_mode": mode if type(mode) is str and mode in selected_modes else None,
-            "fallback_reason": fallback if fallback in (None, "complete_input_not_smaller_under_bytes_and_proxy",
-                "complete_input_not_smaller_under_bytes_and_token_counter", "complete_input_token_counter_failed",
-                "complete_input_token_counter_invalid") else "unrecognized",
+            "selected_mode": mode if type(mode) is str and mode in {"legacy", "common-bindings@1"} else None,
+            "fallback_reason": fallback if fallback in (None, "complete_input_not_smaller_under_bytes_and_proxy") else "unrecognized",
             "selection_receipt_matches_model_input": bool(bound),
             "retained_exact_input_audit_verified": bool(verified), "problems": row_problems})
     modes = sorted({row["selected_mode"] for row in observations if row["selected_mode"] is not None})
     bound = bool(observations) and all(row["selection_receipt_matches_model_input"] for row in observations)
     verified = (not problems and bound
         and all(row["retained_exact_input_audit_verified"] for row in observations))
-    status = ("verified_treatment" if requested_mode != "legacy" and modes == [requested_mode] else
+    status = ("verified_treatment" if modes == ["common-bindings@1"] else
               "verified_fallback" if modes == ["legacy"] else "verified_mixed_selection") if verified else "unverified"
     return {"schema": "terminal-semantic-metadata-dispatch-observation@1", "requested_mode": requested_mode,
         "requested_mode_matches_report": declared_matches, "coding_receipts_seen": len(coding),
@@ -1569,7 +1358,7 @@ def _metadata_dispatch_observation(report, requested_mode: str) -> dict:
         "fallback_reasons": sorted({row["fallback_reason"] for row in observations if row["fallback_reason"] is not None}),
         "all_selection_receipts_bound_to_model_inputs": bound,
         "all_coding_inputs_verified_by_retained_audit": verified,
-        "effective_treatment_observed": verified and requested_mode != "legacy" and modes == [requested_mode],
+        "effective_treatment_observed": verified and modes == ["common-bindings@1"],
         "status": status, "problems": problems, "source_audit_rerun": False,
         "provider_usage_modified": False, "token_savings_established": False}
 
@@ -1579,11 +1368,6 @@ def collect(output: Path, *, task_name: str | None = None) -> dict:
     output = Path(output).absolute()
     prepared = json.loads((output / "preparation.json").read_text())
     config = json.loads((output / "config.json").read_text())
-    tokenizer_selection, tokenizer_snapshot, tokenizer_unchanged, tokenizer_present = (
-        _metadata_tokenizer_prepared_state(prepared, config))
-    candidate_rounds = benchmark_controls.validate_frozen_candidate_rounds(prepared, config)
-    working_set_census = frozen_working_set_census(prepared, config)
-    doctor_coding_policy = prepared.get("doctor_coding_policy")
     task = _prepared_task(output, prepared, config, job_prefix="supervisor-" + prepared["arm"] + "-",
                           task_name=task_name)
     profile = prepared_provider_identity(prepared, config)
@@ -1689,8 +1473,6 @@ def collect(output: Path, *, task_name: str | None = None) -> dict:
     configured_grok_turns = validate_grok_coding_max_turns(
         config["agents"][0].get("kwargs", {}).get("grok_coding_max_turns", DEFAULT_GROK_CODING_MAX_TURNS),
         provider=resolve_provider_profile(config["agents"][0].get("kwargs", {}).get("provider_profile"))["provider"])
-    grok_pruning = benchmark_controls.grok_pruning_from_controls(prepared)
-    configured_grok_pruning = benchmark_controls.grok_pruning_from_controls(config["agents"][0].get("kwargs", {}))
     working_set = validate_semantic_working_set(
         prepared.get("semantic_working_set", DEFAULT_SEMANTIC_WORKING_SET), arm=prepared["arm"],
         source_view_profile=source_view, transport_schema=transport, metadata_view=metadata_view)
@@ -1751,9 +1533,6 @@ def collect(output: Path, *, task_name: str | None = None) -> dict:
                           if tool_output != DEFAULT_TOOL_OUTPUT_POLICY else {}),
                        **({"semantic_metadata_dispatch": _metadata_dispatch_observation(report, metadata_view)}
                           if metadata_view != DEFAULT_SEMANTIC_METADATA_VIEW else {}),
-                       **({"semantic_metadata_tokenizer_dispatch":
-                            _metadata_tokenizer_dispatch_observation(report, tokenizer_snapshot)}
-                          if tokenizer_present else {}),
                        **({"semantic_context_profile_matches": isinstance(report, dict)
                            and report.get("semantic_context_profile") == semantic_profile}
                           if semantic_profile != DEFAULT_SEMANTIC_CONTEXT_PROFILE else {})})
@@ -1779,15 +1558,6 @@ def collect(output: Path, *, task_name: str | None = None) -> dict:
             grok_turns_policy_matches = False if False in policies else True if all(value is True for value in policies) else None
             grok_turns_not_applicable = all(grok_coding_not_applicable_provider_free(
                 trial["supervisor"], grok_turns) for trial in trials)
-    pruning_declared_matches = None
-    pruning_policy_matches = None
-    if grok_pruning != DEFAULT_GROK_PRUNING_PROFILE and trials:
-        if all(type(trial["supervisor"]) is dict for trial in trials):
-            pruning_declared_matches = all(
-                type(trial["supervisor"].get("grok_pruning_profile")) is str
-                and trial["supervisor"]["grok_pruning_profile"] == grok_pruning for trial in trials)
-            policies = [grok_pruning_runtime_matches(trial["supervisor"], grok_pruning) for trial in trials]
-            pruning_policy_matches = False if False in policies else True if all(value is True for value in policies) else None
     working_set_runtime_matches = None
     if working_set != DEFAULT_SEMANTIC_WORKING_SET and trials:
         expected_working_set = semantic_working_set_observation(working_set)
@@ -1797,9 +1567,6 @@ def collect(output: Path, *, task_name: str | None = None) -> dict:
                 all(type(report.get(key)) is type(value) and report.get(key) == value
                     for key, value in expected_working_set.items())
                 for report in reported_working_sets)
-    doctor_runtime_matches = (None if candidate_rounds == 1 else bool(trials) and all(
-        doctor_coding_runtime_declared_matches(trial.get("supervisor"), candidate_rounds,
-            doctor_coding_policy) for trial in trials))
     result = {"schema": "terminal-full-supervisor-receipt@1", "arm": prepared["arm"],
               "task": task.name, **profile,
               **prompt_observation, **doctor_observation,
@@ -1823,19 +1590,7 @@ def collect(output: Path, *, task_name: str | None = None) -> dict:
                  if "tool_output_policy" in prepared or "tool_output_policy" in config["agents"][0].get("kwargs", {}) else {}),
               **semantic_metadata_observation(metadata_view),
               **semantic_working_set_observation(working_set),
-              **working_set_census_observation(working_set_census),
-              **({"working_set_census_runtime_matches": bool(trials) and all(
-                    working_set_census_runtime_matches(trial.get("supervisor")) for trial in trials)}
-                 if working_set_census else {}),
               **grok_coding_selection(grok_turns),
-              **grok_pruning_selection(grok_pruning),
-              **({"grok_pruning_config_unchanged": configured_grok_pruning == grok_pruning}
-                 if "grok_pruning_profile" in prepared or "grok_pruning_profile" in config["agents"][0].get("kwargs", {}) else {}),
-              **({"grok_pruning_runtime_declared_matches": pruning_declared_matches,
-                  "grok_pruning_runtime_policy_matches": pruning_policy_matches}
-                 if grok_pruning != DEFAULT_GROK_PRUNING_PROFILE else {}),
-              **doctor_coding_observation(candidate_rounds, doctor_coding_policy),
-              **({"doctor_coding_runtime_declared_matches": doctor_runtime_matches} if candidate_rounds == 2 else {}),
               **({"grok_coding_config_unchanged": configured_grok_turns == grok_turns}
                  if "grok_coding_max_turns" in prepared or "grok_coding_max_turns" in config["agents"][0].get("kwargs", {}) else {}),
               **({"grok_coding_runtime_declared_matches": grok_turns_runtime_matches,
@@ -1846,10 +1601,6 @@ def collect(output: Path, *, task_name: str | None = None) -> dict:
                  if "semantic_working_set" in prepared or "semantic_working_set" in config["agents"][0].get("kwargs", {}) else {}),
               **({"semantic_working_set_runtime_declared_matches": working_set_runtime_matches}
                  if working_set != DEFAULT_SEMANTIC_WORKING_SET else {}),
-              **({"semantic_metadata_tokenizer": tokenizer_selection,
-                  "semantic_metadata_tokenizer_bundle": prepared.get("semantic_metadata_tokenizer_bundle"),
-                  "semantic_metadata_tokenizer_config_unchanged": tokenizer_unchanged}
-                 if tokenizer_present else {}),
               **capsule_selection_observation(capsule_selection),
               **capsule_budget_observation(capsule_budget),
               **source_view_observation(source_view, source_policy),
@@ -1885,7 +1636,7 @@ def collect(output: Path, *, task_name: str | None = None) -> dict:
               "comparison_controls": benchmark_controls.observe_controls(
                   prepared, config, current_task_hashes=_task_hashes(task)),
               "trials": trials, "trial_count": len(trials), "native_job_result_present": (job / "result.json").is_file(),
-              "complete_single_trial_receipt": not working_set_census and unchanged and len(trials) == 1
+              "complete_single_trial_receipt": unchanged and len(trials) == 1
                   and (not decision or trials[0]["semantic_decision_dispatch"]["verified"] is True)
                   and prompt_observation["prompt_comparison_options_valid"] is True
                   and prompt_observation["prompt_comparison_config_unchanged"] is not False
@@ -1896,18 +1647,11 @@ def collect(output: Path, *, task_name: str | None = None) -> dict:
                   and configured_numerical == numerical_profile and configured_planning == planning_mode
                   and configured_metadata_view == metadata_view
                   and configured_grok_turns == grok_turns
-                  and configured_grok_pruning == grok_pruning
-                  and (grok_pruning == DEFAULT_GROK_PRUNING_PROFILE or
-                       pruning_declared_matches is True and pruning_policy_matches is True)
-                  and (candidate_rounds == 1 or doctor_runtime_matches is True)
                   and (grok_turns == DEFAULT_GROK_CODING_MAX_TURNS or
                        grok_turns_runtime_matches is True and
                        (grok_turns_policy_matches is True or grok_turns_not_applicable is True))
                   and configured_working_set == working_set
                   and (working_set == DEFAULT_SEMANTIC_WORKING_SET or working_set_runtime_matches is True)
-                  and tokenizer_unchanged
-                  and (not tokenizer_present or trials[0]["semantic_metadata_tokenizer_dispatch"][
-                      "all_recorded_provenance_matches_retained_bundle"] is True)
                   and configured_capsules == capsule_selection
                   and configured_capsule_budget == capsule_budget
                   and (capsule_budget == DEFAULT_CAPSULE_BUDGET or budget_runtime_matches is True)
@@ -1946,15 +1690,6 @@ def collect(output: Path, *, task_name: str | None = None) -> dict:
             semantic_decision_verification_scope="frozen_requested_bindings_and_retained_native_usage_only",
             semantic_decision_runtime_verified=bool(trials) and all(
                 trial["semantic_decision_dispatch"]["verified"] is True for trial in trials))
-    if working_set_census:
-        result["working_set_census_receipt_complete"] = (
-            unchanged and len(trials) == 1 and trials[0]["exact_trial_task_matches"] is True
-            and (job / "result.json").is_file() and trials[0]["reward"] is None
-            and trials[0]["exception_type"] is None
-            and trials[0]["durations_seconds"].get("verifier") is None
-            and result["working_set_census_runtime_matches"] is True
-            and result["comparison_controls"].get("configuration_unchanged") is True
-            and all(value is True for key, value in result.items() if key.endswith("config_unchanged")))
     _json(output / "receipt.json", result)
     return result
 
@@ -1963,10 +1698,6 @@ def _execute_once(output: Path, *, task_name: str | None = None) -> dict:
     output = Path(output).absolute()
     prepared = json.loads((output / "preparation.json").read_text())
     config = json.loads((output / "config.json").read_text())
-    _metadata_tokenizer_prepared_state(prepared, config, strict=True)
-    candidate_rounds = benchmark_controls.validate_frozen_candidate_rounds(prepared, config)
-    working_set_census = frozen_working_set_census(prepared, config)
-    doctor_coding_policy = prepared.get("doctor_coding_policy")
     task = _prepared_task(output, prepared, config, job_prefix="supervisor-" + prepared["arm"] + "-",
                           task_name=task_name)
     if not prepared["prepared"] or _hash(output / "config.json") != prepared["config_sha256"]:
@@ -2112,8 +1843,6 @@ def _execute_once(output: Path, *, task_name: str | None = None) -> dict:
     configured_grok_turns = validate_grok_coding_max_turns(
         config["agents"][0].get("kwargs", {}).get("grok_coding_max_turns", DEFAULT_GROK_CODING_MAX_TURNS),
         provider=resolve_provider_profile(config["agents"][0].get("kwargs", {}).get("provider_profile"))["provider"])
-    grok_pruning = benchmark_controls.grok_pruning_from_controls(prepared)
-    configured_grok_pruning = benchmark_controls.grok_pruning_from_controls(config["agents"][0].get("kwargs", {}))
     working_set = validate_semantic_working_set(
         prepared.get("semantic_working_set", DEFAULT_SEMANTIC_WORKING_SET), arm=prepared["arm"],
         source_view_profile=source_view, transport_schema=transport, metadata_view=metadata_view)
@@ -2129,8 +1858,6 @@ def _execute_once(output: Path, *, task_name: str | None = None) -> dict:
         arm=prepared["arm"], source_view_profile=configured_source_view)
     if grok_turns != configured_grok_turns:
         raise ValueError("prepared Grok coding turn bound changed")
-    if grok_pruning != configured_grok_pruning:
-        raise ValueError("prepared Grok pruning profile changed")
     if working_set != configured_working_set:
         raise ValueError("prepared semantic working set changed")
     if source_edit != configured_source_edit:
@@ -2162,13 +1889,18 @@ def _execute_once(output: Path, *, task_name: str | None = None) -> dict:
             "source384_config": validate_source384_binding(current_manifest),
             "numerical_selection_config": current_manifest.get("numerical_selection_384")},
             arm=prepared["arm"], provider=resolve_provider_profile(prepared.get("provider_profile"))["provider"])
+    # Replay actual source bytes for every route, including ordinary model
+    # planning. Updated outer archive/manifest digests cannot replace this check.
+    selected_sources = (_decision_runtime_sources(
+        **({"retrieval_query_reference": True} if retrieval_selected else {}))
+        if decision_selected or native_selected else None)
+    verified = _require_current_timeout_runtime(
+        Path(prepared["archive"]), current_manifest, selected_sources=selected_sources)
+    timeout_pins = prepared.get("runtime_timeout_source_sha256")
+    _require_current_timeout_runtime_pins(timeout_pins)
+    if any(verified[name] != digest for name, digest in timeout_pins.items()):
+        raise ValueError("runtime deadline source pins differ from the packaged worker")
     if decision_selected or native_selected:
-        # Selected capabilities are replayed even for externally retained
-        # preparation records; an internally consistent archive is insufficient.
-        manifest = json.loads((Path(prepared["archive"]) / "manifest.json").read_text())
-        verified = _require_current_timeout_runtime(
-            Path(prepared["archive"]), manifest, selected_sources=_decision_runtime_sources(
-                **({"retrieval_query_reference": True} if retrieval_selected else {})))
         if any(verified[name] != digest for name, digest in prepared[selected_pin_field].items()):
             route = "native input" if native_selected else "decision"
             raise ValueError(f"runtime {route} source pins differ from the packaged worker")
@@ -2182,11 +1914,6 @@ def _execute_once(output: Path, *, task_name: str | None = None) -> dict:
     require_semantic_metadata_archive(current_manifest, metadata_view)
     require_semantic_working_set_archive(current_manifest, working_set)
     require_grok_coding_archive(current_manifest, grok_turns)
-    if prepared.get("semantic_metadata_tokenizer") is not None:
-        from .terminal_metadata_tokenizer_bundle import require_metadata_tokenizer_archive
-        require_metadata_tokenizer_archive(current_manifest, prepared["semantic_metadata_tokenizer"])
-    require_grok_pruning_archive(current_manifest, grok_pruning)
-    require_doctor_coding_archive(current_manifest, candidate_rounds, doctor_coding_policy)
     require_capsule_selection_archive(current_manifest, capsule_selection)
     require_capsule_budget_archive(current_manifest, capsule_budget)
     require_source_view_archive(current_manifest, source_view,
@@ -2206,9 +1933,6 @@ def _execute_once(output: Path, *, task_name: str | None = None) -> dict:
     require_semantic_transport_archive(json.loads((Path(prepared["archive"]) / "manifest.json").read_text()), transport)
     if any(_hash(Path(path)) != value for path, value in prepared["host_source_sha256"].items()):
         raise ValueError("host adapter changed; prepare a new immutable trial")
-    # Close the local bundle observation immediately before the existing
-    # one-shot Harbor invocation. The adapter checks again before deployment.
-    _metadata_tokenizer_prepared_state(prepared, config, strict=True)
     with (output / "invocation.json").open("x") as stream:
         json.dump({"started_at": datetime.now().astimezone().isoformat(), "command": prepared["command"]}, stream)
     started = time.monotonic()
@@ -2334,12 +2058,6 @@ def main():
         help="Experimental readable coding metadata view; planning unchanged and selection frozen by preparation")
     parser.add_argument("--semantic-working-set", choices=SEMANTIC_WORKING_SETS,
         default=DEFAULT_SEMANTIC_WORKING_SET, help="Opt-in capsule references with live exact expansion; frozen by preparation")
-    parser.add_argument("--semantic-metadata-tokenizer-artifact", type=Path,
-        help="Explicit local owner descriptor staged during prepare; no asset discovery")
-    parser.add_argument("--semantic-metadata-tokenizer-sha256",
-        help="Independent SHA-256 of the selected owner descriptor")
-    parser.add_argument("--working-set-census-only", action="store_true",
-        help="Measure declared-plan capsule references without coding or official verification; frozen by prepare")
     parser.add_argument("--capsule-selection", choices=CAPSULE_SELECTIONS, default=DEFAULT_CAPSULE_SELECTION,
         help="Experimental source-bound capsule ranking; requires an explicit public task profile and is frozen by preparation")
     parser.add_argument("--capsule-budget", choices=CAPSULE_BUDGETS, default=DEFAULT_CAPSULE_BUDGET,
@@ -2398,12 +2116,6 @@ def main():
         help="Complete user-prompt budget; automatic estimates cannot guarantee provider limits")
     parser.add_argument("--doctor-dispatch-policy", default="auto", choices=("auto", "model-only"),
         help="Full-arm ablation: ordinary model coding without Doctor candidate selection")
-    parser.add_argument("--grok-pruning-profile", choices=GROK_PRUNING_PROFILES,
-        default=DEFAULT_GROK_PRUNING_PROFILE, help="Explicit isolated Grok coding pruning profile; frozen by prepare")
-    parser.add_argument("--candidate-rounds", type=int, choices=(1, 2), default=1,
-        help="Owner coding attempts; two requires the explicit Doctor coding policy and indexed source views")
-    parser.add_argument("--doctor-coding-policy", choices=DOCTOR_CODING_POLICIES,
-        help="Explicit two-attempt Doctor coding policy; tokens and cost remain observations")
     args = parser.parse_args()
     selected_prompt = _prompt_options(args.arm,
         prompt_tokenizer_artifact=args.prompt_tokenizer_artifact,
@@ -2423,12 +2135,6 @@ def main():
     if args.operation != "prepare" and (selected_prompt != _prompt_options(args.arm)
             or args.doctor_dispatch_policy != "auto"):
         parser.error("prompt and decision options are frozen by preparation; collect/execute cannot select them")
-    if args.operation != "prepare" and args.grok_pruning_profile != DEFAULT_GROK_PRUNING_PROFILE:
-        parser.error("Grok pruning profile is frozen by preparation; collect/execute cannot select it")
-    if args.operation != "prepare" and args.doctor_coding_policy is not None:
-        parser.error("Doctor coding policy is frozen by preparation; collect/execute cannot select it")
-    if args.operation != "prepare" and args.candidate_rounds != 1:
-        parser.error("candidate rounds are frozen by preparation; collect/execute cannot select them")
     if args.operation != "prepare" and args.grok_coding_max_turns != DEFAULT_GROK_CODING_MAX_TURNS:
         parser.error("Grok coding turn bound is frozen by preparation; collect/execute cannot select it")
     if args.operation != "prepare" and args.planning_mode != DEFAULT_PLANNING_MODE:
@@ -2455,11 +2161,6 @@ def main():
         parser.error("semantic metadata view is frozen by preparation; collect/execute cannot select it")
     if args.operation != "prepare" and args.semantic_working_set != DEFAULT_SEMANTIC_WORKING_SET:
         parser.error("semantic working set is frozen by preparation; collect/execute cannot select it")
-    if args.operation != "prepare" and (args.semantic_metadata_tokenizer_artifact is not None
-            or args.semantic_metadata_tokenizer_sha256 is not None):
-        parser.error("metadata tokenizer is frozen by preparation; collect/execute cannot select it")
-    if args.operation != "prepare" and args.working_set_census_only:
-        parser.error("working set census is frozen by preparation; collect/execute cannot select it")
     if args.operation != "prepare" and args.capsule_selection != DEFAULT_CAPSULE_SELECTION:
         parser.error("capsule selection is frozen by preparation; collect/execute cannot select it")
     if args.operation != "prepare" and args.capsule_budget != DEFAULT_CAPSULE_BUDGET:
@@ -2491,15 +2192,9 @@ def main():
                          source_input_policy=args.source_input_policy,
                          query_reference_policy=args.query_reference_policy,
                          semantic_metadata_view=args.semantic_metadata_view,
-                         semantic_metadata_tokenizer_artifact=args.semantic_metadata_tokenizer_artifact,
-                         semantic_metadata_tokenizer_sha256=args.semantic_metadata_tokenizer_sha256,
                          semantic_context_profile=args.semantic_context_profile,
                          **semantic_working_set_selection(args.semantic_working_set),
                          **grok_coding_selection(args.grok_coding_max_turns),
-                         **working_set_census_selection(args.working_set_census_only),
-                         **grok_pruning_selection(args.grok_pruning_profile),
-                         candidate_rounds=args.candidate_rounds,
-                         doctor_coding_policy=args.doctor_coding_policy,
                          capsule_selection=args.capsule_selection,
                          capsule_budget=args.capsule_budget,
                          source_view_profile=args.source_view_profile,

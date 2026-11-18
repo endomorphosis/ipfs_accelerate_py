@@ -29,10 +29,6 @@ SOURCE_PATHS = (
     "benchmarks/agent_supervisor/container_coding/benchmark_controls.py",
     "benchmarks/agent_supervisor/container_coding/terminal_deployment.py",
     "benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py",
-    "benchmarks/agent_supervisor/container_coding/terminal_repository_owner_observation.py",
-    "benchmarks/agent_supervisor/container_coding/terminal_repository_owner_audit.py",
-    "benchmarks/agent_supervisor/container_coding/terminal_repository_owner_lifecycle.py",
-    "benchmarks/agent_supervisor/container_coding/terminal_repository_worker_forwarding.py",
     "benchmarks/agent_supervisor/container_coding/terminal_doctor_dispatch.py",
     "benchmarks/agent_supervisor/container_coding/container_worker_deployment.py",
     "benchmarks/agent_supervisor/container_coding/terminal_context_audit.py",
@@ -46,33 +42,7 @@ SOURCE_PATHS = (
     "ipfs_accelerate_py/agent_supervisor/prompt/delta_task_packet.py",
     "ipfs_accelerate_py/agent_supervisor/procedure_compiler/world_model.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/repository_source_policy.py",
-    "ipfs_accelerate_py/agent_supervisor/runtime/repository_source_resource_handoff.py",
-    "ipfs_accelerate_py/agent_supervisor/runtime/repository_source_owner_configuration.py",
-    "ipfs_accelerate_py/agent_supervisor/runtime/repository_source_owner_dispatch.py",
-    "ipfs_accelerate_py/agent_supervisor/runtime/repository_source_owner_monitor.py",
-    "ipfs_accelerate_py/agent_supervisor/runtime/repository_source_owner_retirement.py",
-    "ipfs_accelerate_py/agent_supervisor/runtime/repository_source_owner_lifecycle.py",
-    "ipfs_accelerate_py/agent_supervisor/runtime/repository_source_owner_broker.py",
-    "ipfs_accelerate_py/agent_supervisor/runtime/repository_source_owner_binding.py",
-    "ipfs_accelerate_py/agent_supervisor/runtime/repository_source_owner_stdio.py",
-    "ipfs_accelerate_py/agent_supervisor/runtime/repository_source_worker_receipts.py",
-    "ipfs_accelerate_py/agent_supervisor/runtime/repository_source_owner_protocol.py",
-    "ipfs_accelerate_py/agent_supervisor/runtime/numerical_obligation_broker.py",
-    "ipfs_accelerate_py/agent_supervisor/runtime/numerical_obligation_client.py",
-    "ipfs_accelerate_py/agent_supervisor/runtime/source_formalization_context.py",
-    "ipfs_accelerate_py/agent_supervisor/runtime/container_worker_boundary.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/repository_source_mcp.py",
-    "ipfs_accelerate_py/agent_supervisor/runtime/repository_source_read_observation.py",
-    "ipfs_accelerate_py/agent_supervisor/runtime/rendered_input_census.py",
-    "ipfs_accelerate_py/agent_supervisor/runtime/inline_source_observation.py",
-    "ipfs_accelerate_py/agent_supervisor/runtime/inline_source_carriers.py",
-    "ipfs_accelerate_py/agent_supervisor/runtime/inline_source_instruction.py",
-    "ipfs_accelerate_py/agent_supervisor/runtime/world_inline_source_observation.py",
-    "ipfs_accelerate_py/agent_supervisor/runtime/semantic_query_reference.py",
-    "ipfs_accelerate_py/agent_supervisor/runtime/semantic_instruction_view.py",
-    "ipfs_accelerate_py/agent_supervisor/runtime/semantic_metadata_view.py",
-    "ipfs_accelerate_py/agent_supervisor/runtime/semantic_router_translation.py",
-    "ipfs_accelerate_py/agent_supervisor/runtime/source_input_view.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/repository_source_probe.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/repository_source_token_budget.py",
     "ipfs_accelerate_py/agent_supervisor/runtime/local_prompt_tokenizer.py",
@@ -127,7 +97,6 @@ DATASETS_SOURCE_PATHS = tuple("ipfs_datasets_py/" + name for name in (
     "logic/software_contracts/semantic_state/test_selection.py",
     "logic/software_contracts/semantic_state/oracle.py",
     "optimizers/logic_theorem_optimizer/resource_scheduler.py",
-    "optimizers/logic_theorem_optimizer/existing_resource_scheduler.py",
     "optimizers/logic_theorem_optimizer/proof_resource_safety.py",
     "optimizers/logic_theorem_optimizer/runtime_telemetry.py",
 ))
@@ -385,15 +354,9 @@ def _valid_digest(value):
 
 def _usage_observation(value):
     """Reject impossible aggregate populations; unknown counters stay unknown."""
-    if type(value) is dict and value.get("reason") == "owner_audit_required":
-        from ipfs_accelerate_py.agent_supervisor.runtime.repository_source_owner_binding import unavailable_usage
-        if value == unavailable_usage():
-            return {"server_audit_valid": False, "server_audit_status": "unavailable",
-                    "server_audit_reason": "owner_audit_required", "store_cleanup_complete": None,
-                    **dict.fromkeys(_COUNTERS)}
     selection = value.get("token_selection") if type(value) is dict else None
     retrieval = value.get("retrieval_observation") if type(value) is dict else None
-    read_present = type(value) is dict and "read_observation" in value
+    read_scope = value.get("read_observation") if type(value) is dict else None
     base_fields = set(value) - {"token_selection", "retrieval_observation", "read_observation"} if type(value) is dict else set()
     shape = (type(value) is dict and base_fields in (_USAGE_FIELDS, _USAGE_FIELDS | {"store_cleanup_error"})
              and type(value.get("status")) is str
@@ -446,23 +409,32 @@ def _usage_observation(value):
                     <= value["tool_calls"] - max(0, value["errors"] - (1 - value["initializations"])))
         except (ValueError, TypeError, KeyError):
             pass
-    read_observation = None
-    if read_present and valid and value["status"] != "unavailable":
-        from ipfs_accelerate_py.agent_supervisor.runtime.repository_source_read_observation import validate_read_observation
+    reads_valid = False
+    if read_scope is not None:
+        from ipfs_accelerate_py.agent_supervisor.runtime.repository_source_mcp import validate_read_observation
         try:
-            read_observation = validate_read_observation(value["read_observation"],
-                successful_reads=value["successful_reads"], compact_reads=value["compact_reads"],
-                returned_bytes=value["returned_bytes"], tool_calls=value["tool_calls"], errors=value["errors"])
+            validate_read_observation(read_scope, tool_calls=value["tool_calls"], errors=value["errors"],
+                successful_reads=value["successful_reads"], compact_reads=value["compact_reads"])
+            reads_valid = bool(valid and value["status"] != "unavailable")
         except (ValueError, TypeError, KeyError):
             pass
+    if reads_valid and retrieval_valid:
+        read_calls = read_scope["read_calls"] + read_scope["legacy_read_calls"]
+        retrieval_calls = retrieval["query_calls"] + retrieval["expansion_calls"] + retrieval["legacy_retrieval_calls"]
+        known_read_errors = read_scope["failed_reads"] + read_scope["legacy_read_calls"] - read_scope["legacy_successful_reads"]
+        if (read_calls + retrieval_calls > value["tool_calls"]
+                or known_read_errors + retrieval["errors"] > value["errors"]):
+            # Individually plausible summaries cannot reuse the same call or
+            # failure population as evidence for two disjoint tool families.
+            reads_valid = retrieval_valid = False
     return {"server_audit_valid": bool(valid), "server_audit_status": value.get("status") if shape else "unavailable",
             "store_cleanup_complete": cleanup,
             **({"token_selection_summary_valid": selection_valid,
                 "token_selection": selection if selection_valid else None} if selection is not None else {}),
             **({"retrieval_observation_valid": retrieval_valid,
                 "retrieval_observation": retrieval if retrieval_valid else None} if retrieval is not None else {}),
-            **({"read_observation_valid": read_observation is not None,
-                "read_observation": read_observation} if read_present else {}),
+            **({"read_observation_valid": reads_valid,
+                "read_observation": read_scope if reads_valid else None} if read_scope is not None else {}),
             **{key: value[key] if valid else None for key in _COUNTERS}}
 
 
@@ -472,7 +444,7 @@ def repository_source_dispatch_observation(report, value):
     Counters are retained runtime observations, not an independent audit replay.
     A failing provider may still have used tools; its receipt remains required.
     """
-    from ipfs_accelerate_py.agent_supervisor.runtime.repository_source_policy import validate_binding, helper_sources_match
+    from ipfs_accelerate_py.agent_supervisor.runtime.repository_source_policy import validate_binding
 
     validate_repository_source_policy(value)
     report = report if type(report) is dict else {}
@@ -520,6 +492,11 @@ def repository_source_dispatch_observation(report, value):
     if (len(config_ids) != len(coding) or not all(_valid_digest(item) for item in config_ids)
             or len(set(config_ids)) != len(config_ids)):
         problems.append("repository_configuration_identities_missing_or_duplicate")
+    try:
+        helper = Path(__file__).resolve().parents[3] / "ipfs_accelerate_py/agent_supervisor/runtime/repository_source_mcp.py"
+        helper_digest = hashlib.sha256(_source_bytes(helper)).hexdigest()
+    except (ValueError, OSError):
+        helper_digest = None
     observations = []
     for row in coding:
         identity, binding = row.get("invocation_id"), row.get("repository_source_policy")
@@ -532,7 +509,7 @@ def repository_source_dispatch_observation(report, value):
             binding_valid = (binding["requested_policy"] == value and row.get("provider") == "codex_cli"
                 and row.get("purpose") == "coding" and "source_view_advisory_policy" not in row
                 and type(row.get("status")) is str and row["status"] in {"provider_returned", "failed"}
-                and helper_sources_match(binding)
+                and helper_digest is not None and binding["helper_sha256"] == helper_digest
                 and _valid_digest(row.get("model_prompt_sha256"))
                 and type(row.get("model_prompt_bytes")) is int and 0 < row["model_prompt_bytes"] <= 256_000)
         except (ValueError, TypeError, KeyError, OSError):
@@ -562,6 +539,14 @@ def repository_source_dispatch_observation(report, value):
             and retrieval["capsules_returned"] > 0)
         read = bool(initialized and usage["successful_reads"] and usage["returned_bytes"])
         compact = bool(read and usage["compact_reads"])
+        scope = usage.get("read_observation")
+        line_reads = None
+        if (exact and configured and initialized and usage["store_cleanup_complete"]
+                and usage.get("read_observation_valid")):
+            if scope["line_range_reads"] > 0:
+                line_reads = True
+            elif scope["complete"]:
+                line_reads = False
         tokenizer_bound = bool(binding_valid and "tokenizer" in binding["config"])
         selected = usage.get("token_selection")
         token_selection_observed = bool(tokenizer_bound and read and usage.get("token_selection_summary_valid")
@@ -578,6 +563,7 @@ def repository_source_dispatch_observation(report, value):
             "server_initialized": bool(initialized), "actual_reads_observed": read,
             **({"capsule_retrieval_observed": capsule_retrieval} if "retrieval_observation_valid" in usage else {}),
             "compact_reads_observed": compact,
+            "line_reads_observed": line_reads,
             **({"local_token_selection_observed": token_selection_observed} if tokenizer_bound else {}),
             "confirmed_canonical_edit_observed": bool(exact and configured and initialized and usage["canonical_edits"]),
             "effective_repository_tools_observed": effective})
