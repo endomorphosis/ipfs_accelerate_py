@@ -4278,19 +4278,63 @@ def test_reviewed_parent_v3_refuses_incomplete_or_crossed83_metadata(reviewed_pa
 
 @pytest.mark.parametrize("direction", ["old_reader_new_packet", "new_reader_old_packet"])
 def test_reviewed_parent_v3_and_v2_inventory_domains_cannot_be_retagged(
-        reviewed_parent_packet_join_scope, reviewed_parent_packet_join_scope_v3, direction):
-    # The old-owner RED for 83 files is meaningful even after falsely retagging
-    # its schema: the old exact77 predicate cannot consume this complete83 set.
-    if direction == "old_reader_new_packet":
-        s = reviewed_parent_packet_join_scope_v3
-        binding = copy.deepcopy(s.binding); binding["schema"] = "reviewed-preservation-native-binding/v1"
-        function = owners._reviewed_parent_packet_binding_v1
-    else:
-        s = reviewed_parent_packet_join_scope
-        binding = copy.deepcopy(s.binding); binding["schema"] = "reviewed-preservation-native-binding/v3"
-        function = owners._reviewed_parent_packet_binding_v3
-    with pytest.raises(ValueError, match=("complete original77-file native packet" if direction == "old_reader_new_packet" else "complete original83-file native packet")):
-        function(s.operation, binding, s.durable, attempt_directory=s.attempt)
+        reviewed_parent_packet_join_scope, reviewed_parent_v3_complete_packet_scope, direction):
+    """Closed metadata refusals only; no original capability or Native claim."""
+    legacy = reviewed_parent_packet_join_scope
+    opening = reviewed_parent_v3_complete_packet_scope.packet
+    # The complete V3 opening comes from pinned real preparation DATA, never
+    # from the substituted packet. Its compiled bytes remain explicitly modeled.
+    public = owners.json_object(owners.checked_descriptor(opening.operation["native_inputs"]))
+    expected_paths = owners._reviewed_parent_packet_paths_v3(public)
+    assert expected_paths == opening.operation["expected_packet_paths"]
+    assert expected_paths == opening.binding["expected_packet_paths"]
+    current = owners._reviewed_parent_packet_binding_v3(
+        opening.operation, opening.binding, opening.durable, attempt_directory=opening.attempt)
+    assert len(current) == len(expected_paths)
+    legacy_current = owners._reviewed_parent_packet_binding_v1(
+        legacy.operation, legacy.binding, legacy.durable, attempt_directory=legacy.attempt)
+    assert len(legacy_current) == 77
+
+    for translation in ("schema_only", "destination_closed_shape"):
+        if direction == "old_reader_new_packet":
+            operation = copy.deepcopy(opening.operation)
+            binding = copy.deepcopy(opening.binding)
+            binding["schema"] = "reviewed-preservation-native-binding/v1"
+            function = owners._reviewed_parent_packet_binding_v1
+            durable, attempt = opening.durable, opening.attempt
+            if translation == "destination_closed_shape":
+                operation.pop("expected_packet_paths")
+                binding.pop("expected_packet_paths")
+                assert set(binding) == set(legacy.binding)
+                assert len(binding["packet_inventory"]) != 77
+        else:
+            operation = copy.deepcopy(opening.operation)
+            function = owners._reviewed_parent_packet_binding_v3
+            durable, attempt = legacy.durable, legacy.attempt
+            if translation == "schema_only":
+                binding = copy.deepcopy(legacy.binding)
+                binding["schema"] = "reviewed-preservation-native-binding/v3"
+            else:
+                # Keep the real V3 opening and its expected paths, substituting
+                # and resealing only the legacy packet inventory commitments.
+                binding = copy.deepcopy(opening.binding)
+                binding["packet_inventory"] = copy.deepcopy(legacy.binding["packet_inventory"])
+                binding["packet_sha256"] = owners.digest(binding["packet_inventory"])
+                binding["receipt_sha256"] = next(row["sha256"] for row in binding["packet_inventory"]
+                    if row["path"] == "build-receipt.json")
+                assert set(binding) == set(opening.binding)
+                assert [row["path"] for row in binding["packet_inventory"]] != expected_paths
+
+        if translation == "schema_only":
+            expected_error = "closed original reviewed native packet binding required"
+        elif direction == "old_reader_new_packet":
+            expected_error = "complete original77-file native packet required"
+        else:
+            expected_error = "exact independently pinned V3 packet population required"
+        with pytest.raises(ValueError) as caught:
+            function(operation, binding, durable, attempt_directory=attempt)
+        assert str(caught.value) == expected_error
+        assert opening.operation["expected_packet_paths"] == expected_paths
 
 
 def test_reviewed_parent_v3_worker_walks_the_same83_owned_files(reviewed_parent_packet_join_scope_v3):

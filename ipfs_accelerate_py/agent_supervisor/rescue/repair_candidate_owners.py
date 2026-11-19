@@ -6060,6 +6060,12 @@ def _parent_native_bootstrap_v1(native, source_raw, source_path, source_pins, *,
         "load_verified_reviewed_norm_preservation_native_v2": "load_verified_reviewed_norm_preservation_native_v2",
         "build_verified_reviewed_norm_preservation_native_v3": "build_verified_reviewed_norm_preservation_native_v3",
         "load_verified_reviewed_norm_preservation_native_v3": "load_verified_reviewed_norm_preservation_native_v3"}
+    for realization_name in ("build_verified_reviewed_definition_realization_native_v1",
+                             "load_verified_reviewed_definition_realization_native_v1"):
+        qualified_name = "_bind_live_success_independent_guard_v1.<locals>." + realization_name
+        if qualified_name in declarations:
+            need(qualified_name in codes, "independently compiled native realization wrapper required")
+            wrapped[realization_name] = realization_name
     expected = {node.name: node.name for node in tree.body if type(node) is ast.FunctionDef}
     expected.update((key, "_bind_live_success_independent_guard_v1.<locals>." + value)
                     for key, value in wrapped.items())
