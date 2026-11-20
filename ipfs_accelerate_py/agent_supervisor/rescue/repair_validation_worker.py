@@ -1205,24 +1205,31 @@ def _reviewed_native_passive_v1(value):
 
 
 def _reviewed_native_domain_v3(reviewed_version):
-    need(type(reviewed_version) is int and reviewed_version in (2, 3), 'closed reviewed native version required')
+    need(type(reviewed_version) is int and reviewed_version in (2, 3, 4), 'closed reviewed native version required')
     if reviewed_version == 2:
         return {'worker_schema':'reviewed-preservation-native-worker/v1', 'parent_schema':'reviewed-preservation-parent/v1',
                 'binding_schema':'reviewed-preservation-native-binding/v1', 'files':77}
+    if reviewed_version == 4:
+        return {'worker_schema':'reviewed-definition-realization-native-worker/v1',
+                'parent_schema':'reviewed-definition-realization-parent/v1',
+                'binding_schema':'reviewed-definition-realization-native-binding/v1'}
     return {'worker_schema':'reviewed-preservation-native-worker/v3', 'parent_schema':'reviewed-preservation-parent/v3',
             'binding_schema':'reviewed-preservation-native-binding/v3', 'files':83}
 
 
 def _reviewed_native_plan_version_v3(plan):
     need(type(plan) is dict and type(plan.get('schema')) is str and plan['schema'] in (
-        'reviewed-preservation-native-worker/v1','reviewed-preservation-native-worker/v3'), 'explicit native worker domain required')
-    return 2 if plan['schema'] == 'reviewed-preservation-native-worker/v1' else 3
+        'reviewed-preservation-native-worker/v1','reviewed-preservation-native-worker/v3',
+        'reviewed-definition-realization-native-worker/v1'), 'explicit native worker domain required')
+    return {'reviewed-preservation-native-worker/v1': 2, 'reviewed-preservation-native-worker/v3': 3,
+        'reviewed-definition-realization-native-worker/v1': 4}[plan['schema']]
 
 
 def _reviewed_native_collector_version_v3(collector):
-    need(type(collector) in (ReviewedPreservationNativeCollectorV1, ReviewedPreservationNativeCollectorV3),
+    need(type(collector) in (ReviewedPreservationNativeCollectorV1, ReviewedPreservationNativeCollectorV3, ReviewedDefinitionRealizationNativeCollectorV1),
          'exact original reviewed native collector required')
-    return 2 if type(collector) is ReviewedPreservationNativeCollectorV1 else 3
+    return {ReviewedPreservationNativeCollectorV1: 2, ReviewedPreservationNativeCollectorV3: 3,
+        ReviewedDefinitionRealizationNativeCollectorV1: 4}[type(collector)]
 
 
 def _reviewed_native_callables_v3(collector, native):
@@ -1230,6 +1237,10 @@ def _reviewed_native_callables_v3(collector, native):
         return (native.build_verified_reviewed_norm_preservation_native_v2,
                 native.load_verified_reviewed_norm_preservation_native_v2,
                 native.reviewed_norm_preservation_packet_sha256_v2)
+    if _reviewed_native_collector_version_v3(collector) == 4:
+        return (native.build_verified_reviewed_physical_definition_realization_native_v2,
+                native.load_verified_reviewed_physical_definition_realization_native_v2,
+                native.reviewed_physical_definition_realization_packet_sha256_v2)
     return (native.build_verified_reviewed_norm_preservation_native_v3,
             native.load_verified_reviewed_norm_preservation_native_v3,
             native.reviewed_norm_preservation_packet_sha256_v3)
@@ -1245,8 +1256,11 @@ def _reviewed_preservation_native_operation_core_v3(plan, policy, *, reviewed_ve
     fields = {'operation_id', 'packet_root', 'nodeid', 'expected_source_sha256',
         'expected_graph_sha256', 'expected_admission_sha256', 'expected_preservation_sha256',
         'toolchain', 'expected_binary_sha256', 'native_argv', 'native_data', 'native_inputs'}
-    if reviewed_version == 3:
+    if reviewed_version in (3, 4):
         fields.add('expected_packet_paths')
+    if reviewed_version == 4:
+        fields.update({'expected_realization_sha256', 'expected_physical_request_sha256',
+            'instance_identity_profile', 'definition_application_profile'})
     need(type(operation) is dict and set(operation) == fields and operation == policy.get('operation'),
          'exact predeclared reviewed native operation required')
     need(type(operation['operation_id']) is str and re.fullmatch(r'[A-Za-z0-9_.:-]{1,128}', operation['operation_id']),
@@ -1263,7 +1277,7 @@ def _reviewed_preservation_native_operation_core_v3(plan, policy, *, reviewed_ve
     need(plan.get('ordinary_scratch_profile') == policy['validation'].get('ordinary_scratch_profile')
          == {'schema': 'owned-validation-ordinary-scratch-live/v1'}
          and all(type(policy['validation'].get(k)) is int and policy['validation'][k] == value
-             for k, value in {'cpu_slots': 1, 'memory_mb': 1536, 'storage_bytes': 16777216,
+             for k, value in {'cpu_slots': 1, 'memory_mb': 1536, 'storage_bytes': 268435456 if reviewed_version == 4 else 16777216,
                              'timeout_seconds': 300, 'child_process_slots': 4}.items()),
          'unchanged explicit reviewed native validation envelope required')
     need(type(plan.get('parent_nonce_sha256')) is str and _SHA.fullmatch(plan['parent_nonce_sha256'])
@@ -1324,7 +1338,13 @@ def _reviewed_preservation_native_operation_core_v3(plan, policy, *, reviewed_ve
          and {row['path'] for row in data} == roster and sum(row['bytes'] for row in data) <= 512 * 1024**2
          and all(next(row['sha256'] for row in data if row['path'] == path) == sha for path, sha in binaries.items()),
          'closed eight-file original native data population required')
-    if reviewed_version == 3:
+    if reviewed_version == 4:
+        need(all(type(operation[key]) is str and _SHA.fullmatch(operation[key]) for key in
+            ('expected_realization_sha256', 'expected_physical_request_sha256'))
+            and operation['instance_identity_profile'] == 'reviewed-source-use/v1'
+            and operation['definition_application_profile'] == 'whole-norm-definition-expansion/v1',
+            'explicit physical source-use whole-norm realization commitments required')
+    if reviewed_version in (3, 4):
         paths = operation['expected_packet_paths']
         need(type(paths) is list and 1 <= len(paths) <= 172
              and all(type(path) is str and re.fullmatch(
@@ -1412,7 +1432,7 @@ def _reviewed_native_directory_write_target_v1(values, frame, collector):
     if (type(writer) is not types.FunctionType or frame.f_code is not writer.__code__
             or frame.f_globals is not vars(module) or writer.__globals__ is not vars(module)):
         return None
-    need(type(collector) in (ReviewedPreservationNativeCollectorV1, ReviewedPreservationNativeCollectorV3)
+    need(type(collector) in (ReviewedPreservationNativeCollectorV1, ReviewedPreservationNativeCollectorV3, ReviewedDefinitionRealizationNativeCollectorV1)
          and collector.guard._reviewed_native_source is True
          and collector.current_node == collector.operation['nodeid']
          and collector.phase == 'call' and collector.build_calls == 1,
@@ -1460,7 +1480,7 @@ def _reviewed_native_selected_test_call_witness_v1(frame, collector):
     Raw compilation alone never creates this witness.
     """
     try:
-        if (type(collector) not in (ReviewedPreservationNativeCollectorV1, ReviewedPreservationNativeCollectorV3)
+        if (type(collector) not in (ReviewedPreservationNativeCollectorV1, ReviewedPreservationNativeCollectorV3, ReviewedDefinitionRealizationNativeCollectorV1)
                 or type(frame) is not types.FrameType
                 or collector.guard._reviewed_native_source is not True
                 or collector.current_node != collector.operation['nodeid']
@@ -1535,7 +1555,7 @@ def _reviewed_native_source_execution_projection_v1(guard, collector, plan, raw_
     """Project loader executions and the one authenticated test-call witness."""
     executed = dict(guard.executed)
     witnesses = []
-    if (type(collector) in (ReviewedPreservationNativeCollectorV1, ReviewedPreservationNativeCollectorV3)
+    if (type(collector) in (ReviewedPreservationNativeCollectorV1, ReviewedPreservationNativeCollectorV3, ReviewedDefinitionRealizationNativeCollectorV1)
             and guard._reviewed_native_source is True
             and type(collector.selected_test_source_calls) is dict):
         path = collector.selected_test_path
@@ -1820,7 +1840,18 @@ class ReviewedPreservationNativeCollectorV1:
                  and local['timeout_seconds'] == 60 and local['cancellation'] is None,
                  'original live native frame differs from the declared operation')
             self.handle = value
-            self.inputs = (local['preparation'], local['graph'], local['admission'], local['args'], local['kwargs'])
+            if self.reviewed_version == 4:
+                need(local['expected_realization_sha256'] == self.operation['expected_realization_sha256']
+                    and local['expected_physical_request_sha256'] == self.operation['expected_physical_request_sha256']
+                    and type(local['physical_request_raw']) is bytes
+                    and hashlib.sha256(local['physical_request_raw']).hexdigest() == self.operation['expected_physical_request_sha256']
+                    and local['instance_identity_profile'] == self.operation['instance_identity_profile']
+                    and local['definition_application_profile'] == self.operation['definition_application_profile'],
+                    'original physical realization live frame differs from opening commitments')
+                self.inputs = (local['preparation'], local['preservation'], local['graph'], local['admission'],
+                    local['args'], local['kwargs'], local['physical_request_raw'])
+            else:
+                self.inputs = (local['preparation'], local['graph'], local['admission'], local['args'], local['kwargs'])
             self.binding = self._read_binding()
             self.build_frame = None
 
@@ -1862,23 +1893,36 @@ class ReviewedPreservationNativeCollectorV1:
              and self.packet_sha.__code__ is self.packet_sha_code,
              'native collector original producer/reader changed')
         packet = self._packet(); raw = dict(packet)['build-receipt.json']; receipt = json_object(raw)
-        preparation, graph, admission, args, kwargs = self.inputs
-        result = self.load(self.handle, packet, preparation, graph, admission, *args,
+        physical = self.reviewed_version == 4
+        if physical:
+            preparation, preservation, graph, admission, args, kwargs, physical_raw = self.inputs
+            positions = (preparation, preservation, graph, admission, *args)
+            extra = {key: self.operation[key] for key in ('expected_realization_sha256',
+                'expected_physical_request_sha256', 'instance_identity_profile', 'definition_application_profile')}
+            extra['physical_request_raw'] = physical_raw
+        else:
+            preparation, graph, admission, args, kwargs = self.inputs
+            positions, extra = (preparation, graph, admission, *args), {}
+        result = self.load(self.handle, packet, *positions,
             expected_receipt_sha256=hashlib.sha256(raw).hexdigest(),
             expected_packet_sha256=self.packet_sha(packet),
             expected_binary_sha256=self.operation['expected_binary_sha256'],
             expected_preservation_sha256=self.operation['expected_preservation_sha256'],
             expected_graph_sha256=self.operation['expected_graph_sha256'],
-            expected_admission_sha256=self.operation['expected_admission_sha256'], toolchain=self.operation['toolchain'], **kwargs)
+            expected_admission_sha256=self.operation['expected_admission_sha256'], toolchain=self.operation['toolchain'], **extra, **kwargs)
         need(result['live_native_success_authenticated'] is True and result['native_execution_authenticated'] is True
              and result['original_success_authenticated'] is result['original_admitted_parent_custody_authenticated'] is False,
              'original live native reader did not retain its limited custody scope')
         return {'schema': _reviewed_native_domain_v3(_reviewed_native_collector_version_v3(self))['binding_schema'],
-            **({'expected_packet_paths': self.operation['expected_packet_paths']} if self.reviewed_version == 3 else {}),
+            **({'expected_packet_paths': self.operation['expected_packet_paths']} if self.reviewed_version in (3, 4) else {}),
+            **({'upstream_preservation_sha256': self.operation['expected_preservation_sha256'],
+                'physical_request_sha256': self.operation['expected_physical_request_sha256'],
+                'instance_identity_profile': self.operation['instance_identity_profile'],
+                'definition_application_profile': self.operation['definition_application_profile']} if physical else {}),
             'operation_id': self.operation['operation_id'],
             'packet_root': self.operation['packet_root'], 'receipt_sha256': result['retained_receipt_sha256'],
             'packet_sha256': result['retained_packet_sha256'],
-            'preparation_sha256': self.operation['expected_preservation_sha256'],
+            'preparation_sha256': self.operation['expected_realization_sha256'] if physical else self.operation['expected_preservation_sha256'],
             'graph_sha256': self.operation['expected_graph_sha256'], 'admission_sha256': self.operation['expected_admission_sha256'],
             'toolchain': self.operation['toolchain'], 'binary_sha256': self.operation['expected_binary_sha256'],
             'producer_pins': result['producer_pins'],
@@ -1909,6 +1953,15 @@ class ReviewedPreservationNativeCollectorV1:
 
     def close(self):
         sys.setprofile(self.original_profile)
+
+def reviewed_definition_realization_native_operation_v1(plan, policy):
+    return _reviewed_preservation_native_operation_core_v3(plan, policy, reviewed_version=4)
+
+
+class ReviewedDefinitionRealizationNativeCollectorV1(ReviewedPreservationNativeCollectorV1):
+    """Exact physical source-use/whole-norm producer; no alternate executor."""
+    pass
+
 
 class ReviewedPreservationNativeCollectorV3(ReviewedPreservationNativeCollectorV1):
     """Original collector with only the explicit mixed-native domain selected."""
@@ -2226,8 +2279,8 @@ def validation_worker(args):
     raw = ordinary_bytes(args.plan, 4 * 1024**2)
     need(hashlib.sha256(raw).hexdigest() == args.plan_sha256, "trusted work plan changed")
     plan = json_object(raw); policy = json_object(checked_descriptor(plan["policy"]))
-    native_profile = plan.get("schema") in (REVIEWED_NATIVE_WORK_SCHEMA, "reviewed-preservation-native-worker/v3")
-    need(plan["schema"] in {WORK_SCHEMA, REVIEWED_NATIVE_WORK_SCHEMA, "reviewed-preservation-native-worker/v3"}, "trusted worker scope required")
+    native_profile = plan.get("schema") in (REVIEWED_NATIVE_WORK_SCHEMA, "reviewed-preservation-native-worker/v3", "reviewed-definition-realization-native-worker/v1")
+    need(plan["schema"] in {WORK_SCHEMA, REVIEWED_NATIVE_WORK_SCHEMA, "reviewed-preservation-native-worker/v3", "reviewed-definition-realization-native-worker/v1"}, "trusted worker scope required")
     if native_profile:
         _reviewed_preservation_native_operation_core_v3(plan, policy, reviewed_version=_reviewed_native_plan_version_v3(plan))
     root, d, attempt = Path(plan["candidate_root"]), Path(policy["datasets_root"]), Path(plan["attempt_directory"])
@@ -2519,7 +2572,8 @@ def validation_worker(args):
              and _ORIGINAL_COMPILE.__module__ == "builtins" and _ORIGINAL_COMPILE.__name__ == "compile",
              "original trusted source compiler primitive required")
         if native_profile:
-            native_collector = (ReviewedPreservationNativeCollectorV1 if _reviewed_native_plan_version_v3(plan) == 2 else ReviewedPreservationNativeCollectorV3)(plan, policy, args, guard)
+            native_collector = {2: ReviewedPreservationNativeCollectorV1, 3: ReviewedPreservationNativeCollectorV3,
+                4: ReviewedDefinitionRealizationNativeCollectorV1}[_reviewed_native_plan_version_v3(plan)](plan, policy, args, guard)
             native_collector.raw_compiled_sources = raw_compiled
             delegated_source_verified = True
         else:

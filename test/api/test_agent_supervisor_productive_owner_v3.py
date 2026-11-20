@@ -6847,3 +6847,252 @@ def test_live_physical_join_retains_available_parent_fence_after_postsnapshot_re
     assert s.calls.count("A.capture") == s.calls.count("R.final") == 1
     assert "R.postclose" in s.calls and s.calls[-1] == "A.current"
     assert "A.seal" not in s.calls
+
+
+# Explicit A protocol4 / R physical-native5 controls.  Modeled byte inventories
+# below exercise declarations only; they never authenticate Native execution.
+def prepare_reviewed_parent_physical_realization_fixture_inputs_v1(path, control, *, datasets_root,
+        physical_request_raw, expected_physical_request_sha256):
+    assert type(control) is dict and type(physical_request_raw) is bytes
+    assert hashlib.sha256(physical_request_raw).hexdigest() == expected_physical_request_sha256
+    shared = control["shared"]
+    assert control["admission"]["fixture_only"] is True
+    assert control["admission"]["provenance_kind"] == "fictional_fixture"
+    value = {"schema": "reviewed-definition-realization-fixture-native-inputs/v1",
+        "fixture_only": True, "provenance_kind": "fictional_fixture",
+        **{name: {"manifest_json": control[name].manifest_json,
+            "files": [[key, body] for key, body in control[name].files]}
+            for name in ("preparation", "preservation")},
+        **{name: reviewed_parent_fixture_tree_encode_v1(control[name])
+            for name in ("graph", "admission", "args", "kwargs")},
+        "expected_realization_sha256": shared.reviewed_preservation_corpus_sha256(control["preparation"]),
+        "expected_preservation_sha256": shared.reviewed_preservation_corpus_sha256(control["preservation"]),
+        "expected_graph_sha256": control["graph_sha"], "expected_admission_sha256": control["admission_sha"],
+        "toolchain": json.loads(control["preparation"].manifest_json)["toolchain"],
+        "instance_identity_profile": "reviewed-source-use/v1",
+        "definition_application_profile": "whole-norm-definition-expansion/v1",
+        "physical_request_raw": reviewed_parent_fixture_tree_encode_v1(physical_request_raw),
+        "expected_physical_request_sha256": expected_physical_request_sha256}
+    # The original declaration is already inside kwargs.preparation_inputs;
+    # no independent review, signer, target or consumer declaration is exported.
+    paths = owners._reviewed_parent_realization_packet_paths_v1(value)
+    raw = owners.canonical(value) + b"\n"
+    assert len(raw) <= 4 * 1024**2
+    reference = put(Path(path), raw)
+    return {"native_inputs": reference, "expected_packet_paths": paths,
+        **{name: value[name] for name in ("expected_realization_sha256", "expected_preservation_sha256",
+            "expected_graph_sha256", "expected_admission_sha256", "toolchain",
+            "expected_physical_request_sha256", "instance_identity_profile", "definition_application_profile")}}
+
+
+@pytest.fixture
+def reviewed_parent_physical_realization_declaration_v1(reviewed_parent_v3_complete_packet_scope):
+    """Modeled A4 declaration only over retained V3 unit inventory; no receipt."""
+    old = reviewed_parent_v3_complete_packet_scope
+    plan, policy = copy.deepcopy((old.declaration.plan, old.declaration.policy))
+    operation = plan["operation"]
+    operation.update(expected_realization_sha256="a" * 64, expected_physical_request_sha256="b" * 64,
+        instance_identity_profile="reviewed-source-use/v1", definition_application_profile="whole-norm-definition-expansion/v1")
+    policy["operation"] = copy.deepcopy(operation)
+    policy["validation"]["storage_bytes"] = 256 * 1024**2
+    plan["schema"] = "reviewed-definition-realization-native-worker/v1"
+    policy["schema"] = "reviewed-definition-realization-parent/v1"
+    return old.declaration.worker, plan, policy
+
+
+def test_reviewed_physical_realization_worker_declaration_is_detached_and_domain_specific(
+        reviewed_parent_physical_realization_declaration_v1):
+    worker, plan, policy = reviewed_parent_physical_realization_declaration_v1
+    before = copy.deepcopy((plan, policy))
+    declared = worker.reviewed_definition_realization_native_operation_v1(plan, policy)
+    assert declared == policy["operation"] and declared is not plan["operation"]
+    assert (plan, policy) == before
+    assert owners._reviewed_parent_domain_v3(4)["native_version"] == 5
+    assert owners._reviewed_parent_domain_v3(2)["native_version"] == 2
+    assert owners._reviewed_parent_domain_v3(3)["native_version"] == 3
+    assert owners._reviewed_parent_version_v3(policy) == worker._reviewed_native_plan_version_v3(plan) == 4
+    with pytest.raises(ValueError, match="explicit reviewed native worker profile"):
+        worker.reviewed_preservation_native_operation_v3(plan, policy)
+
+
+@pytest.mark.parametrize("field,value", [
+    ("expected_realization_sha256", None), ("expected_physical_request_sha256", "0"),
+    ("instance_identity_profile", None), ("definition_application_profile", "constructed-model-only"),
+])
+def test_reviewed_physical_realization_declaration_refuses_crossed_or_missing_original_inputs(
+        reviewed_parent_physical_realization_declaration_v1, field, value):
+    worker, plan, policy = reviewed_parent_physical_realization_declaration_v1
+    plan["operation"][field] = policy["operation"][field] = value
+    with pytest.raises(ValueError, match="physical source-use whole-norm"):
+        worker.reviewed_definition_realization_native_operation_v1(plan, policy)
+
+
+@pytest.mark.parametrize("version", [None, True, 1, 5])
+def test_reviewed_physical_realization_protocol_is_not_native_version_or_flag(version):
+    with pytest.raises(ValueError, match="closed reviewed native version"):
+        owners._reviewed_parent_domain_v3(version)
+
+
+def test_reviewed_physical_realization_unissued_parent_refused_before_native_lookup(monkeypatch):
+    calls = []
+    monkeypatch.setattr(owners, "_parent_native_owner", lambda *_a, **_k: calls.append(True))
+    with pytest.raises(ValueError, match="not issued by this process and native thread"):
+        owners.load_parent_verified_uscode_physical_realization_closure_v1(
+            object(), b"{}", expected_request_sha256=hashlib.sha256(b"{}").hexdigest())
+    assert calls == []
+
+
+def test_reviewed_definition_realization_parent_actual_native_child_v1():
+    """One actual physicalV2 build when enrolled by the original A4 parent only."""
+    import importlib
+    import os
+    names = ("IPFS_REVIEWED_PRESERVATION_PLAN", "IPFS_REVIEWED_PRESERVATION_ATTEMPT", "IPFS_REVIEWED_PRESERVATION_PACKET_ROOT")
+    if os.environ.get("IPFS_DATASETS_RUN_NATIVE_LEAN") != "1" or not all(os.environ.get(name) for name in names):
+        pytest.skip("explicit original-parent physical realization enrollment required")
+    plan_path, attempt, packet_root = (Path(os.environ[name]) for name in names)
+    plan = owners.json_object(owners.ordinary_bytes(plan_path, 4 * 1024**2))
+    assert plan["schema"] == "reviewed-definition-realization-native-worker/v1"
+    policy = owners.json_object(owners.checked_descriptor(plan["policy"])); operation = plan["operation"]
+    assert operation == policy["operation"] and plan["native_inputs"] == operation["native_inputs"]
+    assert operation["nodeid"] == str(Path(__file__).absolute()) + "::test_reviewed_definition_realization_parent_actual_native_child_v1"
+    assert attempt == Path(plan["attempt_directory"]) and packet_root == attempt / operation["packet_root"]
+    assert not packet_root.exists()
+    helper = reviewed_parent_original_R_fixture_module_v1(Path(policy["datasets_root"]))
+    value = owners.json_object(owners.checked_descriptor(operation["native_inputs"]))
+    physical = owners._reviewed_parent_realization_inputs_v1(value, operation)
+    assert owners._reviewed_parent_realization_packet_paths_v1(value) == operation["expected_packet_paths"]
+    shared = importlib.import_module("ipfs_datasets_py.logic.autoformal.legal_corpus_shared_lake")
+    c = {name: shared.ReviewedPreservationCorpusPreparation(value[name]["manifest_json"],
+            tuple((key, body) for key, body in value[name]["files"])) for name in ("preparation", "preservation")}
+    c.update({name: reviewed_parent_fixture_tree_decode_v1(value[name]) for name in ("graph", "admission", "args", "kwargs")})
+    c.update(shared=shared, owner=shared._reviewed_mixed_preservation_owners()[1],
+        graph_sha=value["expected_graph_sha256"], admission_sha=value["expected_admission_sha256"])
+    c["case"] = {"declaration": c["kwargs"]["preparation_inputs"]["declaration"]}
+    options = {name: value[name] for name in ("expected_realization_sha256", "expected_preservation_sha256",
+        "expected_graph_sha256", "expected_admission_sha256", "toolchain", "instance_identity_profile",
+        "definition_application_profile", "expected_physical_request_sha256")}
+    options["physical_request_raw"] = physical
+    manifest = c["preparation"].to_dict()
+    assert len(manifest["units"]) == 3
+    assert manifest["definition_application_obligations"] and manifest["definition_applications"]
+    assert set(c["preservation"].to_dict()["preservation_obligations"]) < set(manifest["preservation_obligations"])
+    assert len(manifest["expected_modules"]) <= 11 and len(c["preparation"].files) <= 78
+    assert manifest["upstream_manifest"] == c["preservation"].to_dict()
+    executable = next(path for path in operation["expected_binary_sha256"] if Path(path).name == "lake")
+    native_handle = helper.native.build_verified_reviewed_physical_definition_realization_native_v2(
+        c["preparation"], c["preservation"], c["graph"], c["admission"], *c["args"],
+        **options, **c["kwargs"], lake_executable=executable, output_directory=packet_root, timeout_seconds=60)
+    packet = helper.reviewed_live_success_packet_v2(packet_root)
+    assert sorted(name for name, _ in packet) == operation["expected_packet_paths"]
+    result = helper.native.load_verified_reviewed_physical_definition_realization_native_v2(
+        native_handle, packet, c["preparation"], c["preservation"], c["graph"], c["admission"], *c["args"],
+        expected_receipt_sha256=hashlib.sha256(dict(packet)["build-receipt.json"]).hexdigest(),
+        expected_packet_sha256=helper.native.reviewed_physical_definition_realization_packet_sha256_v2(packet),
+        expected_binary_sha256=operation["expected_binary_sha256"], **options, **c["kwargs"])
+    assert result["live_native_success_authenticated"] is result["native_execution_authenticated"] is True
+    assert result["original_success_authenticated"] is result["original_admitted_parent_custody_authenticated"] is False
+    assert result["training_mask"] == result["evaluation_gold_mask"] == 0
+    assert all(flag is False for flag in result["authority"].values())
+    assert result["release_ready"] is result["Lean_admitted"] is False
+    # This exact original signed replay drives the existing fresh wrong-target
+    # refusal (zero callback), then one detached complete-three-unit inspection.
+    helper.reviewed_whole_norm_consumer_checks_v3(c)
+
+
+@pytest.mark.parametrize("version,storage", [(2, 16 * 1024**2), (3, 16 * 1024**2), (4, 256 * 1024**2)])
+def test_reviewed_parent_physical_realization_uses_only_its_explicit_storage_envelope(
+        reviewed_parent_physical_realization_declaration_v1, version, storage):
+    worker, plan, policy = reviewed_parent_physical_realization_declaration_v1
+    if version != 4:
+        for key in owners._reviewed_realization_operation_fields_v1():
+            plan["operation"].pop(key); policy["operation"].pop(key)
+        if version == 2:
+            plan["operation"].pop("expected_packet_paths"); policy["operation"].pop("expected_packet_paths")
+        domain = owners._reviewed_parent_domain_v3(version)
+        plan["schema"], policy["schema"] = domain["worker_schema"], domain["policy_schema"]
+    policy["validation"]["storage_bytes"] = storage
+    worker._reviewed_preservation_native_operation_core_v3(plan, policy, reviewed_version=version)
+    policy["validation"]["storage_bytes"] = 16 * 1024**2 if version == 4 else 256 * 1024**2
+    with pytest.raises(ValueError, match="validation envelope"):
+        worker._reviewed_preservation_native_operation_core_v3(plan, policy, reviewed_version=version)
+
+
+def test_reviewed_physical_realization_packet_budget_is48MiB_without_widening_v3(
+        reviewed_parent_v3_complete_packet_scope):
+    # Pure modeled inventory arithmetic only. No large file/compiler/receipt or
+    # purported original success is manufactured by this boundary control.
+    s = reviewed_parent_v3_complete_packet_scope
+    operation, binding, durable = copy.deepcopy((s.packet.operation, s.packet.binding, s.packet.durable))
+    compiled = [row for row in binding["packet_inventory"] if row["path"].startswith("compiled/")]
+    assert len(compiled) >= 7
+    for row in compiled[:6]:
+        row.update(bytes=7 * 1024**2, sha256="d" * 64)
+        physical = next(x for x in durable if x["path"] == operation["packet_root"] + "/" + row["path"])
+        physical.update(bytes=row["bytes"], sha256=row["sha256"])
+    binding["packet_sha256"] = owners.digest(binding["packet_inventory"])
+    with pytest.raises(ValueError, match="sorted bounded complete original native packet"):
+        owners._reviewed_parent_packet_binding(operation, binding, durable,
+            attempt_directory=s.packet.attempt, reviewed_version=3)
+    operation.update(expected_realization_sha256="a" * 64, expected_physical_request_sha256="b" * 64,
+        instance_identity_profile="reviewed-source-use/v1", definition_application_profile="whole-norm-definition-expansion/v1")
+    binding.update(schema="reviewed-definition-realization-native-binding/v1", preparation_sha256="a" * 64,
+        upstream_preservation_sha256=operation["expected_preservation_sha256"], physical_request_sha256="b" * 64,
+        instance_identity_profile=operation["instance_identity_profile"],
+        definition_application_profile=operation["definition_application_profile"])
+    assert owners._reviewed_parent_packet_binding(operation, binding, durable,
+        attempt_directory=s.packet.attempt, reviewed_version=4)
+    row = compiled[6]; row.update(bytes=7 * 1024**2, sha256="e" * 64)
+    physical = next(x for x in durable if x["path"] == operation["packet_root"] + "/" + row["path"])
+    physical.update(bytes=row["bytes"], sha256=row["sha256"])
+    binding["packet_sha256"] = owners.digest(binding["packet_inventory"])
+    with pytest.raises(ValueError, match="sorted bounded complete original native packet"):
+        owners._reviewed_parent_packet_binding(operation, binding, durable,
+            attempt_directory=s.packet.attempt, reviewed_version=4)
+
+
+@pytest.fixture(scope="module")
+def reviewed_parent_genuine_physical_realization_inputs_v1(tmp_path_factory):
+    from ipfs_datasets_py.logic.autoformal import legal_corpus_definition_use_native_v2 as current_native
+    root = Path(current_native.__file__).resolve().parents[3]
+    helper = reviewed_parent_original_R_fixture_module_v1(root)
+    c = helper.reviewed_physical_realization_native_control_v2.__wrapped__(tmp_path_factory)
+    directory = tmp_path_factory.mktemp("a-physical-realization-public-data")
+    prepared = prepare_reviewed_parent_physical_realization_fixture_inputs_v1(
+        directory / "native-inputs.json", c, datasets_root=root,
+        physical_request_raw=c["physical_request_raw"], expected_physical_request_sha256=c["physical_request_sha256"])
+    return c, prepared
+
+
+def test_reviewed_parent_physical_realization_opening_uses_genuine_original_signed_inputs(
+        reviewed_parent_genuine_physical_realization_inputs_v1):
+    c, prepared = reviewed_parent_genuine_physical_realization_inputs_v1
+    data = owners.json_object(owners.checked_descriptor(prepared["native_inputs"]))
+    assert owners._reviewed_parent_realization_inputs_v1(data, data) == c["physical_request_raw"]
+    assert owners._reviewed_parent_realization_packet_paths_v1(data) == prepared["expected_packet_paths"]
+    assert data["expected_realization_sha256"] == c["realization_sha"]
+    assert data["expected_physical_request_sha256"] == c["physical_request_sha256"]
+    assert reviewed_parent_fixture_tree_decode_v1(data["args"])[0] == c["args"][0]
+    assert reviewed_parent_fixture_tree_decode_v1(data["kwargs"]) == c["kwargs"]
+    assert owners.digest(data["preparation"]) != owners.digest(data["preservation"])
+    assert c["admission"]["fixture_only"] is True
+    assert c["admission"]["training_mask"] == c["admission"]["evaluation_gold_mask"] == 0
+
+
+@pytest.mark.parametrize("mutation", ["upstream", "realization", "physical", "profile", "file_body"])
+def test_reviewed_parent_physical_realization_opening_refuses_crossed_complete_inputs(
+        reviewed_parent_genuine_physical_realization_inputs_v1, mutation):
+    _c, prepared = reviewed_parent_genuine_physical_realization_inputs_v1
+    data = owners.json_object(owners.checked_descriptor(prepared["native_inputs"]))
+    if mutation == "upstream":
+        data["preservation"] = copy.deepcopy(data["preparation"])
+    elif mutation == "realization":
+        data["preparation"] = copy.deepcopy(data["preservation"])
+    elif mutation == "physical":
+        data["physical_request_raw"] = reviewed_parent_fixture_tree_encode_v1(b"{}")
+    elif mutation == "profile":
+        data["instance_identity_profile"] = None
+    else:
+        data["preparation"]["files"][0][1] += "\n-- changed\n"
+        data["expected_realization_sha256"] = owners.digest(data["preparation"])
+    with pytest.raises(ValueError):
+        owners._reviewed_parent_realization_packet_paths_v1(data)
