@@ -1186,3 +1186,198 @@ class PrivateArtifactFallbackTests(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertEqual(read.call_count, 1)
         self.assertEqual(output.writes, 1)
+
+
+class DurableHandoffProducerTests(unittest.TestCase):
+    """Fictional local payloads; no real socket, worker or project initialization."""
+    def setUp(self):
+        import tempfile
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        self.root.chmod(0o700)
+        self.path = self.root / "handoff.bin"
+        self.payload = b'{"task_id":"fictional-unit","generation":7,"authority":false}\n'
+
+    def write(self, **overrides):
+        args = dict(private_root=str(self.root), artifact_path=str(self.path), payload=self.payload)
+        args.update(overrides)
+        return mod.write_codex_handoff_artifact(**args)
+
+    def cli(self, *extra):
+        import io
+        args = ["handoff", "--socket-path", str(self.root / "socket"),
+                "--thread-id", "fictional-thread", "--expected-turn-id", "fictional-turn",
+                "--message", self.payload.decode(), "--receipt-path", str(self.root / "delivery.json"),
+                "--prior-delivery-state", "unknown", "--offline-private-root", str(self.root),
+                "--offline-artifact-path", str(self.path), *extra]
+        out = io.StringIO()
+        with patch("sys.stdout", out):
+            rc = mod.codex_thread_handoff_main(args)
+        return rc, json.loads(out.getvalue())
+
+    def test_new_raw_bytes_are_retained_and_existing_reader_verifies(self):
+        result = self.write()
+        self.assertEqual(result["artifact_state"], "retained")
+        self.assertTrue(result["created"] and result["readback_verified"])
+        self.assertEqual(self.path.read_bytes(), self.payload)
+        self.assertEqual(self.path.stat().st_mode & 0o777, 0o400)
+        self.assertTrue(all(type(v) is str for v in result["full9"].values()))
+        read = mod.read_codex_handoff_artifact(private_root=str(self.root), artifact_path=str(self.path),
+            expected_bytes=len(self.payload), expected_sha256=hashlib.sha256(self.payload).hexdigest())
+        self.assertEqual(read["artifact_state"], "verified")
+        self.assertEqual(base64.b64decode(read["payload_base64"]), self.payload)
+        for key in ("delivery_assessed", "processing_confirmed", "completion_eligible", "execution_granted", "claim_granted", "retryable"):
+            self.assertIs(result[key], False)
+
+    def test_existing_path_is_never_overwritten_or_reused(self):
+        self.path.write_bytes(b"old-exact-history")
+        before = self.path.stat()
+        result = self.write()
+        self.assertEqual(result["reason"], "artifact_already_exists")
+        self.assertFalse(result["created"])
+        self.assertEqual(self.path.read_bytes(), b"old-exact-history")
+        self.assertEqual((before.st_ino, before.st_mtime_ns), (self.path.stat().st_ino, self.path.stat().st_mtime_ns))
+
+    def test_invalid_inputs_refuse_before_any_open(self):
+        for change in ({"payload":b""}, {"payload":"text"}, {"payload":b"abc", "max_bytes":True},
+                       {"payload":b"abc", "max_bytes":2}, {"max_bytes":1048577},
+                       {"artifact_path":str(self.root.parent / "outside")}, {"private_root":"relative"}):
+            with self.subTest(change=repr(change)), patch.object(mod.os, "open", side_effect=AssertionError("must not open")):
+                self.assertEqual(self.write(**change)["artifact_state"], "refused")
+
+    def test_nonprivate_and_symlink_roots_refuse_without_artifact(self):
+        self.root.chmod(0o755)
+        self.assertEqual(self.write()["reason"], "artifact_root_not_private")
+        self.assertFalse(self.path.exists())
+        self.root.chmod(0o700)
+        link = self.root / "link"
+        link.symlink_to(self.root, target_is_directory=True)
+        result = self.write(private_root=str(link), artifact_path=str(link / "other"))
+        self.assertEqual(result["artifact_state"], "refused")
+        self.assertFalse((self.root / "other").exists())
+
+    def test_short_writes_loop_until_all_bytes_are_retained(self):
+        original = mod.os.write
+        with patch.object(mod.os, "write", side_effect=lambda fd, b: original(fd, b[:3])):
+            self.assertEqual(self.write()["artifact_state"], "retained")
+        self.assertEqual(self.path.read_bytes(), self.payload)
+
+    def test_zero_write_preserves_incomplete_file_and_refuses(self):
+        with patch.object(mod.os, "write", return_value=0):
+            result = self.write()
+        self.assertEqual(result["artifact_state"], "incomplete")
+        self.assertTrue(result["created"] and self.path.exists())
+        self.assertFalse(result["readback_verified"] or result["retryable"])
+
+    def test_fsync_failure_preserves_created_bytes_and_never_sends(self):
+        with patch.object(mod.os, "fsync", side_effect=OSError("fictional fsync failure")), \
+             patch.object(mod, "send_codex_thread_message") as send:
+            rc, outcome = self.cli()
+        self.assertEqual(rc, 3)
+        self.assertEqual(outcome["delivery_state"], "delivery_unknown")
+        self.assertIs(outcome["current_call_transport_attempted"], False)
+        self.assertEqual(outcome["offline_artifact"]["artifact_state"], "incomplete")
+        self.assertTrue(self.path.exists())
+        send.assert_not_called()
+
+    def test_readback_failure_cannot_report_retained(self):
+        with patch.object(mod, "read_codex_handoff_artifact", return_value={"artifact_state":"refused"}):
+            result = self.write()
+        self.assertEqual(result["artifact_state"], "incomplete")
+        self.assertTrue(self.path.exists())
+        self.assertFalse(result["readback_verified"])
+
+    def test_namespace_replacement_during_write_is_not_retained(self):
+        original = mod.os.write
+        moved = self.root.parent / (self.root.name + "-moved")
+        self.addCleanup(lambda: __import__("shutil").rmtree(moved, ignore_errors=True))
+        changed = []
+        def replace(fd, block):
+            count = original(fd, block)
+            if not changed:
+                self.root.rename(moved); self.root.mkdir(mode=0o700); changed.append(True)
+            return count
+        with patch.object(mod.os, "write", side_effect=replace):
+            result = self.write()
+        self.assertEqual(result["artifact_state"], "incomplete")
+        self.assertTrue((moved / "handoff.bin").exists())
+        self.assertFalse(self.path.exists())
+
+    def test_artifact_is_readback_verified_before_single_transport_call(self):
+        def unavailable(**kwargs):
+            self.assertEqual(self.path.read_bytes(), self.payload)
+            self.assertEqual(self.path.stat().st_mode & 0o777, 0o400)
+            return {"delivery_state":"not_sent", "reason":"fictional_transport_unavailable", "enqueue_acknowledged":False,
+                    "processing_confirmed":False,"completion_eligible":False,"execution_granted":False,"claim_granted":False,"retryable":True}
+        with patch.object(mod, "send_codex_thread_message", side_effect=unavailable) as send:
+            rc, outcome = self.cli()
+        self.assertEqual(rc, 1)
+        self.assertEqual(send.call_count, 1)
+        self.assertEqual(outcome["offline_artifact"]["artifact_state"], "retained")
+        self.assertFalse(outcome["execution_granted"])
+
+    def test_unknown_delivery_remains_unknown_and_second_call_never_sends(self):
+        unknown = {"delivery_state":"delivery_unknown", "reason":"fictional_timeout_after_send", "enqueue_acknowledged":False,
+                   "processing_confirmed":False,"completion_eligible":False,"execution_granted":False,"claim_granted":False,"retryable":False}
+        with patch.object(mod, "send_codex_thread_message", return_value=unknown) as send:
+            rc, first = self.cli()
+            second_rc, second = self.cli()
+        self.assertEqual((rc, second_rc), (3, 3))
+        self.assertEqual(send.call_count, 1)
+        self.assertEqual(first["delivery_state"], "delivery_unknown")
+        self.assertEqual(first["offline_artifact"]["artifact_state"], "retained")
+        self.assertEqual(second["delivery_state"], "delivery_unknown")
+        self.assertFalse(second["retryable"])
+
+    def test_optional_pair_is_required_before_writing_or_sending(self):
+        import io
+        args=["handoff","--socket-path","unused","--thread-id","t","--expected-turn-id","u", "--message","x",
+              "--receipt-path",str(self.root/"r"),"--prior-delivery-state","unknown","--offline-private-root",str(self.root)]
+        with patch("sys.stderr",io.StringIO()), patch.object(mod,"send_codex_thread_message") as send:
+            with self.assertRaises(SystemExit) as caught:mod.codex_thread_handoff_main(args)
+        self.assertEqual(caught.exception.code,2)
+        self.assertFalse(self.path.exists())
+        send.assert_not_called()
+
+    def test_unknown_prior_delivery_is_not_replayed_by_real_sender(self):
+        with patch.object(mod,"_open_codex_app_connection",side_effect=AssertionError("no socket")) as connect:
+            rc,outcome=self.cli()
+        self.assertEqual(rc,3)
+        self.assertEqual(outcome["delivery_state"],"delivery_unknown")
+        self.assertEqual(outcome["offline_artifact"]["artifact_state"],"retained")
+        connect.assert_not_called()
+
+    def test_all_opened_writer_descriptors_close_on_success_and_failure(self):
+        original=mod.os.open;opened=[]
+        def track(*args,**kwargs):
+            fd=original(*args,**kwargs);opened.append(fd);return fd
+        with patch.object(mod.os,"open",side_effect=track):
+            self.assertEqual(self.write()["artifact_state"],"retained")
+        for fd in opened:
+            with self.assertRaises(OSError):mod.os.fstat(fd)
+
+
+    def test_persistence_failure_preserves_unknown_without_inspecting_prior_delivery(self):
+        self.path.write_bytes(b"retained earlier payload")
+        before = self.path.read_bytes()
+        with patch.object(mod, "send_codex_thread_message") as send:
+            rc, outcome = self.cli()
+        self.assertEqual((rc, outcome["delivery_state"]), (3, "delivery_unknown"))
+        self.assertIs(outcome["current_call_transport_attempted"], False)
+        self.assertFalse(outcome["retryable"])
+        self.assertEqual(self.path.read_bytes(), before)
+        send.assert_not_called()
+
+    def test_prior_not_attempted_does_not_override_uninspected_existing_receipt(self):
+        self.path.write_bytes(b"existing artifact")
+        receipt = self.root / "delivery.json"
+        retained = b'{"opaque_prior_history":"must not be reclassified"}\n'
+        receipt.write_bytes(retained)
+        with patch.object(mod, "send_codex_thread_message") as send:
+            rc, outcome = self.cli("--prior-delivery-state", "not_attempted")
+        self.assertEqual((rc, outcome["delivery_state"]), (3, "delivery_unknown"))
+        self.assertIs(outcome["current_call_transport_attempted"], False)
+        self.assertFalse(outcome["retryable"])
+        self.assertEqual(receipt.read_bytes(), retained)
+        send.assert_not_called()

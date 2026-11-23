@@ -837,6 +837,102 @@ def codex_handoff_artifact_main(argv: Optional[Sequence[str]] = None) -> int:
     return {"verified": 0, "unavailable": 1, "refused": 2}[outcome["artifact_state"]]
 
 
+def write_codex_handoff_artifact(
+    *, private_root, artifact_path, payload, max_bytes=131072,
+) -> Dict[str, Any]:
+    """Retain exact caller bytes before delivery; never enqueue or grant work.
+
+    The caller must retain its owned0700 namespace. An existing path is never
+    overwritten or silently reused. Partial files survive failures for diagnosis.
+    Namespace checks are cooperative, as for the existing artifact reader.
+    """
+    result = {
+        "schema": "codex-private-handoff-artifact-write/v1",
+        "artifact_state": "refused", "reason": "invalid_request",
+        "path": None, "bytes": None, "sha256": None, "full9": None,
+        "created": False, "readback_verified": False,
+        "delivery_assessed": False, "processing_confirmed": False,
+        "completion_eligible": False, "execution_granted": False,
+        "claim_granted": False, "retryable": False,
+    }
+    try:
+        if (type(payload) is not bytes or type(max_bytes) is not int
+                or not 1 <= len(payload) <= max_bytes <= 1048576):
+            return result
+        root, path = Path(private_root), Path(artifact_path)
+        if (not root.is_absolute() or not path.is_absolute()
+                or ".." in root.parts or ".." in path.parts
+                or "\0" in str(root) or "\0" in str(path)
+                or path.parent != root or len(root.parts) < 2):
+            return result
+    except (TypeError, ValueError, UnicodeError):
+        return result
+    result.update(path=str(path), bytes=len(payload),
+                  sha256=hashlib.sha256(payload).hexdigest())
+    def directory_identity(value):
+        return (value.st_dev, value.st_ino, value.st_mode, value.st_uid, value.st_gid)
+    keys = ("st_dev", "st_ino", "st_mode", "st_uid", "st_gid", "st_nlink",
+            "st_size", "st_mtime_ns", "st_ctime_ns")
+    def full9(value):
+        return {key: str(getattr(value, key)) for key in keys}
+    try:
+        with contextlib.ExitStack() as stack:
+            directory = os.open("/", os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC)
+            stack.callback(os.close, directory)
+            directories = []
+            for part in root.parts[1:]:
+                parent = directory
+                directory = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+                                    | os.O_CLOEXEC, dir_fd=parent)
+                stack.callback(os.close, directory)
+                directories.append((parent, part, directory, directory_identity(os.fstat(directory))))
+            info = os.fstat(directory)
+            if info.st_uid != os.geteuid() or stat.S_IMODE(info.st_mode) != 0o700:
+                return {**result, "reason": "artifact_root_not_private"}
+            def verify_namespace():
+                for parent, part, opened, identity in directories:
+                    if (directory_identity(os.fstat(opened)) != identity
+                            or directory_identity(os.stat(part, dir_fd=parent, follow_symlinks=False)) != identity):
+                        raise ValueError("artifact_namespace_changed")
+            verify_namespace()
+            fd = os.open(path.name, os.O_WRONLY | os.O_CREAT | os.O_EXCL
+                         | os.O_NOFOLLOW | os.O_CLOEXEC, 0o600, dir_fd=directory)
+            stack.callback(os.close, fd)
+            result["created"] = True
+            info = os.fstat(fd)
+            if not stat.S_ISREG(info.st_mode) or info.st_uid != os.geteuid() or info.st_nlink != 1:
+                raise ValueError("artifact_identity_mismatch")
+            pending = memoryview(payload)
+            while pending:
+                count = os.write(fd, pending)
+                if type(count) is not int or count <= 0 or count > len(pending):
+                    raise OSError("artifact_write_incomplete")
+                pending = pending[count:]
+            os.fchmod(fd, 0o400)
+            os.fsync(fd)
+            os.fsync(directory)
+            before = full9(os.fstat(fd))
+            verify_namespace()
+            verified = read_codex_handoff_artifact(
+                private_root=str(root), artifact_path=str(path),
+                expected_bytes=len(payload), expected_sha256=result["sha256"], max_bytes=max_bytes,
+            )
+            verify_namespace()
+            if (verified.get("artifact_state") != "verified"
+                    or verified.get("full9") != before
+                    or full9(os.fstat(fd)) != before
+                    or full9(os.stat(path.name, dir_fd=directory, follow_symlinks=False)) != before):
+                raise ValueError("artifact_readback_or_identity_mismatch")
+        return {**result, "artifact_state": "retained", "reason": "exact_artifact_retained",
+                "full9": before, "readback_verified": True}
+    except FileExistsError:
+        return {**result, "reason": "artifact_already_exists"}
+    except Exception as error:
+        # No cleanup/retry: a created file may contain some or all caller bytes.
+        return {**result, "artifact_state": "incomplete" if result["created"] else "refused",
+                "reason": "artifact_not_retained", "error_type": type(error).__name__}
+
+
 def codex_thread_handoff_main(argv: Optional[Sequence[str]] = None) -> int:
     """Explicit existing-thread handoff command; acknowledgement is enqueue only.
 
@@ -874,7 +970,11 @@ def codex_thread_handoff_main(argv: Optional[Sequence[str]] = None) -> int:
     )
     parser.add_argument("--timeout-seconds", type=float, default=15.0)
     parser.add_argument("--max-attempts", type=int, default=3)
+    parser.add_argument("--offline-private-root")
+    parser.add_argument("--offline-artifact-path")
     options = parser.parse_args(argv)
+    if (options.offline_private_root is None) != (options.offline_artifact_path is None):
+        parser.error("offline private root and artifact path must be supplied together")
 
     def unknown(reason):
         return {
@@ -884,21 +984,38 @@ def codex_thread_handoff_main(argv: Optional[Sequence[str]] = None) -> int:
             "claim_granted": False, "retryable": False,
         }
 
-    try:
-        outcome = send_codex_thread_message(
-            socket_path=options.socket_path,
-            thread_id=options.thread_id,
-            expected_turn_id=options.expected_turn_id,
-            message=options.message,
-            receipt_path=options.receipt_path,
-            timeout_seconds=options.timeout_seconds,
-            max_attempts=options.max_attempts,
-            prior_delivery_state=options.prior_delivery_state,
-        )
-    except Exception:
-        # The transport may have sent before an unexpected failure. Never
-        # convert that uncertainty into permission for another delivery.
-        outcome = unknown("cli_transport_exception")
+    offline_artifact = None
+    if options.offline_private_root is not None:
+        try:
+            offline_artifact = write_codex_handoff_artifact(
+                private_root=options.offline_private_root,
+                artifact_path=options.offline_artifact_path,
+                payload=options.message.encode("utf-8"),
+            )
+        except Exception:
+            offline_artifact = {"artifact_state": "incomplete", "reason": "cli_artifact_exception"}
+    if offline_artifact is not None and (
+            type(offline_artifact) is not dict or offline_artifact.get("artifact_state") != "retained"):
+        # No send by this call does not prove that an earlier attempt did not
+        # deliver. The existing receipt is deliberately not inspected here.
+        outcome = unknown("offline_artifact_not_retained")
+        outcome["current_call_transport_attempted"] = False
+    else:
+        try:
+            outcome = send_codex_thread_message(
+                socket_path=options.socket_path,
+                thread_id=options.thread_id,
+                expected_turn_id=options.expected_turn_id,
+                message=options.message,
+                receipt_path=options.receipt_path,
+                timeout_seconds=options.timeout_seconds,
+                max_attempts=options.max_attempts,
+                prior_delivery_state=options.prior_delivery_state,
+            )
+        except Exception:
+            # The transport may have sent before an unexpected failure. Never
+            # convert that uncertainty into permission for another delivery.
+            outcome = unknown("cli_transport_exception")
 
     exit_codes = {
         "accepted": 0, "not_sent": 1, "refused": 2,
@@ -916,10 +1033,14 @@ def codex_thread_handoff_main(argv: Optional[Sequence[str]] = None) -> int:
         or (outcome["delivery_state"] != "not_sent" and outcome["retryable"] is not False)
     ):
         outcome = unknown("cli_invalid_result")
+    if offline_artifact is not None:
+        outcome = {**outcome, "offline_artifact": offline_artifact}
     try:
         wire = json.dumps(outcome, sort_keys=True, allow_nan=False)
     except Exception:
         outcome = unknown("cli_invalid_result")
+        if offline_artifact is not None:
+            outcome["offline_artifact"] = offline_artifact if type(offline_artifact) is dict else {"artifact_state": "incomplete"}
         wire = json.dumps(outcome, sort_keys=True, allow_nan=False)
     # If output is lost, the caller must reuse the durable receipt rather than
     # mint another identity. Do not retry or clean the namespace here.
