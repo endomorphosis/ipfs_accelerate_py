@@ -1,0 +1,386 @@
+{
+  "MAIN_lease": "b043e7fcdab640518233db1d41d504ea",
+  "MAIN_request_id": "source-working-set-local-20261015-01",
+  "actual_passed_cases": 451,
+  "all_collected_cases_executed_once_passed": true,
+  "authored_complete_mcp_reply_exposure": {
+    "full_local_tokens": 5457,
+    "full_reply_bytes": 32495,
+    "provider_usage_measured": false,
+    "range_local_tokens": 122,
+    "range_reply_bytes": 688,
+    "scope": "authored_local_complete_MCP_reply_only",
+    "tool_schema_and_guidance_cost_included": false,
+    "whole_task_token_savings_measured": false
+  },
+  "captured_current_runtime_python_files": 13067,
+  "captured_normal_inputs": 83,
+  "child_import_origins_verified": {
+    "direct_script_packages": {
+      "ipfs_accelerate_py": "/tmp/ipfs-source-working-set-20261015-m_7mnchl/accelerate/ipfs_accelerate_py/__init__.py",
+      "ipfs_datasets_py": "/tmp/ipfs-source-working-set-20261015-m_7mnchl/datasets/ipfs_datasets_py/__init__.py",
+      "ipfs_kit_py": "/tmp/ipfs-source-working-set-20261015-m_7mnchl/kit/ipfs_kit_py/__init__.py"
+    },
+    "duckdb_origin": "/home/barberb/lift_coding/.venvs/ipfs-datasets-duckdb-quack/lib/python3.12/site-packages/duckdb/__init__.py",
+    "duckdb_version": "1.5.5",
+    "inherited_packages": {
+      "ipfs_accelerate_py": "/tmp/ipfs-source-working-set-20261015-m_7mnchl/accelerate/ipfs_accelerate_py/__init__.py",
+      "ipfs_datasets_py": "/tmp/ipfs-source-working-set-20261015-m_7mnchl/datasets/ipfs_datasets_py/__init__.py",
+      "ipfs_kit_py": "/tmp/ipfs-source-working-set-20261015-m_7mnchl/kit/ipfs_kit_py/__init__.py"
+    },
+    "project_packages_executed": false,
+    "provider_calls": 0,
+    "schema": "source-working-set-child-import-origin@1"
+  },
+  "completed_unix": 1792084505.5830085,
+  "earlier_execution_attempts": [
+    {
+      "directory": "qualification01",
+      "exit_code": 1,
+      "kind": "current-source-and-normal-test-staging",
+      "qualified": false,
+      "reason": "pre-capture inventory correctly refused directories named with .py suffix; no staged checkout or tests created",
+      "successful_staging_only": false
+    },
+    {
+      "directory": "qualification02",
+      "exit_code": 1,
+      "kind": "current-source-and-normal-test-staging",
+      "qualified": false,
+      "reason": "partial clone preparation refused .py-named directory during stale-source cleanup; no tests ran",
+      "successful_staging_only": false
+    },
+    {
+      "directory": "qualification03",
+      "exit_code": 1,
+      "kind": "current-source-and-normal-test-staging",
+      "qualified": false,
+      "reason": "capture refused a runtime source change during copying; owned five production files and four changed tests remain at reviewed opening pins; no tests ran",
+      "successful_staging_only": false
+    },
+    {
+      "directory": "qualification04",
+      "exit_code": 0,
+      "kind": "current-source-and-normal-test-staging",
+      "qualified": null,
+      "reason": null,
+      "successful_staging_only": true
+    },
+    {
+      "directory": "qualification04",
+      "exit_code": 1,
+      "kind": "normal-native-regression",
+      "qualified": false,
+      "reason": "normal state_inside_git guards refused test harness scratch under workspace Git; move scratch outside Git without changing production or tests",
+      "successful_staging_only": false
+    },
+    {
+      "directory": "qualification05",
+      "exit_code": 0,
+      "kind": "current-source-and-normal-test-staging",
+      "qualified": null,
+      "reason": null,
+      "successful_staging_only": true
+    },
+    {
+      "directory": "qualification05",
+      "exit_code": 1,
+      "kind": "normal-native-regression",
+      "qualified": false,
+      "reason": "451 normal cases ran: 449 passed, two failures retained for investigation; source guards and cleanup retained",
+      "successful_staging_only": false
+    }
+  ],
+  "earlier_failed_native_qualifications": [
+    {
+      "directory": "qualification04",
+      "exit_code": 1,
+      "qualified": false,
+      "reason": "normal state_inside_git guards refused test harness scratch under workspace Git; move scratch outside Git without changing production or tests"
+    },
+    {
+      "directory": "qualification05",
+      "exit_code": 1,
+      "qualified": false,
+      "reason": "451 normal cases ran: 449 passed, two failures retained for investigation; source guards and cleanup retained"
+    }
+  ],
+  "evidence_files": {
+    "local01/acquisition.json": {
+      "bytes": 504,
+      "sha256": "e62de2490028353896864da026caadfc4ece9ff8071b55f8eaf583aaacdda71f"
+    },
+    "local01/coordinator-exit.json": {
+      "bytes": 125,
+      "sha256": "64e604a17155fc8ddbce09ac2a8aa30daf8443b5089ee4abc01a43c62a9a9f42"
+    },
+    "local01/coordinator.py": {
+      "bytes": 7045,
+      "sha256": "076a0afeaf9b148cc996e325848c846ba57d76bd9cd4773815406018ab433e05"
+    },
+    "local01/reservation.json": {
+      "bytes": 825,
+      "sha256": "e1f768fc98761f1d0bfc509348084397cdc1fc69c12eee19445f5254e57cf877"
+    },
+    "owned-executions.json": {
+      "bytes": 3502,
+      "sha256": "9aee802f08197596d67ed73d4ca7c9d7b976f03d006bade156f74c11710dddc6"
+    },
+    "qualification04/junit.xml": {
+      "bytes": 73726,
+      "sha256": "d02bd015c2d494f25cf2268135f6db0aaaea2568a31f029482b433bcc4d87195"
+    },
+    "qualification04/qualification-process-result.json": {
+      "bytes": 1483,
+      "sha256": "5710ace5aa68f5ea7b96a673b0352026d04e1e3f9a02f75f297d4ebd8c43a6e9"
+    },
+    "qualification04/verification.json": {
+      "bytes": 18958256,
+      "sha256": "74395a50fd0bdd5a929c23571f18f6b795e7dca75d366f65bdc1761e0d2e2e7a"
+    },
+    "qualification05/junit.xml": {
+      "bytes": 6375204,
+      "sha256": "69d56e20c5dfc87fe30d6418966968f931389ee035129595fad7e6bb6c558d81"
+    },
+    "qualification05/qualification-process-result.json": {
+      "bytes": 1483,
+      "sha256": "c2723d5cad3605018e77d9998c218d9eb82670a4cdd87d8904567706af906d00"
+    },
+    "qualification05/verification.json": {
+      "bytes": 70260915,
+      "sha256": "89220795a08ea2fa99b822968b0c8db9a7d2b6187a2ffd334bfff6722128ed2a"
+    },
+    "qualification06/child-import-origin-probe.json": {
+      "bytes": 3773,
+      "sha256": "d0d9af6f38af5061b133c6bdb919cdf59f97592788098cf663119e82474bd8c7"
+    },
+    "qualification06/child-import-origin-probe.log": {
+      "bytes": 949,
+      "sha256": "1d06b9a6b1809a34676c281ff507ef63ebbcd24e47de4b8dc6d8c518c2e3ae0e"
+    },
+    "qualification06/collected-nodeids.json": {
+      "bytes": 7393666,
+      "sha256": "9967c88b6392ff3593b00948f618e2f278fc470a6228dc3ef8dcc0a0543d2c70"
+    },
+    "qualification06/full-selected-tests.json": {
+      "bytes": 604,
+      "sha256": "34c6727fb3bc7d64738b5f37cc7cbb105d1192fdb7d725f16beba9bedffad85c"
+    },
+    "qualification06/isolation-capture.json": {
+      "bytes": 17549425,
+      "sha256": "6eb53e5d794b201fd77fde426e9e620a1fcd6ece0572b29be1fdc4ed4dac3f14"
+    },
+    "qualification06/junit.xml": {
+      "bytes": 6362732,
+      "sha256": "2ed8b1f95137b761c7c1de160969acb90c271a8d759bdb45b720b78daf5527a9"
+    },
+    "qualification06/qualification-process-invocation.json": {
+      "bytes": 2497,
+      "sha256": "75f5d9f621c888e1d924a5e3d070f9c50a670fda7642fccb23c199e35f6f1abb"
+    },
+    "qualification06/qualification-process-result.json": {
+      "bytes": 1483,
+      "sha256": "ff56e0bd4500639018df7398a30e0453e2789cc6a539c400415076a2dde0a3a7"
+    },
+    "qualification06/qualification.py": {
+      "bytes": 12022,
+      "sha256": "6cea864f28036212b1f5527333fa923e6323701fdf1846d4a854109bc6ef7bfa"
+    },
+    "qualification06/run_qualification.py": {
+      "bytes": 10740,
+      "sha256": "0612ef0777ea7cb955820362054fd17a441c3f7b35b21656271b24ed3245c29a"
+    },
+    "qualification06/selected-tests.json": {
+      "bytes": 604,
+      "sha256": "34c6727fb3bc7d64738b5f37cc7cbb105d1192fdb7d725f16beba9bedffad85c"
+    },
+    "qualification06/source-census-opening.json": {
+      "bytes": 4990204,
+      "sha256": "b59bc58894c9b6db2a1c1a3731bb5837e44bbd6b424c4fb9e672aa4428cf624a"
+    },
+    "qualification06/source-layout.json": {
+      "bytes": 216,
+      "sha256": "cff1b5037658e33c7efd0db1f66fcb9dfe18415c24793994198c2478fd6ab50c"
+    },
+    "qualification06/staging-receipt.json": {
+      "bytes": 2281,
+      "sha256": "eff631629d5f02f2ad11a1420ac5cd772c27a066eb0d8ee9d58999d99dfc3db2"
+    },
+    "qualification06/tool-exit.json": {
+      "bytes": 126,
+      "sha256": "51b297fcaf352ecb2f5092f8dcbd35be0136284b8142ab5e2c234d618a65b34f"
+    },
+    "qualification06/verification.json": {
+      "bytes": 70260915,
+      "sha256": "811cba7159e25d89a3163bb62f97de2504fba8f68c4acdc2fc8a7f36d473cfd6"
+    },
+    "reviewed-change-pins.json": {
+      "bytes": 2403,
+      "sha256": "d06aaacbfe7f865f58a9c2ad4ec269362f79de0f79fe301375da2a235db39dde"
+    },
+    "root-opening-pins.json": {
+      "bytes": 2938,
+      "sha256": "7beb7bb8b4b7ea7cc4f98db847a425fc9928c0a8960029cf1095710b2e524e13"
+    },
+    "staging06.log": {
+      "bytes": 230,
+      "sha256": "df8ef49d0c1050cddddce08335862253ebd707a0df45418d00f9653047720c44"
+    }
+  },
+  "frozen_MAIN_configuration_sha256": "c60d91943187515915b8c4c0d0ace3f3703f7de4da1960f09e49371a8cdf6575",
+  "frozen_source_hashes_and_runtime_membership_verified": true,
+  "global_pool_empty_required": false,
+  "limitations": {
+    "exposure_scope": "one authored local complete MCP reply comparison; excludes tool schemas, guidance, retries and full session",
+    "formal_proof_or_completion_authority": false,
+    "model_responses_in_tests": "authored fixtures",
+    "neural_head_or_CUDA_performance_qualified": false,
+    "official_task_success_measured": false,
+    "provider_call_count_instrumented": false,
+    "provider_usage_measured": false,
+    "runtime_archive_or_Docker_lifecycle_qualified": false,
+    "whole_task_token_savings_measured": false
+  },
+  "mandatory_ast_seals": 451,
+  "native_process_cleanup_verified": true,
+  "native_reservation_closed": true,
+  "optional_proof_reuse_mode": "off",
+  "original_owned_source_pins": {
+    "/home/barberb/lift_coding/external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/runtime/repository_source_mcp.py": {
+      "bytes": 37584,
+      "sha256": "2d39215eb95d7d52535fc809f53d5fbafebaf692ca138380d80ffe8cb80e6de8"
+    },
+    "/home/barberb/lift_coding/external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/runtime/repository_source_policy.py": {
+      "bytes": 16050,
+      "sha256": "e8a530f291d6dc0eb3266cd8d40a908c34e13f29e7fc573237a5cbf034bea074"
+    },
+    "/home/barberb/lift_coding/external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/runtime/repository_source_session.py": {
+      "bytes": 29787,
+      "sha256": "bdc256825eea4a41815c9de9ab7cd3b8c24251c2e01acb14dd8e671b94113986"
+    },
+    "/home/barberb/lift_coding/external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/runtime/repository_world_invocation_replay.py": {
+      "bytes": 18014,
+      "sha256": "6b64750536c08abe5873c7632c063ee214930ce7a64803c88d6a5f263cf97ed4"
+    },
+    "/home/barberb/lift_coding/external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py": {
+      "bytes": 127218,
+      "sha256": "9c68fb6328c4fd157b5ef7d4e3def0bcbf063b085ed1bab06c250f74a8e23003"
+    },
+    "/home/barberb/lift_coding/external/ipfs_accelerate/test/api/test_repository_source_line_stdio.py": {
+      "bytes": 8790,
+      "sha256": "74e25d3d404bdad360db7c02c3e7dcdfdbb588a8e9ab130fd23cf1c41b7b9019"
+    },
+    "/home/barberb/lift_coding/external/ipfs_accelerate/test/api/test_repository_source_session.py": {
+      "bytes": 30567,
+      "sha256": "d2cd8a499f80d6fce69fc52ace57d6d8cc0c3ce8be90edf1ecbf7eca5d6bfc0a"
+    },
+    "/home/barberb/lift_coding/external/ipfs_accelerate/test/api/test_repository_world_dispatch.py": {
+      "bytes": 20820,
+      "sha256": "94a549208a11969de42da82e8f37e41916ac762c9242b485c7dd3e90ccc2d1a8"
+    },
+    "/home/barberb/lift_coding/external/ipfs_accelerate/test/api/test_repository_world_invocation_replay.py": {
+      "bytes": 18714,
+      "sha256": "68623edf51b5fd98bf0428fbbd77d718a534b712425cbaa8c98028ff73d5eaf9"
+    }
+  },
+  "owned_current_source_pins": {
+    "/home/barberb/lift_coding/external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/runtime/repository_source_mcp.py": {
+      "bytes": 37584,
+      "sha256": "2d39215eb95d7d52535fc809f53d5fbafebaf692ca138380d80ffe8cb80e6de8"
+    },
+    "/home/barberb/lift_coding/external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/runtime/repository_source_policy.py": {
+      "bytes": 16050,
+      "sha256": "e8a530f291d6dc0eb3266cd8d40a908c34e13f29e7fc573237a5cbf034bea074"
+    },
+    "/home/barberb/lift_coding/external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/runtime/repository_source_session.py": {
+      "bytes": 29787,
+      "sha256": "0bfcba56915bda4061af9db0f643bb13dedb6253e649e48e641ae143083466c4"
+    },
+    "/home/barberb/lift_coding/external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/runtime/repository_world_invocation_replay.py": {
+      "bytes": 18014,
+      "sha256": "6b64750536c08abe5873c7632c063ee214930ce7a64803c88d6a5f263cf97ed4"
+    },
+    "/home/barberb/lift_coding/external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py": {
+      "bytes": 127218,
+      "sha256": "9c68fb6328c4fd157b5ef7d4e3def0bcbf063b085ed1bab06c250f74a8e23003"
+    },
+    "/home/barberb/lift_coding/external/ipfs_accelerate/test/api/test_repository_source_line_stdio.py": {
+      "bytes": 8790,
+      "sha256": "c2ccf1f47f761ba2a7ba259647690b6fbde6d47a264bfc3710af86f3cb0d5819"
+    },
+    "/home/barberb/lift_coding/external/ipfs_accelerate/test/api/test_repository_source_session.py": {
+      "bytes": 30567,
+      "sha256": "00bf66b89a0482cf3e3643a157d6b7899a87368d1ff948302a77d46317527340"
+    },
+    "/home/barberb/lift_coding/external/ipfs_accelerate/test/api/test_repository_world_dispatch.py": {
+      "bytes": 20820,
+      "sha256": "94a549208a11969de42da82e8f37e41916ac762c9242b485c7dd3e90ccc2d1a8"
+    },
+    "/home/barberb/lift_coding/external/ipfs_accelerate/test/api/test_repository_world_invocation_replay.py": {
+      "bytes": 19529,
+      "sha256": "6f2cdfb3e7c3a7cbffc009000d43aecbd1d836c02362296173be581e22fd7af3"
+    }
+  },
+  "qualified": true,
+  "reviewed_source_pin_changes": {
+    "changes": {
+      "/home/barberb/lift_coding/external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/runtime/repository_source_session.py": {
+        "after": {
+          "bytes": 29787,
+          "sha256": "0bfcba56915bda4061af9db0f643bb13dedb6253e649e48e641ae143083466c4"
+        },
+        "before": {
+          "bytes": 29787,
+          "sha256": "bdc256825eea4a41815c9de9ab7cd3b8c24251c2e01acb14dd8e671b94113986"
+        },
+        "reason": "rename newly introduced binary-range refusal to line_range_requires_text so existing alphabetic-only MCP sanitizer preserves the fixed public code",
+        "reviewed": true
+      },
+      "/home/barberb/lift_coding/external/ipfs_accelerate/test/api/test_repository_source_line_stdio.py": {
+        "after": {
+          "bytes": 8790,
+          "sha256": "c2ccf1f47f761ba2a7ba259647690b6fbde6d47a264bfc3710af86f3cb0d5819"
+        },
+        "before": {
+          "bytes": 8790,
+          "sha256": "74e25d3d404bdad360db7c02c3e7dcdfdbb588a8e9ab130fd23cf1c41b7b9019"
+        },
+        "reason": "require renamed refusal through actual native MCP child",
+        "reviewed": true
+      },
+      "/home/barberb/lift_coding/external/ipfs_accelerate/test/api/test_repository_source_session.py": {
+        "after": {
+          "bytes": 30567,
+          "sha256": "00bf66b89a0482cf3e3643a157d6b7899a87368d1ff948302a77d46317527340"
+        },
+        "before": {
+          "bytes": 30567,
+          "sha256": "d2cd8a499f80d6fce69fc52ace57d6d8cc0c3ce8be90edf1ecbf7eca5d6bfc0a"
+        },
+        "reason": "require renamed binary-range refusal under the preserved sanitizer contract",
+        "reviewed": true
+      },
+      "/home/barberb/lift_coding/external/ipfs_accelerate/test/api/test_repository_world_invocation_replay.py": {
+        "after": {
+          "bytes": 19529,
+          "sha256": "6f2cdfb3e7c3a7cbffc009000d43aecbd1d836c02362296173be581e22fd7af3"
+        },
+        "before": {
+          "bytes": 18714,
+          "sha256": "68623edf51b5fd98bf0428fbbd77d718a534b712425cbaa8c98028ff73d5eaf9"
+        },
+        "reason": "assert precise existing typed replay error for each mutation, including prompt hash mismatch; production replay unchanged",
+        "reviewed": true
+      }
+    },
+    "original_opening_pins_sha256": "7beb7bb8b4b7ea7cc4f98db847a425fc9928c0a8960029cf1095710b2e524e13",
+    "predecessor_qualification": "qualification05",
+    "reviewed_unix": 1792084119.0510888,
+    "schema": "source-working-set-reviewed-change-pins@1"
+  },
+  "schema": "source-working-set-qualification-result@1",
+  "scope": "exact original line ranges with full-source freshness, bounded complete MCP frames, advisory world-packet estimates and historical replay regression",
+  "selected_qualification": "qualification06",
+  "selected_test_files": 12,
+  "skipped_cases": 0
+}

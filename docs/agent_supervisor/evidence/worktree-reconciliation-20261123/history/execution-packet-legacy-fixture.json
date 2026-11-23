@@ -1,0 +1,33 @@
+{
+  "actual_three_way_conflict_hunks": 3,
+  "admission_execution_completion_or_qualification_authority": false,
+  "base_blob": {
+    "mode": "100644",
+    "oid": "1159c806a3545eb0d9dded21ace9ae64ca39df3a",
+    "type": "blob"
+  },
+  "disposition": "PROPOSAL_NOT_ADOPTED",
+  "published_HEAD": "317bd433b44791e1ff5f3eebee802832424f1953",
+  "published_path_blob_before": {
+    "mode": "100644",
+    "oid": "c0ab7463d58900a13bd350af32187dcbbefb2926",
+    "type": "blob"
+  },
+  "retained_delta": {
+    "bytes": 12983,
+    "format": "zero-context unifieddiff; requires exact base and deliberate review; never autoapply",
+    "path": "docs/agent_supervisor/evidence/worktree-reconciliation-20261123/history/execution-packet-legacy-fixture.patch",
+    "sha256": "d7807f0937ef594bb6811f9641657d0b87822f5a6e580d64db0b567d588ef6bb"
+  },
+  "schema": "retained-conflicting-source-variant/v1",
+  "semantic_resolution": "Current public selector fixture uses canonical revision refs and observes all four repair calls without flagged-task/provider/persisted effects. Retained older tuple/private-spy fixture conflicts with that current API; keep current testowner, retain exact older delta.",
+  "source_HEAD": "2f6ffe86ad0cf8dd93d4bfdf13bb72c466aac8e8",
+  "source_owner_path": "test/api/test_agent_supervisor_execution_packet_admission.py",
+  "source_snapshot": {
+    "blob_oid": "2b9f0b4ef2cb03bd2aa9a1f35562fb32f7351200",
+    "bytes": 71323,
+    "sha256": "117ec9862a819e3cd55604c24e935b31a367e149383422c61aa7a584a5b76ab2"
+  },
+  "source_worktree_label": "legal-ir-native-metadata-executor-20261029",
+  "status": "PROPOSAL_NOT_ADOPTED"
+}

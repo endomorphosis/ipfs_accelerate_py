@@ -1,0 +1,403 @@
+{
+  "MAIN_lease": "37192669a689442a93d3b4686206a864",
+  "MAIN_request_id": "codex-lifecycle-local-20261016-01",
+  "actual_passed_cases": 982,
+  "all_collected_cases_executed_once_passed": true,
+  "authored_test_properties": {
+    "baseline_session_overlap_observation": [
+      {
+        "observation": {
+          "aggregate_complete_total_tokens_withheld": true,
+          "baseline_identity_inventory_complete": true,
+          "baseline_reported_total_tokens": 170,
+          "billing_total_verified": false,
+          "causal_claim": false,
+          "failed_supervisor_invocations": 1,
+          "identified_baseline_sessions": 1,
+          "live_provider_execution": false,
+          "measurement_scope": "authored_native_jsonl_baseline_and_supervisor",
+          "per_pass_ratios_withheld": true,
+          "provider_receipts_authenticity_verified": false,
+          "retained_trials": 2,
+          "schema": "baseline-session-overlap-observation@1",
+          "shared_native_sessions": 1,
+          "supervisor_native_sessions": 2,
+          "supervisor_reconciled_total_tokens": 247,
+          "token_savings_measured": false,
+          "whole_interaction_qualified": false
+        },
+        "test_classname": "benchmarks.agent_supervisor.container_coding.test_baseline_session_overlap",
+        "test_name": "test_authored_baseline_and_supervisor_reuse_withholds_both_arm_totals"
+      }
+    ],
+    "codex_lifecycle_harbor_observation": [
+      {
+        "observation": {
+          "authored_native_fixture": true,
+          "billing_total_verified": false,
+          "cached_input_tokens": 115,
+          "campaign_usage_complete": null,
+          "case": "continuation_and_completed_failed_fresh_retry",
+          "completed_failed_retry_retained": true,
+          "completion_authority": false,
+          "completion_basis": "native_lifecycle_after_latest_usage@1",
+          "final_rollout_validated_snapshot_records": 3,
+          "harbor_cache_tokens": 115,
+          "harbor_input_tokens": 230,
+          "harbor_output_tokens": 50,
+          "input_tokens": 230,
+          "live_provider_execution": false,
+          "native_sessions_observed": 2,
+          "output_tokens": 50,
+          "provider_receipts_authenticated": false,
+          "provider_total_tokens": 280,
+          "raw_wrapper_total_tokens": 400,
+          "real_parser_exercised": true,
+          "retained_router_receipts": 3,
+          "schema": "codex-lifecycle-harbor-observation@1",
+          "scope": "authored_native_jsonl_to_existing_usage_consumers",
+          "selected_session_total_tokens": [
+            200,
+            80
+          ],
+          "token_savings_measured": false,
+          "validated_snapshot_records_by_receipt": [
+            1,
+            2,
+            1
+          ]
+        },
+        "test_classname": "test.api.test_codex_lifecycle_harbor",
+        "test_name": "test_real_parser_continuation_and_completed_failed_retry_reconcile_once"
+      }
+    ],
+    "native_session_comparison_observation": [
+      {
+        "observation": {
+          "authored_provider_facts": true,
+          "baseline_total_tokens": 88,
+          "billing_total_verified": false,
+          "causal_claim": false,
+          "coding_invocations": 2,
+          "delivery_bytes_added_to_native_tokens": false,
+          "failed_invocations": 1,
+          "live_provider_execution": false,
+          "local_tokenizer_counts_added_to_native_usage": false,
+          "measurement_scope": "authored_native_jsonl_and_authored_mcp_audits",
+          "native_sessions": 2,
+          "planning_invocations": 1,
+          "provider_ingestion_verified": false,
+          "provider_receipts_authenticity_verified": false,
+          "raw_cumulative_wrapper_total_tokens": 357,
+          "read_scope_counts": {
+            "compact_reads": 0,
+            "definition_reads": 0,
+            "exposed_content_utf8_bytes": 36,
+            "failed_reads": 1,
+            "full_file_reads": 1,
+            "generation_bindings_observed": 2,
+            "legacy_compact_reads": 0,
+            "legacy_read_calls": 0,
+            "legacy_successful_reads": 0,
+            "line_range_omitted_lines": 2,
+            "line_range_reads": 1,
+            "line_range_selected_lines": 2,
+            "line_range_total_lines": 4,
+            "original_reads": 2,
+            "read_calls": 3,
+            "successful_reads": 2,
+            "unbound_compact_reads": 0,
+            "unbound_successes": 0
+          },
+          "retained_trial_count": 2,
+          "runtime_control_enforcement_verified": false,
+          "schema": "native-session-comparison-observation@1",
+          "selected_native_session_total_tokens": [
+            170,
+            77
+          ],
+          "selected_observation_indices": [
+            1,
+            2
+          ],
+          "shared_native_sessions": 1,
+          "source_displacement_verified": false,
+          "supervisor_official_passes": 1,
+          "supplied_invocations": 3,
+          "token_savings_measured": false,
+          "tokens": {
+            "cached_input_tokens": 130,
+            "input_tokens": 220,
+            "output_tokens": 27,
+            "total_tokens": 247
+          },
+          "tool_token_attribution_available": false,
+          "whole_interaction_qualified": false
+        },
+        "test_classname": "benchmarks.agent_supervisor.container_coding.test_benchmark_native_session_accounting",
+        "test_name": "test_authored_rollouts_reconcile_planning_coding_and_failed_retry_once"
+      }
+    ],
+    "terminal_usage_coverage_observation": [
+      {
+        "observation": {
+          "billing_total_verified": false,
+          "campaign_usage_complete": null,
+          "causal_claim": false,
+          "complete_provider_calls_withheld": true,
+          "expected_provider_attempt_count": null,
+          "failed_retained_invocations": 1,
+          "known_native_total_tokens": 247,
+          "live_provider_execution": false,
+          "local_prompt_bytes_added_to_native_usage": false,
+          "measurement_scope": "authored_native_jsonl_and_local_receipt_logs",
+          "possible_unreceipted_attempt_reported": true,
+          "provider_receipts_authenticity_verified": false,
+          "receipt_collection_complete": false,
+          "reported_complete_total_tokens": null,
+          "retained_invocations": 3,
+          "scan_log_files_read": 1,
+          "scan_log_files_seen": 2,
+          "scan_oversized_logs": 1,
+          "schema": "terminal-usage-coverage-observation@1",
+          "source_read_exposed_utf8_bytes": 36,
+          "token_savings_measured": false,
+          "whole_interaction_qualified": false
+        },
+        "test_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_usage_coverage",
+        "test_name": "test_incomplete_receipt_scan_withholds_usage_after_retaining_native_calls"
+      }
+    ]
+  },
+  "captured_current_runtime_python_files": 13098,
+  "captured_normal_inputs": 124,
+  "child_import_origins_verified": {
+    "direct_script_packages": {
+      "ipfs_accelerate_py": "/tmp/ipfs-codex-lifecycle-20261016-l06rtou4/accelerate/ipfs_accelerate_py/__init__.py",
+      "ipfs_datasets_py": "/tmp/ipfs-codex-lifecycle-20261016-l06rtou4/datasets/ipfs_datasets_py/__init__.py",
+      "ipfs_kit_py": "/tmp/ipfs-codex-lifecycle-20261016-l06rtou4/kit/ipfs_kit_py/__init__.py"
+    },
+    "duckdb_origin": "/home/barberb/lift_coding/.venvs/ipfs-datasets-duckdb-quack/lib/python3.12/site-packages/duckdb/__init__.py",
+    "duckdb_version": "1.5.5",
+    "inherited_packages": {
+      "ipfs_accelerate_py": "/tmp/ipfs-codex-lifecycle-20261016-l06rtou4/accelerate/ipfs_accelerate_py/__init__.py",
+      "ipfs_datasets_py": "/tmp/ipfs-codex-lifecycle-20261016-l06rtou4/datasets/ipfs_datasets_py/__init__.py",
+      "ipfs_kit_py": "/tmp/ipfs-codex-lifecycle-20261016-l06rtou4/kit/ipfs_kit_py/__init__.py"
+    },
+    "project_packages_executed": false,
+    "provider_calls": 0,
+    "schema": "codex-lifecycle-child-import-origin@1"
+  },
+  "completed_unix": 1792113293.8669467,
+  "earlier_execution_attempts": [
+    {
+      "directory": "qualification01",
+      "exit_code": 0,
+      "kind": "current-source-and-normal-test-staging",
+      "qualified": null,
+      "reason": null,
+      "successful_staging_only": true
+    },
+    {
+      "directory": "qualification01",
+      "exit_code": 1,
+      "kind": "normal-native-regression",
+      "qualified": false,
+      "reason": "974/982 passed; all new parser-to-Harbor lifecycle cases passed. Seven old diagnostic tests incorrectly expect a later lower valid snapshot to erase sparse category high-water observations; one pipeline test omits current literal-response and temperature dispatch options. Update explicit expected policies, retain every case and full 26-module scope; production policy remains fixed.",
+      "successful_staging_only": false
+    }
+  ],
+  "evidence_files": {
+    "drafts/check_qualification.py": {
+      "bytes": 36019,
+      "sha256": "6023cfcf14466ce276626735a2a32f3bc2702b3ae0d8f3e9ee91cc39bf7cfd4e"
+    },
+    "local01/acquisition.json": {
+      "bytes": 388,
+      "sha256": "3965c9d3d9bdbbd2bede87d3cf257ff119147057479935110fae1029e511f822"
+    },
+    "local01/coordinator-exit.json": {
+      "bytes": 46,
+      "sha256": "fabacb286fa50d60de54d15d560578a9c1fc403fc87e32b0827ceda9a04afe9e"
+    },
+    "local01/coordinator.py": {
+      "bytes": 7033,
+      "sha256": "08fe109765d0d3c0066aa28ac6fff0aef36f822ae291ea34dc6ab76a87607034"
+    },
+    "local01/reservation.json": {
+      "bytes": 821,
+      "sha256": "e9bbc3adb18dbbfde91250919321ef5721a0e7313f22014c9888820d82e0580b"
+    },
+    "opening-scope.json": {
+      "bytes": 5784,
+      "sha256": "c58948564593689cd37babe5875fccbe3a0ee4b4c7300fa2cbd627af4ec587b7"
+    },
+    "owned-executions.json": {
+      "bytes": 1669,
+      "sha256": "1f765bcae99d780ca7bfec3884eb6142d1c53ea4b578f925f1b85382ad441696"
+    },
+    "qualification01/junit.xml": {
+      "bytes": 206901,
+      "sha256": "572e4d9dce09c595dcaff3a43d7aad5fc80abd0d2865a76672cd5c7ab0d6df42"
+    },
+    "qualification01/opening-scope.json": {
+      "bytes": 4773,
+      "sha256": "f337a34fe0418febfde543258d801cd99ebcf34c95cd338158ee463eafb7668c"
+    },
+    "qualification01/qualification-process-result.json": {
+      "bytes": 1666,
+      "sha256": "6910dedf77849dbf78ced2b8fa0bb60550289682c62c8317189a6aadfb537f35"
+    },
+    "qualification01/staging-receipt.json": {
+      "bytes": 4729,
+      "sha256": "861b5997456d5681b398bec98c09ebb973e9fad672b778bcb58815d5577862aa"
+    },
+    "qualification01/verification.json": {
+      "bytes": 78407995,
+      "sha256": "5d21c93c3b0f9c397d7873eb4b565bdbe0d2fc77fc6673aeb0368066a7b4a088"
+    },
+    "qualification02/child-import-origin-probe.json": {
+      "bytes": 3725,
+      "sha256": "1c55ab3ad9bde4661182ccbfd6adf43032bfc6565b2d08ff4b9907197391a5d5"
+    },
+    "qualification02/child-import-origin-probe.log": {
+      "bytes": 928,
+      "sha256": "b555cbb36006a3d45f46684e3d14c414bac1f011ec4fa383aa30a5a9fd1316dc"
+    },
+    "qualification02/collected-nodeids.json": {
+      "bytes": 148700,
+      "sha256": "62765e3f9670fe1768e6457b036a84a5c27ec6f019e445ec9a23c9b5fe47a09f"
+    },
+    "qualification02/full-selected-tests.json": {
+      "bytes": 1695,
+      "sha256": "98ec42b91c97c4962caf2231dbe1b5e125844832bfae26869c5a3ff7e36291e6"
+    },
+    "qualification02/isolation-capture.json": {
+      "bytes": 17577270,
+      "sha256": "5bb99dbf7c665916815c6fec911034257dfdaf2c507fe09cc1d40381a1489793"
+    },
+    "qualification02/junit.xml": {
+      "bytes": 189353,
+      "sha256": "675f84f0b2c7cda98648285aebe5417a6c7e3a0cb6c3b0dd4a5bc29de4c507b3"
+    },
+    "qualification02/opening-scope.json": {
+      "bytes": 5784,
+      "sha256": "c58948564593689cd37babe5875fccbe3a0ee4b4c7300fa2cbd627af4ec587b7"
+    },
+    "qualification02/qualification-process-invocation.json": {
+      "bytes": 3700,
+      "sha256": "bfc05255a29a08eafca1a5d364d32f673e8cb4e72529f35b9d5689aba3b9b4c2"
+    },
+    "qualification02/qualification-process-result.json": {
+      "bytes": 1666,
+      "sha256": "716567c3579782530462a06dfe9793c632d368faa2a280035407fcf3fc4a3209"
+    },
+    "qualification02/qualification.py": {
+      "bytes": 12248,
+      "sha256": "f6278ba67dcd6c6486c723cac42ececad515510ddc55f14c87d8d6893323e673"
+    },
+    "qualification02/run_qualification.py": {
+      "bytes": 10834,
+      "sha256": "6e934760db4f6729ff789d83359cba6e4a6d8713d34c70883f81d2ec5f1482dc"
+    },
+    "qualification02/selected-tests.json": {
+      "bytes": 1695,
+      "sha256": "98ec42b91c97c4962caf2231dbe1b5e125844832bfae26869c5a3ff7e36291e6"
+    },
+    "qualification02/source-census-opening.json": {
+      "bytes": 5002060,
+      "sha256": "ad2ab42468536af531361d519f553a08179bcc95622f419cd8abbacf53a642e8"
+    },
+    "qualification02/source-layout.json": {
+      "bytes": 207,
+      "sha256": "adb16124c40bde84338ed2a7d650b9534a3d1c6d3d017cad09e2e7c6a311088f"
+    },
+    "qualification02/staging-receipt.json": {
+      "bytes": 4729,
+      "sha256": "c6282563d7296bd30f81d3e61e7552986c90877d751aad3b44705df5dbb01809"
+    },
+    "qualification02/tool-exit.json": {
+      "bytes": 46,
+      "sha256": "c2a092ed25c32534854af99f080fdc71c2f83b3285be637626ce63030bf30322"
+    },
+    "qualification02/verification.json": {
+      "bytes": 78408172,
+      "sha256": "9545f04039e186abbb7971778a92f457b3716a1e6ac38d8eb97f5ae396f72d3e"
+    }
+  },
+  "frozen_MAIN_configuration_sha256": "c60d91943187515915b8c4c0d0ace3f3703f7de4da1960f09e49371a8cdf6575",
+  "frozen_source_hashes_and_runtime_membership_verified": true,
+  "global_pool_empty_required": false,
+  "limitations": {
+    "formal_proof_or_completion_authority": false,
+    "model_responses_in_tests": "authored fixtures",
+    "neural_head_or_CUDA_performance_qualified": false,
+    "official_task_success_measured": false,
+    "property_counts_are_remote_provider_usage": false,
+    "provider_call_count_instrumented": false,
+    "provider_usage_measured": false,
+    "runtime_archive_or_Docker_lifecycle_qualified": false,
+    "whole_task_token_savings_measured": false
+  },
+  "mandatory_ast_seals": 982,
+  "native_process_cleanup_verified": true,
+  "native_reservation_closed": true,
+  "opening_scope_sha256": "c58948564593689cd37babe5875fccbe3a0ee4b4c7300fa2cbd627af4ec587b7",
+  "optional_proof_reuse_mode": "off",
+  "owned_current_source_pins": {
+    "/home/barberb/lift_coding/external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/runtime/codex_usage_receipt.py": {
+      "bytes": 19865,
+      "sha256": "ab0a71d40b946bc0ddd6c73dfb795fece91bf367fc64e209ad521332815a8635"
+    },
+    "/home/barberb/lift_coding/external/ipfs_accelerate/test/api/test_codex_lifecycle_harbor.py": {
+      "bytes": 16062,
+      "sha256": "1a690e692485cd41418e20b18ac394db61e48669a211e97395b6d3b35b1fd1a2"
+    },
+    "/home/barberb/lift_coding/external/ipfs_accelerate/test/api/test_codex_telemetry_pipeline.py": {
+      "bytes": 14898,
+      "sha256": "703b5d3cf33c4827b9f8eef1106875451d1a972aa627e3ac786ba8c069f1aabc"
+    },
+    "/home/barberb/lift_coding/external/ipfs_accelerate/test/api/test_codex_tool_diagnostics.py": {
+      "bytes": 13933,
+      "sha256": "a0cbdc95428c2ca01ebe4a9b8a351a9bdd8513e639a0b76cde0fc90e902f7024"
+    },
+    "/home/barberb/lift_coding/external/ipfs_accelerate/test/api/test_codex_usage_lifecycle.py": {
+      "bytes": 10333,
+      "sha256": "8c6a31d1517f061a9e7eddfe8a702724011cfa2a5c932beb472d372195e6795c"
+    }
+  },
+  "qualified": true,
+  "schema": "codex-lifecycle-qualification-result@1",
+  "scope": "current Codex parser lifecycle compatibility through existing reconciliation, Terminal finalization and Harbor usage export",
+  "selected_qualification": "qualification02",
+  "selected_test_file_count": 26,
+  "selected_test_files": [
+    "benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py",
+    "benchmarks/agent_supervisor/container_coding/test_benchmark_native_session_accounting.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_capsule_budget_comparison.py",
+    "benchmarks/agent_supervisor/container_coding/test_benchmark_formalization_comparison.py",
+    "benchmarks/agent_supervisor/container_coding/test_benchmark_controls.py",
+    "benchmarks/agent_supervisor/container_coding/test_setup_cache_comparison_controls.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_context_delivery_observation.py",
+    "test/api/test_context_delivery_accounting.py",
+    "test/api/test_native_context_delivery.py",
+    "test/api/test_codex_usage_growth.py",
+    "benchmarks/agent_supervisor/container_coding/test_baseline_session_overlap.py",
+    "benchmarks/agent_supervisor/container_coding/test_native_codex_baseline.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_provider_receipt_collection.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_usage_coverage.py",
+    "test/api/test_terminal_decision_usage.py",
+    "test/api/test_semantic_decision_owner_usage.py",
+    "test/api/test_benchmark_decision_usage_projection.py",
+    "test/api/test_terminal_usage_accounting.py",
+    "test/api/test_terminal_native_usage_coverage.py",
+    "test/api/test_cumulative_usage_reconciliation.py",
+    "test/api/test_codex_usage_lifecycle.py",
+    "test/api/test_codex_lifecycle_harbor.py",
+    "test/api/test_codex_tool_diagnostics.py",
+    "test/api/test_codex_interaction_telemetry.py",
+    "test/api/test_codex_telemetry_pipeline.py",
+    "test/api/test_router_implementation_runner.py"
+  ],
+  "skipped_cases": 0
+}

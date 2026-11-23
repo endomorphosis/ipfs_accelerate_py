@@ -1,0 +1,330 @@
+{
+  "MAIN_lease": "6bea180e37e046b0843f0e9d325297c6",
+  "MAIN_request_id": "baseline-session-overlap-local-20261015-01",
+  "actual_passed_cases": 564,
+  "all_collected_cases_executed_once_passed": true,
+  "authored_test_properties": {
+    "baseline_session_overlap_observation": [
+      {
+        "observation": {
+          "aggregate_complete_total_tokens_withheld": true,
+          "baseline_identity_inventory_complete": true,
+          "baseline_reported_total_tokens": 170,
+          "billing_total_verified": false,
+          "causal_claim": false,
+          "failed_supervisor_invocations": 1,
+          "identified_baseline_sessions": 1,
+          "live_provider_execution": false,
+          "measurement_scope": "authored_native_jsonl_baseline_and_supervisor",
+          "per_pass_ratios_withheld": true,
+          "provider_receipts_authenticity_verified": false,
+          "retained_trials": 2,
+          "schema": "baseline-session-overlap-observation@1",
+          "shared_native_sessions": 1,
+          "supervisor_native_sessions": 2,
+          "supervisor_reconciled_total_tokens": 247,
+          "token_savings_measured": false,
+          "whole_interaction_qualified": false
+        },
+        "test_classname": "benchmarks.agent_supervisor.container_coding.test_baseline_session_overlap",
+        "test_name": "test_authored_baseline_and_supervisor_reuse_withholds_both_arm_totals"
+      }
+    ],
+    "native_session_comparison_observation": [
+      {
+        "observation": {
+          "authored_provider_facts": true,
+          "baseline_total_tokens": 88,
+          "billing_total_verified": false,
+          "causal_claim": false,
+          "coding_invocations": 2,
+          "delivery_bytes_added_to_native_tokens": false,
+          "failed_invocations": 1,
+          "live_provider_execution": false,
+          "local_tokenizer_counts_added_to_native_usage": false,
+          "measurement_scope": "authored_native_jsonl_and_authored_mcp_audits",
+          "native_sessions": 2,
+          "planning_invocations": 1,
+          "provider_ingestion_verified": false,
+          "provider_receipts_authenticity_verified": false,
+          "raw_cumulative_wrapper_total_tokens": 357,
+          "read_scope_counts": {
+            "compact_reads": 0,
+            "definition_reads": 0,
+            "exposed_content_utf8_bytes": 36,
+            "failed_reads": 1,
+            "full_file_reads": 1,
+            "generation_bindings_observed": 2,
+            "legacy_compact_reads": 0,
+            "legacy_read_calls": 0,
+            "legacy_successful_reads": 0,
+            "line_range_omitted_lines": 2,
+            "line_range_reads": 1,
+            "line_range_selected_lines": 2,
+            "line_range_total_lines": 4,
+            "original_reads": 2,
+            "read_calls": 3,
+            "successful_reads": 2,
+            "unbound_compact_reads": 0,
+            "unbound_successes": 0
+          },
+          "retained_trial_count": 2,
+          "runtime_control_enforcement_verified": false,
+          "schema": "native-session-comparison-observation@1",
+          "selected_native_session_total_tokens": [
+            170,
+            77
+          ],
+          "selected_observation_indices": [
+            1,
+            2
+          ],
+          "shared_native_sessions": 1,
+          "source_displacement_verified": false,
+          "supervisor_official_passes": 1,
+          "supplied_invocations": 3,
+          "token_savings_measured": false,
+          "tokens": {
+            "cached_input_tokens": 130,
+            "input_tokens": 220,
+            "output_tokens": 27,
+            "total_tokens": 247
+          },
+          "tool_token_attribution_available": false,
+          "whole_interaction_qualified": false
+        },
+        "test_classname": "benchmarks.agent_supervisor.container_coding.test_benchmark_native_session_accounting",
+        "test_name": "test_authored_rollouts_reconcile_planning_coding_and_failed_retry_once"
+      }
+    ]
+  },
+  "captured_current_runtime_python_files": 13089,
+  "captured_normal_inputs": 75,
+  "child_import_origins_verified": {
+    "direct_script_packages": {
+      "ipfs_accelerate_py": "/tmp/ipfs-baseline-session-overlap-20261015-zi50h9zs/accelerate/ipfs_accelerate_py/__init__.py",
+      "ipfs_datasets_py": "/tmp/ipfs-baseline-session-overlap-20261015-zi50h9zs/datasets/ipfs_datasets_py/__init__.py",
+      "ipfs_kit_py": "/tmp/ipfs-baseline-session-overlap-20261015-zi50h9zs/kit/ipfs_kit_py/__init__.py"
+    },
+    "duckdb_origin": "/home/barberb/lift_coding/.venvs/ipfs-datasets-duckdb-quack/lib/python3.12/site-packages/duckdb/__init__.py",
+    "duckdb_version": "1.5.5",
+    "inherited_packages": {
+      "ipfs_accelerate_py": "/tmp/ipfs-baseline-session-overlap-20261015-zi50h9zs/accelerate/ipfs_accelerate_py/__init__.py",
+      "ipfs_datasets_py": "/tmp/ipfs-baseline-session-overlap-20261015-zi50h9zs/datasets/ipfs_datasets_py/__init__.py",
+      "ipfs_kit_py": "/tmp/ipfs-baseline-session-overlap-20261015-zi50h9zs/kit/ipfs_kit_py/__init__.py"
+    },
+    "project_packages_executed": false,
+    "provider_calls": 0,
+    "schema": "baseline-session-overlap-child-import-origin@1"
+  },
+  "completed_unix": 1792103525.3405912,
+  "earlier_execution_attempts": [
+    {
+      "directory": "qualification01",
+      "exit_code": 1,
+      "kind": "current-source-and-normal-test-staging",
+      "qualified": false,
+      "reason": "Opening scope was absent after root preflight incorrectly rejected the uppercase task-label namespace change; staging stopped before any checkout or test execution",
+      "successful_staging_only": false
+    },
+    {
+      "directory": "qualification02",
+      "exit_code": 0,
+      "kind": "current-source-and-normal-test-staging",
+      "qualified": null,
+      "reason": null,
+      "successful_staging_only": true
+    },
+    {
+      "directory": "qualification02",
+      "exit_code": 1,
+      "kind": "normal-native-regression",
+      "qualified": false,
+      "reason": "562/563 cases passed; historical completion-flow fixture expected complete usage despite missing output counters. Corrected fixture now distinguishes native lifecycle completion from complete numeric usage; production guard unchanged.",
+      "successful_staging_only": false
+    }
+  ],
+  "evidence_files": {
+    "drafts/check_qualification.py": {
+      "bytes": 30407,
+      "sha256": "b47c088e613196f340d048cad565b64121336e87845157698cbb2b372230a6a6"
+    },
+    "local01/acquisition.json": {
+      "bytes": 397,
+      "sha256": "c4cd2f36b82f5c8a08e78b4a0d0c3ebcdcf2205605be4bda12fcf30eb431f336"
+    },
+    "local01/coordinator-exit.json": {
+      "bytes": 45,
+      "sha256": "e9b71fb4107ffcf776767d86712b05ac1d479e5bd3fe3c9f51c5d0c2a583105d"
+    },
+    "local01/coordinator.py": {
+      "bytes": 7069,
+      "sha256": "45d3ce825de7a426d48dee9539aaab86df4f18dac7d511e4e28208f6559ed9d9"
+    },
+    "local01/reservation.json": {
+      "bytes": 835,
+      "sha256": "2a1485e6109c60444c12193c39cf7892e039373ed1c321e11fa9e934120dcab4"
+    },
+    "opening-scope.json": {
+      "bytes": 3729,
+      "sha256": "3dc679f04a5d8f031da2990455d1884eea6f55117c50482d6f39e549b3be90df"
+    },
+    "owned-executions.json": {
+      "bytes": 2074,
+      "sha256": "6ed2d2979f2eea9f283db5d3a0d0a4c45940628f0908c844bad17ede871c0044"
+    },
+    "qualification02/junit.xml": {
+      "bytes": 108852,
+      "sha256": "eb8f021a408ec711c12b30d9635026b68abcb600b447b606c723285b1ad46821"
+    },
+    "qualification02/opening-scope.json": {
+      "bytes": 3086,
+      "sha256": "13830f58ae8ee850b1305d10da9ddbc45b4122fcc4f3e91215e9a9cb31e06093"
+    },
+    "qualification02/qualification-process-result.json": {
+      "bytes": 1682,
+      "sha256": "0fbec132f3663f59bd6e30dcbcaefd2215f1e785543f132009a32eb60f31e8e1"
+    },
+    "qualification02/staging-receipt.json": {
+      "bytes": 3159,
+      "sha256": "ecb77bfa2448af5cf4dbfe7f2ab2961e22a6921b1aebebecd39ffb23b40b5799"
+    },
+    "qualification02/verification.json": {
+      "bytes": 64323362,
+      "sha256": "4b40dc59dfdd087e0f6d10b255e1754d901cc85280e32edd58ae76880a537477"
+    },
+    "qualification03/child-import-origin-probe.json": {
+      "bytes": 3869,
+      "sha256": "da128686cd05366808e47c5210e2b0950ba7079e220aa12d34773ccc6eca3bd8"
+    },
+    "qualification03/child-import-origin-probe.log": {
+      "bytes": 991,
+      "sha256": "c76ba8192351c35a871f8a18bed1d7fc713b84da2a803c65e46f842bb6cfdc45"
+    },
+    "qualification03/collected-nodeids.json": {
+      "bytes": 84482,
+      "sha256": "f39e1cb0d81cd6bffd4c6181103af15a955e3e3f8034979de74deca221b26be4"
+    },
+    "qualification03/full-selected-tests.json": {
+      "bytes": 925,
+      "sha256": "932f6b7feb6fda01ebf59cfc32b0a2f6346f338d8cedc8ce404ec11206c43430"
+    },
+    "qualification03/isolation-capture.json": {
+      "bytes": 17655239,
+      "sha256": "cb3140e6d488613affe113052893e86366b18bac2d26027376c664af67ea1ab2"
+    },
+    "qualification03/junit.xml": {
+      "bytes": 107903,
+      "sha256": "6d368258f25523ded34503d7f36e69797a3aa48d89f019f1004107b1c21626c4"
+    },
+    "qualification03/opening-scope.json": {
+      "bytes": 3729,
+      "sha256": "3dc679f04a5d8f031da2990455d1884eea6f55117c50482d6f39e549b3be90df"
+    },
+    "qualification03/qualification-process-invocation.json": {
+      "bytes": 2938,
+      "sha256": "ebd3fcf4a0d923503b1642f776abe3a4679e45f8abefd0cf9a690badbd841edd"
+    },
+    "qualification03/qualification-process-result.json": {
+      "bytes": 1683,
+      "sha256": "09d20bea278839f809e546322ee58403782b2f5fe5afd78827975dfe6df4d063"
+    },
+    "qualification03/qualification.py": {
+      "bytes": 12284,
+      "sha256": "08c44e540bb67dd768014e498bf98276f54bc91ce12cf63a40182058da503272"
+    },
+    "qualification03/run_qualification.py": {
+      "bytes": 10861,
+      "sha256": "a1c8523dabfe1b12708de6d3820b1b52475e515d5cd282b0152a5e6e97a2c238"
+    },
+    "qualification03/selected-tests.json": {
+      "bytes": 925,
+      "sha256": "932f6b7feb6fda01ebf59cfc32b0a2f6346f338d8cedc8ce404ec11206c43430"
+    },
+    "qualification03/source-census-opening.json": {
+      "bytes": 4998526,
+      "sha256": "521b897c03dea2c2083727fef97695fe05b1a9a89918eec043bae719f410c9b9"
+    },
+    "qualification03/source-layout.json": {
+      "bytes": 234,
+      "sha256": "1352756184af5a6f3d1cf4d2f76c1ea12e90a33a9359fac10a04a504ec65d33b"
+    },
+    "qualification03/staging-receipt.json": {
+      "bytes": 3159,
+      "sha256": "b029b0eca05ac9bc6f68a143d3be5f531c170f09f5e79d97c71c402f3989a1e2"
+    },
+    "qualification03/tool-exit.json": {
+      "bytes": 45,
+      "sha256": "069ce0d1d86dfce5718ef4879d80d17d254ac240eb2e6f7c00bef0451ec4668c"
+    },
+    "qualification03/verification.json": {
+      "bytes": 64482088,
+      "sha256": "8a785329cdc266976748f046f511f8d6b097a902cb202d29b3c9551b93225967"
+    }
+  },
+  "frozen_MAIN_configuration_sha256": "c60d91943187515915b8c4c0d0ace3f3703f7de4da1960f09e49371a8cdf6575",
+  "frozen_source_hashes_and_runtime_membership_verified": true,
+  "global_pool_empty_required": false,
+  "limitations": {
+    "formal_proof_or_completion_authority": false,
+    "model_responses_in_tests": "authored fixtures",
+    "neural_head_or_CUDA_performance_qualified": false,
+    "official_task_success_measured": false,
+    "property_counts_are_remote_provider_usage": false,
+    "provider_call_count_instrumented": false,
+    "provider_usage_measured": false,
+    "runtime_archive_or_Docker_lifecycle_qualified": false,
+    "whole_task_token_savings_measured": false
+  },
+  "mandatory_ast_seals": 564,
+  "native_process_cleanup_verified": true,
+  "native_reservation_closed": true,
+  "opening_scope_sha256": "3dc679f04a5d8f031da2990455d1884eea6f55117c50482d6f39e549b3be90df",
+  "optional_proof_reuse_mode": "off",
+  "owned_current_source_pins": {
+    "/home/barberb/lift_coding/external/ipfs_accelerate/benchmarks/agent_supervisor/container_coding/benchmark_comparison.py": {
+      "bytes": 79042,
+      "sha256": "b08e2f88334f4a87a810b9ef38b083b806746f910666733876ca1a4c685ff869"
+    },
+    "/home/barberb/lift_coding/external/ipfs_accelerate/benchmarks/agent_supervisor/container_coding/terminal_capsule_budget_comparison.py": {
+      "bytes": 23054,
+      "sha256": "cae14531d549cb6129072b9285da44ce76c6909f2a5c6b9e9f7aa0b3c82fc109"
+    },
+    "/home/barberb/lift_coding/external/ipfs_accelerate/benchmarks/agent_supervisor/container_coding/test_baseline_session_overlap.py": {
+      "bytes": 7400,
+      "sha256": "8707635ca7f48d28b51966d4021e9e8082fb410975d9c8b202f0afdc4a80bd6a"
+    },
+    "/home/barberb/lift_coding/external/ipfs_accelerate/benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py": {
+      "bytes": 76520,
+      "sha256": "e7b0d505ae1bb8c0ba895cfc4e8f3fd39909c9550684b4961008680ce3578bb5"
+    },
+    "/home/barberb/lift_coding/external/ipfs_accelerate/benchmarks/agent_supervisor/container_coding/test_native_codex_baseline.py": {
+      "bytes": 11714,
+      "sha256": "95855b414956cdf84929b4f52731fba9691c787d652b05dba1ad508801dccfd9"
+    },
+    "/home/barberb/lift_coding/external/ipfs_accelerate/benchmarks/agent_supervisor/container_coding/test_terminal_capsule_budget_comparison.py": {
+      "bytes": 23204,
+      "sha256": "ad28834ecf111a901e0acc7a9b434b8f9489ed34ffe044f39a32002c13b1cc44"
+    }
+  },
+  "qualified": true,
+  "schema": "baseline-session-overlap-qualification-result@1",
+  "scope": "native baseline and supervisor session overlap with retained per-trial usage and withheld duplicate aggregate totals",
+  "selected_qualification": "qualification03",
+  "selected_test_file_count": 12,
+  "selected_test_files": [
+    "benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py",
+    "benchmarks/agent_supervisor/container_coding/test_benchmark_native_session_accounting.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_capsule_budget_comparison.py",
+    "benchmarks/agent_supervisor/container_coding/test_benchmark_formalization_comparison.py",
+    "benchmarks/agent_supervisor/container_coding/test_benchmark_controls.py",
+    "benchmarks/agent_supervisor/container_coding/test_setup_cache_comparison_controls.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_context_delivery_observation.py",
+    "test/api/test_context_delivery_accounting.py",
+    "test/api/test_native_context_delivery.py",
+    "test/api/test_codex_usage_growth.py",
+    "benchmarks/agent_supervisor/container_coding/test_baseline_session_overlap.py",
+    "benchmarks/agent_supervisor/container_coding/test_native_codex_baseline.py"
+  ],
+  "skipped_cases": 0
+}

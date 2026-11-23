@@ -1,0 +1,33 @@
+{
+  "actual_three_way_conflict_hunks": 9,
+  "admission_execution_completion_or_qualification_authority": false,
+  "base_blob": {
+    "mode": "100644",
+    "oid": "27ead30f1f602cfd0fae391cde63407d5dd97d00",
+    "type": "blob"
+  },
+  "disposition": "PARTIALLY_RECONCILED_NOT_ADOPTED_AS_WHOLE",
+  "published_HEAD": "317bd433b44791e1ff5f3eebee802832424f1953",
+  "published_path_blob_before": {
+    "mode": "100644",
+    "oid": "b04c9feeaeac70f5b46a829d2eb32d98710861fa",
+    "type": "blob"
+  },
+  "retained_delta": {
+    "bytes": 33428,
+    "format": "zero-context unifieddiff; requires exact base and deliberate review; never autoapply",
+    "path": "docs/agent_supervisor/evidence/worktree-reconciliation-20261123/history/scientific-source-lease.patch",
+    "sha256": "4a03ff1b278e49b14fcf58d6fd369340658e403473c1470d839d9027f7e429da"
+  },
+  "schema": "retained-conflicting-source-variant/v1",
+  "semantic_resolution": "Retain current try/except/else negative recognition and later admission/capacity APIs. Only two retained cycle_number diagnostic normalization expressions are composed; do not apply the older blanket nonzero branch.",
+  "source_HEAD": "da9286b2484985357b063d42ea08d4e782489264",
+  "source_owner_path": "ipfs_accelerate_py/agent_supervisor/rescue/scientific_executor.py",
+  "source_snapshot": {
+    "blob_oid": "7eae29c0e2fe52958bd3dd112a749bb717eff7f8",
+    "bytes": 109012,
+    "sha256": "84e743fc76af6dbe34fb48f59801a1f02aea7e945008653cf767e8696d2fb10a"
+  },
+  "source_worktree_label": "legal-ir-scientific-source-lease-recovery-20261031",
+  "status": "PROPOSAL_NOT_ADOPTED"
+}

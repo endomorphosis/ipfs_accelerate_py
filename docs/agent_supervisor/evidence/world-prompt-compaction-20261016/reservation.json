@@ -1,0 +1,37 @@
+{
+  "schema": "world-prompt-compaction-root-offline-handoff@1",
+  "before": {
+    "leases": 1,
+    "waiters": 0,
+    "lease_ids": [
+      "ba0be99def874ae6ba8889e64b94f265"
+    ],
+    "requests": [
+      "supervisor-working-set-live-integration-20261016-12-successor01"
+    ],
+    "waiter_requests": []
+  },
+  "config_sha256": "c60d91943187515915b8c4c0d0ace3f3703f7de4da1960f09e49371a8cdf6575",
+  "children": [],
+  "completed": true,
+  "owned_lease_id": "24dc1d7e5799472699251a4952da652b",
+  "request_id": "world-prompt-compaction-local-20261016-02",
+  "after": {
+    "leases": 2,
+    "waiters": 0,
+    "lease_ids": [
+      "50bd672b5c0e4b5b9b17c4504a869db9",
+      "e523802ab70d46b3830536137647108d"
+    ],
+    "requests": [
+      "supervisor-working-set-live-integration-20261016-12-validation06",
+      "supervisor-working-set-live-integration-20261016-12-validation07"
+    ],
+    "waiter_requests": []
+  },
+  "elapsed_seconds": 2673.574229476042,
+  "owned_lease_released": true,
+  "owned_waiter_absent": true,
+  "configuration_unchanged": true,
+  "global_empty_required": false
+}

@@ -1,0 +1,33 @@
+{
+  "actual_three_way_conflict_hunks": 1,
+  "admission_execution_completion_or_qualification_authority": false,
+  "base_blob": {
+    "mode": "100644",
+    "oid": "dda5da5e8e4f13c71887753eb10c954ab820495a",
+    "type": "blob"
+  },
+  "disposition": "SUPERSEDED_NOT_ADOPTED",
+  "published_HEAD": "317bd433b44791e1ff5f3eebee802832424f1953",
+  "published_path_blob_before": {
+    "mode": "100644",
+    "oid": "efec3b2f3317e253ec84bc821720cc39e17e8cd0",
+    "type": "blob"
+  },
+  "retained_delta": {
+    "bytes": 18444,
+    "format": "zero-context unifieddiff; requires exact base and deliberate review; never autoapply",
+    "path": "docs/agent_supervisor/evidence/worktree-reconciliation-20261123/history/native-health-source-lease.patch",
+    "sha256": "fb760a3f413785eee24d9e2fb38b4cda92aae9b573097274a9c66226dc697ba8"
+  },
+  "schema": "retained-conflicting-source-variant/v1",
+  "semantic_resolution": "Seven retained constants and eight affected helperfunctions are current ASTidentical. Current _receipt includes retained source-lease behavior plus later historical-witness/per-origin validation; keep current owner.",
+  "source_HEAD": "da9286b2484985357b063d42ea08d4e782489264",
+  "source_owner_path": "ipfs_accelerate_py/agent_supervisor/rescue/native_executor_health.py",
+  "source_snapshot": {
+    "blob_oid": "7ef39dd1f46dcf23f880d1ba5fd70dfd3ae4ee0c",
+    "bytes": 72579,
+    "sha256": "efff5138bbe90b8f9b867728f657728b6d91b5294a2aec7f0a648a69c5bc81d1"
+  },
+  "source_worktree_label": "legal-ir-scientific-source-lease-recovery-20261031",
+  "status": "PROPOSAL_NOT_ADOPTED"
+}

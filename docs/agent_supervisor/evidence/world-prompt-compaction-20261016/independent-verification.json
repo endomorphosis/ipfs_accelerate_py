@@ -1,0 +1,12 @@
+{
+  "MAIN_configuration_unchanged": true,
+  "all_latest_and_prior_members_rehashed": true,
+  "bytes": 543189244,
+  "files": 13741,
+  "manifest_sha256": "9a32ccd23831ad05539aa43be276fde195433267a399277ffacfacb8dab92cb0",
+  "older_manifest_pins_unchanged": 6,
+  "owned_source_pins_current": true,
+  "portable_copies_equal": true,
+  "prior_member_census": "declared_sealed_members_excludes_original_disposable_worktrees",
+  "raw_cidv1": "bafkreie2glgneobrvucvhgvehprhn7pbsvbtez5dtetx76wpvs4nvojmwa"
+}

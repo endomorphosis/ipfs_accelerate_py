@@ -1,0 +1,35 @@
+{
+  "authored_native_fixture": true,
+  "billing_total_verified": false,
+  "cached_input_tokens": 115,
+  "campaign_usage_complete": null,
+  "case": "continuation_and_completed_failed_fresh_retry",
+  "completed_failed_retry_retained": true,
+  "completion_authority": false,
+  "completion_basis": "native_lifecycle_after_latest_usage@1",
+  "final_rollout_validated_snapshot_records": 3,
+  "harbor_cache_tokens": 115,
+  "harbor_input_tokens": 230,
+  "harbor_output_tokens": 50,
+  "input_tokens": 230,
+  "live_provider_execution": false,
+  "native_sessions_observed": 2,
+  "output_tokens": 50,
+  "provider_receipts_authenticated": false,
+  "provider_total_tokens": 280,
+  "raw_wrapper_total_tokens": 400,
+  "real_parser_exercised": true,
+  "retained_router_receipts": 3,
+  "schema": "codex-lifecycle-harbor-observation@1",
+  "scope": "authored_native_jsonl_to_existing_usage_consumers",
+  "selected_session_total_tokens": [
+    200,
+    80
+  ],
+  "token_savings_measured": false,
+  "validated_snapshot_records_by_receipt": [
+    1,
+    2,
+    1
+  ]
+}

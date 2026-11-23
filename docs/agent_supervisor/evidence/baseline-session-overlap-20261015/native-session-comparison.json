@@ -1,0 +1,61 @@
+{
+  "authored_provider_facts": true,
+  "baseline_total_tokens": 88,
+  "billing_total_verified": false,
+  "causal_claim": false,
+  "coding_invocations": 2,
+  "delivery_bytes_added_to_native_tokens": false,
+  "failed_invocations": 1,
+  "live_provider_execution": false,
+  "local_tokenizer_counts_added_to_native_usage": false,
+  "measurement_scope": "authored_native_jsonl_and_authored_mcp_audits",
+  "native_sessions": 2,
+  "planning_invocations": 1,
+  "provider_ingestion_verified": false,
+  "provider_receipts_authenticity_verified": false,
+  "raw_cumulative_wrapper_total_tokens": 357,
+  "read_scope_counts": {
+    "compact_reads": 0,
+    "definition_reads": 0,
+    "exposed_content_utf8_bytes": 36,
+    "failed_reads": 1,
+    "full_file_reads": 1,
+    "generation_bindings_observed": 2,
+    "legacy_compact_reads": 0,
+    "legacy_read_calls": 0,
+    "legacy_successful_reads": 0,
+    "line_range_omitted_lines": 2,
+    "line_range_reads": 1,
+    "line_range_selected_lines": 2,
+    "line_range_total_lines": 4,
+    "original_reads": 2,
+    "read_calls": 3,
+    "successful_reads": 2,
+    "unbound_compact_reads": 0,
+    "unbound_successes": 0
+  },
+  "retained_trial_count": 2,
+  "runtime_control_enforcement_verified": false,
+  "schema": "native-session-comparison-observation@1",
+  "selected_native_session_total_tokens": [
+    170,
+    77
+  ],
+  "selected_observation_indices": [
+    1,
+    2
+  ],
+  "shared_native_sessions": 1,
+  "source_displacement_verified": false,
+  "supervisor_official_passes": 1,
+  "supplied_invocations": 3,
+  "token_savings_measured": false,
+  "tokens": {
+    "cached_input_tokens": 130,
+    "input_tokens": 220,
+    "output_tokens": 27,
+    "total_tokens": 247
+  },
+  "tool_token_attribution_available": false,
+  "whole_interaction_qualified": false
+}

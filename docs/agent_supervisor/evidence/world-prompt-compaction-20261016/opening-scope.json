@@ -1,0 +1,69 @@
+{
+  "archive_deployment_qualified": false,
+  "campaign_started_utc": "2026-10-16",
+  "chosen_qualification": "qualification04",
+  "default_enabled": true,
+  "live_provider_or_paid_execution_authorized_by_this_scope": false,
+  "native_regression_policy": "Fresh mandatory AST seal, optional proof reuse off, genuine project package initializers and all selected cases once",
+  "optout": "run(compact_world_prompt=False)",
+  "owned_source_copies": "owned-source-qualified",
+  "owned_source_files": {
+    "/home/barberb/lift_coding/external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/runtime/repository_world_invocation_replay.py": {
+      "bytes": 28488,
+      "sha256": "537dd5a9dec9f3a4343466b1523b19253f7a543d76314909d948266c96735656"
+    },
+    "/home/barberb/lift_coding/external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/runtime/repository_world_packet.py": {
+      "bytes": 32360,
+      "sha256": "491e7eb78e3906735bdda47331b8508cac03de5abbd8d92654da7965eeb7f7c6"
+    },
+    "/home/barberb/lift_coding/external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py": {
+      "bytes": 131313,
+      "sha256": "1c46bdde8659b51bf5651f5a2d4b9c1046c86be3248088ad3b94fdc64cca2d25"
+    },
+    "/home/barberb/lift_coding/external/ipfs_accelerate/test/api/test_repository_world_dispatch.py": {
+      "bytes": 28886,
+      "sha256": "230823d02cc97a86b39febf583274333ac55ea7ea93b53344ff9fef7851a996e"
+    },
+    "/home/barberb/lift_coding/external/ipfs_accelerate/test/api/test_repository_world_invocation_replay.py": {
+      "bytes": 28465,
+      "sha256": "17f7f6d6f488c6522eadc6883ae19504608cb36047255494256d737575ae89a8"
+    },
+    "/home/barberb/lift_coding/external/ipfs_accelerate/test/api/test_repository_world_packet.py": {
+      "bytes": 24779,
+      "sha256": "c325dd39e13252fb6fef3b78ce5ee03c775ae973244b8f7bb0da976d3cb04a30"
+    }
+  },
+  "prior_manifest_sha256": "037b9674fd09fc1672e39c0fbe735d363be312b3e2aca62f375dd2fe7dcb2100",
+  "prior_sealed_campaign": "supervisor-matched-preflight-20261016-01",
+  "provider_execution": "authored fixtures only",
+  "purpose": "Qualify default-on lossless inline reference metadata factoring at the current-world worker boundary, strict complete-input selection, optout/fallback and historical replay",
+  "qualification_retry_reason": "q01 interrupted after actual fixture failures:16 required references exceeded authority recursive item budget64; original5-reference packet actually saves12bytes. Set test-local compiler budget128, issue a separately admitted zero-reference/no-optional packet for the byte gate, make legacy native assertion explicitly opt out. All589selected cases retained; production3source pins unchanged. q02 source capture was not executed; a fresh unchanged MAIN reservation provides the full finite retry margin. q03 rich compact/default/optout/counter cases passed, but optional_items=0 is rejected by existing compiler. Use a separately admitted1required+1optional-reference no-gain packet with legal optional_items=1. Only the fixture changed; unchanged589case full retry.",
+  "required_properties": [
+    "world_prompt_compaction_observation"
+  ],
+  "schema": "world-prompt-compaction-opening-scope@1",
+  "selected_test_files": [
+    "test/api/test_repository_world_packet.py",
+    "test/api/test_repository_world_packet_replay.py",
+    "test/api/test_repository_world_dispatch.py",
+    "test/api/test_repository_world_invocation_replay.py",
+    "test/api/test_repository_world_artifact_store.py",
+    "test/api/test_repository_world_cycle.py",
+    "test/api/test_repository_world_invocation_replay_cycle.py",
+    "test/api/test_repository_world_intent_binding.py",
+    "test/api/test_repository_intent_world.py",
+    "test/api/test_repository_intent_world_native.py",
+    "test/api/test_repository_intent_world_cycle.py",
+    "test/api/test_repository_intent_world_native_cycle.py",
+    "test/api/test_repository_context_compiler.py",
+    "test/api/test_router_implementation_runner.py",
+    "test/api/test_router_prompt_selection.py",
+    "test/api/test_coding_reply_contract.py",
+    "test/api/test_automatic_prompt_tokenizer.py",
+    "test/api/test_local_prompt_tokenizer.py",
+    "test/api/test_repository_source_policy.py",
+    "test/api/test_tool_output_policy.py"
+  ],
+  "unchanged_context_policy": "All selected task/reference/source bodies, obligations, IDs and coverage preserved",
+  "whole_session_savings_established": false
+}

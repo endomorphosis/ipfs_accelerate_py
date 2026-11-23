@@ -1,0 +1,34 @@
+{
+  "MAIN_lease": "24dc1d7e5799472699251a4952da652b",
+  "acquisition_json": "/home/barberb/lift_coding/artifacts/supervisor-world-prompt-compaction-20261016-01/local02/acquisition.json",
+  "acquisition_sha256": "2d488782aabf1878940398439d84e9d64ff0ddd44c5d63803bbf97de94adb57a",
+  "additional_input_pins_after": {
+    "full-selected-tests.json": "3e1ce385927973872dac4806079ba0a70ceedc4c10fb8d64f58f98ec9a97008e",
+    "opening-scope.json": "cd0daa14dcb7fa50d92c7447db310f0d24c34e88ff415e2cc3c256595b96e4c6",
+    "run_qualification.py": "7d4a168d5949e2e1987057d444813015b294339be6efc9602e6ad3d9fee6f79c",
+    "selected-tests.json": "3e1ce385927973872dac4806079ba0a70ceedc4c10fb8d64f58f98ec9a97008e"
+  },
+  "additional_input_pins_before": {
+    "full-selected-tests.json": "3e1ce385927973872dac4806079ba0a70ceedc4c10fb8d64f58f98ec9a97008e",
+    "opening-scope.json": "cd0daa14dcb7fa50d92c7447db310f0d24c34e88ff415e2cc3c256595b96e4c6",
+    "run_qualification.py": "7d4a168d5949e2e1987057d444813015b294339be6efc9602e6ad3d9fee6f79c",
+    "selected-tests.json": "3e1ce385927973872dac4806079ba0a70ceedc4c10fb8d64f58f98ec9a97008e"
+  },
+  "additional_inputs_unchanged": true,
+  "adopted_children_reaped": true,
+  "cleanup_reserve_seconds": 60,
+  "cleanup_seconds": 0.00016563385725021362,
+  "coordinator_hold_end_unix": 1792136990.8362052,
+  "elapsed_seconds": 2120.8946650528815,
+  "end_unix": 1792136350.9933543,
+  "group_gone": true,
+  "interrupted": false,
+  "pgid": 3248255,
+  "pid": 3248255,
+  "returncode": 0,
+  "schema": "world-prompt-compaction-native-process-result@1",
+  "signals_received": [],
+  "start_unix": 1792134230.098689,
+  "timed_out": false,
+  "timeout_seconds": 2700
+}

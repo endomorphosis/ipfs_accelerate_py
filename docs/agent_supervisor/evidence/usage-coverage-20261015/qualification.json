@@ -1,0 +1,447 @@
+{
+  "MAIN_lease": "7c61a351aa8846d4a445ed766f9a7c2f",
+  "MAIN_request_id": "usage-coverage-local-20261015-01",
+  "actual_passed_cases": 732,
+  "all_collected_cases_executed_once_passed": true,
+  "authored_test_properties": {
+    "baseline_session_overlap_observation": [
+      {
+        "observation": {
+          "aggregate_complete_total_tokens_withheld": true,
+          "baseline_identity_inventory_complete": true,
+          "baseline_reported_total_tokens": 170,
+          "billing_total_verified": false,
+          "causal_claim": false,
+          "failed_supervisor_invocations": 1,
+          "identified_baseline_sessions": 1,
+          "live_provider_execution": false,
+          "measurement_scope": "authored_native_jsonl_baseline_and_supervisor",
+          "per_pass_ratios_withheld": true,
+          "provider_receipts_authenticity_verified": false,
+          "retained_trials": 2,
+          "schema": "baseline-session-overlap-observation@1",
+          "shared_native_sessions": 1,
+          "supervisor_native_sessions": 2,
+          "supervisor_reconciled_total_tokens": 247,
+          "token_savings_measured": false,
+          "whole_interaction_qualified": false
+        },
+        "test_classname": "benchmarks.agent_supervisor.container_coding.test_baseline_session_overlap",
+        "test_name": "test_authored_baseline_and_supervisor_reuse_withholds_both_arm_totals"
+      }
+    ],
+    "native_session_comparison_observation": [
+      {
+        "observation": {
+          "authored_provider_facts": true,
+          "baseline_total_tokens": 88,
+          "billing_total_verified": false,
+          "causal_claim": false,
+          "coding_invocations": 2,
+          "delivery_bytes_added_to_native_tokens": false,
+          "failed_invocations": 1,
+          "live_provider_execution": false,
+          "local_tokenizer_counts_added_to_native_usage": false,
+          "measurement_scope": "authored_native_jsonl_and_authored_mcp_audits",
+          "native_sessions": 2,
+          "planning_invocations": 1,
+          "provider_ingestion_verified": false,
+          "provider_receipts_authenticity_verified": false,
+          "raw_cumulative_wrapper_total_tokens": 357,
+          "read_scope_counts": {
+            "compact_reads": 0,
+            "definition_reads": 0,
+            "exposed_content_utf8_bytes": 36,
+            "failed_reads": 1,
+            "full_file_reads": 1,
+            "generation_bindings_observed": 2,
+            "legacy_compact_reads": 0,
+            "legacy_read_calls": 0,
+            "legacy_successful_reads": 0,
+            "line_range_omitted_lines": 2,
+            "line_range_reads": 1,
+            "line_range_selected_lines": 2,
+            "line_range_total_lines": 4,
+            "original_reads": 2,
+            "read_calls": 3,
+            "successful_reads": 2,
+            "unbound_compact_reads": 0,
+            "unbound_successes": 0
+          },
+          "retained_trial_count": 2,
+          "runtime_control_enforcement_verified": false,
+          "schema": "native-session-comparison-observation@1",
+          "selected_native_session_total_tokens": [
+            170,
+            77
+          ],
+          "selected_observation_indices": [
+            1,
+            2
+          ],
+          "shared_native_sessions": 1,
+          "source_displacement_verified": false,
+          "supervisor_official_passes": 1,
+          "supplied_invocations": 3,
+          "token_savings_measured": false,
+          "tokens": {
+            "cached_input_tokens": 130,
+            "input_tokens": 220,
+            "output_tokens": 27,
+            "total_tokens": 247
+          },
+          "tool_token_attribution_available": false,
+          "whole_interaction_qualified": false
+        },
+        "test_classname": "benchmarks.agent_supervisor.container_coding.test_benchmark_native_session_accounting",
+        "test_name": "test_authored_rollouts_reconcile_planning_coding_and_failed_retry_once"
+      }
+    ],
+    "terminal_usage_coverage_observation": [
+      {
+        "observation": {
+          "billing_total_verified": false,
+          "campaign_usage_complete": null,
+          "causal_claim": false,
+          "complete_provider_calls_withheld": true,
+          "expected_provider_attempt_count": null,
+          "failed_retained_invocations": 1,
+          "known_native_total_tokens": 247,
+          "live_provider_execution": false,
+          "local_prompt_bytes_added_to_native_usage": false,
+          "measurement_scope": "authored_native_jsonl_and_local_receipt_logs",
+          "possible_unreceipted_attempt_reported": true,
+          "provider_receipts_authenticity_verified": false,
+          "receipt_collection_complete": false,
+          "reported_complete_total_tokens": null,
+          "retained_invocations": 3,
+          "scan_log_files_read": 1,
+          "scan_log_files_seen": 2,
+          "scan_oversized_logs": 1,
+          "schema": "terminal-usage-coverage-observation@1",
+          "source_read_exposed_utf8_bytes": 36,
+          "token_savings_measured": false,
+          "whole_interaction_qualified": false
+        },
+        "test_classname": "benchmarks.agent_supervisor.container_coding.test_terminal_usage_coverage",
+        "test_name": "test_incomplete_receipt_scan_withholds_usage_after_retaining_native_calls"
+      }
+    ]
+  },
+  "captured_current_runtime_python_files": 13097,
+  "captured_normal_inputs": 117,
+  "child_import_origins_verified": {
+    "direct_script_packages": {
+      "ipfs_accelerate_py": "/tmp/ipfs-usage-coverage-20261015-jem_1du8/accelerate/ipfs_accelerate_py/__init__.py",
+      "ipfs_datasets_py": "/tmp/ipfs-usage-coverage-20261015-jem_1du8/datasets/ipfs_datasets_py/__init__.py",
+      "ipfs_kit_py": "/tmp/ipfs-usage-coverage-20261015-jem_1du8/kit/ipfs_kit_py/__init__.py"
+    },
+    "duckdb_origin": "/home/barberb/lift_coding/.venvs/ipfs-datasets-duckdb-quack/lib/python3.12/site-packages/duckdb/__init__.py",
+    "duckdb_version": "1.5.5",
+    "inherited_packages": {
+      "ipfs_accelerate_py": "/tmp/ipfs-usage-coverage-20261015-jem_1du8/accelerate/ipfs_accelerate_py/__init__.py",
+      "ipfs_datasets_py": "/tmp/ipfs-usage-coverage-20261015-jem_1du8/datasets/ipfs_datasets_py/__init__.py",
+      "ipfs_kit_py": "/tmp/ipfs-usage-coverage-20261015-jem_1du8/kit/ipfs_kit_py/__init__.py"
+    },
+    "project_packages_executed": false,
+    "provider_calls": 0,
+    "schema": "usage-coverage-child-import-origin@1"
+  },
+  "completed_unix": 1792110848.1990187,
+  "earlier_execution_attempts": [
+    {
+      "directory": "qualification01",
+      "exit_code": 0,
+      "kind": "current-source-and-normal-test-staging",
+      "qualified": null,
+      "reason": null,
+      "successful_staging_only": true
+    },
+    {
+      "directory": "qualification01",
+      "exit_code": 1,
+      "kind": "normal-native-regression",
+      "qualified": false,
+      "reason": "702/712 cases passed; ordinary Harbor Codex export still sums cumulative snapshots/exports incomplete subtotals; ordinary final report omits accounting projection; one authored adapter fixture used a retired pinned model. Fixes use existing accounting owners and current declared model; full scope retained.",
+      "successful_staging_only": false
+    },
+    {
+      "directory": "qualification02",
+      "exit_code": 0,
+      "kind": "current-source-and-normal-test-staging",
+      "qualified": null,
+      "reason": null,
+      "successful_staging_only": true
+    },
+    {
+      "directory": "qualification02",
+      "exit_code": 1,
+      "kind": "normal-native-regression",
+      "qualified": false,
+      "reason": "730/731 passed; all accounting changes passed. Remaining authored adapter error-report fixture lacks the current worker-capability archive metadata/inventory; production guard remains intact. Retain full 19-module scope and repair fixture.",
+      "successful_staging_only": false
+    },
+    {
+      "directory": "qualification03",
+      "exit_code": 0,
+      "kind": "current-source-and-normal-test-staging",
+      "qualified": null,
+      "reason": null,
+      "successful_staging_only": true
+    },
+    {
+      "directory": "qualification03",
+      "exit_code": 1,
+      "kind": "normal-native-regression",
+      "qualified": false,
+      "reason": "730/731 passed. Repaired fixture reaches real adapter report path and exposes accounting exception incorrectly marking readable report unavailable. Isolate accounting failure, retain independent report fields and unknown token exports; preserve all tests and guard.",
+      "successful_staging_only": false
+    }
+  ],
+  "evidence_files": {
+    "drafts/check_qualification.py": {
+      "bytes": 33137,
+      "sha256": "4e1aa0747d4ed3b9037219d5c6075e1886ae26f23b462119aef4ca1470c1e9d3"
+    },
+    "local01/acquisition.json": {
+      "bytes": 387,
+      "sha256": "235c89e34dd05944848361e36a0fe85fc0ef4738a39abcf5d1feba33be8856a9"
+    },
+    "local01/coordinator-exit.json": {
+      "bytes": 46,
+      "sha256": "290ccf3bff40fff7965bd235a657684e00806e323eec5498b383bac32317f0e0"
+    },
+    "local01/coordinator.py": {
+      "bytes": 7029,
+      "sha256": "94c85918eb192004076dfa94a6e42f02a53d8546c49a79a2500630a124240bd2"
+    },
+    "local01/reservation.json": {
+      "bytes": 703,
+      "sha256": "262dadbea5b63a96a622e53a2dc7ec7aa837e472ae72885cdf758082f5861977"
+    },
+    "opening-scope.json": {
+      "bytes": 5150,
+      "sha256": "67bdad0eb8ae2e4b59dea41483d5b141903284cfe9c40a1fdb200a7e466d1fdf"
+    },
+    "owned-executions.json": {
+      "bytes": 3350,
+      "sha256": "9f641f37329b90094fe1092934092e8c3b4490f89ee9838bb8d05548ddc20d4f"
+    },
+    "qualification01/junit.xml": {
+      "bytes": 163977,
+      "sha256": "b7c6e178639d6149b3a79707d9ed654ec8e3068cca51feca31e422432fd4ea09"
+    },
+    "qualification01/opening-scope.json": {
+      "bytes": 3322,
+      "sha256": "106a30c7664346b6b0de95527c95be84564abe317769909f5206afd8eb33fe3d"
+    },
+    "qualification01/qualification-process-result.json": {
+      "bytes": 1665,
+      "sha256": "36bef4e69eba4892ed4c9c50ea06bd9be8d19d7d1bb29396aa74ce947972f2cb"
+    },
+    "qualification01/staging-receipt.json": {
+      "bytes": 3916,
+      "sha256": "ebb6bca805fbcc137524f973a97a6a9d665f9c9b1183a6a57d991f7f4e430d45"
+    },
+    "qualification01/verification.json": {
+      "bytes": 71470893,
+      "sha256": "98f4579290e9ad63704af0ab992e02dd2dceb613fd47dbd0ca2a17fbdf28a9af"
+    },
+    "qualification02/junit.xml": {
+      "bytes": 152595,
+      "sha256": "c0547a90f25b4ab687ff720f5893406c02b890da43905a884a812dda28dde260"
+    },
+    "qualification02/opening-scope.json": {
+      "bytes": 5190,
+      "sha256": "4ff18d387d041357b1dee1934607813555ef3d560daa9bebd9386d99025ed29d"
+    },
+    "qualification02/qualification-process-result.json": {
+      "bytes": 1664,
+      "sha256": "02650a0ed7db557a9c63030322dd3ceeeb61b2e0e48121594c98090f062a7577"
+    },
+    "qualification02/staging-receipt.json": {
+      "bytes": 4026,
+      "sha256": "bf69777e91d973fc7c30f28093a86775369fd0c86c06b8c68263b267b3dbd8a9"
+    },
+    "qualification02/verification.json": {
+      "bytes": 71495608,
+      "sha256": "cadf404ebae424ae036458fbaa911de7d116e29a89039f1a011e549f07b2f375"
+    },
+    "qualification03/junit.xml": {
+      "bytes": 151062,
+      "sha256": "415b2f0ce6fb729b1871a5c80931a9aab0a7027dde537436ecba538ab168f73a"
+    },
+    "qualification03/opening-scope.json": {
+      "bytes": 5064,
+      "sha256": "b2bddcfeda433cc2e35fc940ce466058b8ecc5f507e6f580b7d577ecc7f26396"
+    },
+    "qualification03/qualification-process-result.json": {
+      "bytes": 1664,
+      "sha256": "6e595f626a0f39a7f0d966de2d8137aea3c61e9db91865fcbe4505a232dc10d8"
+    },
+    "qualification03/staging-receipt.json": {
+      "bytes": 4026,
+      "sha256": "d4b3ee340a39a22ebba2faf6aad4fbce0e760b49dd3c65a65837adf2c508c89d"
+    },
+    "qualification03/verification.json": {
+      "bytes": 71496048,
+      "sha256": "ab03facb7805e591997ed02a21821c44384b560059213dbbb95688dfe363a235"
+    },
+    "qualification04/child-import-origin-probe.json": {
+      "bytes": 3709,
+      "sha256": "c94ecb4e9dd2fd7fde606d2440cebceb351ee5d2f2d5c84381eb5d65a0ccc7ed"
+    },
+    "qualification04/child-import-origin-probe.log": {
+      "bytes": 921,
+      "sha256": "c08fe5ae9b8dac3e35b860a9500823e2f512ea1b969637e80a9cdbcb521f2420"
+    },
+    "qualification04/collected-nodeids.json": {
+      "bytes": 118015,
+      "sha256": "2728104cd88f5875fe35d9f6f4c5212c168800cb5c2cd6f4572c8e07e638e233"
+    },
+    "qualification04/full-selected-tests.json": {
+      "bytes": 1359,
+      "sha256": "574ed9be5160c642dbc1bd5750aa4ac8142d0792d57477aebf0b7e5187fa769d"
+    },
+    "qualification04/isolation-capture.json": {
+      "bytes": 17558969,
+      "sha256": "e672f8708663ae44c703108c3ee742c9bbbfe2c91215041f59185fc60942fd0f"
+    },
+    "qualification04/junit.xml": {
+      "bytes": 148513,
+      "sha256": "c03d0eba8606863b88555d131c5a5a72370b37caa8cb8311dfa4e0793ba2c2e1"
+    },
+    "qualification04/opening-scope.json": {
+      "bytes": 5150,
+      "sha256": "67bdad0eb8ae2e4b59dea41483d5b141903284cfe9c40a1fdb200a7e466d1fdf"
+    },
+    "qualification04/qualification-process-invocation.json": {
+      "bytes": 3345,
+      "sha256": "aabc27e3d6d99eba24263b4629bb796e39804aabab312148cb1155f7c7638939"
+    },
+    "qualification04/qualification-process-result.json": {
+      "bytes": 1663,
+      "sha256": "305b1c09de8fb919bc77b59b7cececb87b64a3f124331558c5a1cfc33427d4a7"
+    },
+    "qualification04/qualification.py": {
+      "bytes": 12244,
+      "sha256": "8fe866e2e4f9baa6e86615a98102acf3d5716d3aa07b7b391cfe4681cbb22ef8"
+    },
+    "qualification04/run_qualification.py": {
+      "bytes": 10831,
+      "sha256": "38dc7ba5244aa5a0885f3335c8ad6b85ae57fbf6624ff3bd3b9ac51331f5ed6f"
+    },
+    "qualification04/selected-tests.json": {
+      "bytes": 1359,
+      "sha256": "574ed9be5160c642dbc1bd5750aa4ac8142d0792d57477aebf0b7e5187fa769d"
+    },
+    "qualification04/source-census-opening.json": {
+      "bytes": 5001666,
+      "sha256": "ede1bb3ff3ee85223c5df97e2a8c57979e3efcb41ab396af6d32ad5abeb83779"
+    },
+    "qualification04/source-layout.json": {
+      "bytes": 204,
+      "sha256": "d43b334c2210f7d307064e17ba740398ae0f6062890455fca9c50cfa83a1f0f0"
+    },
+    "qualification04/staging-receipt.json": {
+      "bytes": 4026,
+      "sha256": "513886e05cfdfe1f977241a1139633a07971d4e1ad18d5a5dbf4722a7120b2e3"
+    },
+    "qualification04/tool-exit.json": {
+      "bytes": 46,
+      "sha256": "b108b813bb7a5a064fdebd2d8d52d31a9208d53cc05a7eb9d6ebe2e7fb29af65"
+    },
+    "qualification04/verification.json": {
+      "bytes": 71644045,
+      "sha256": "717411983764d45cfe860dc45dec387797b9ea3f1efb0e24a662b791c613741a"
+    }
+  },
+  "frozen_MAIN_configuration_sha256": "c60d91943187515915b8c4c0d0ace3f3703f7de4da1960f09e49371a8cdf6575",
+  "frozen_source_hashes_and_runtime_membership_verified": true,
+  "global_pool_empty_required": false,
+  "limitations": {
+    "formal_proof_or_completion_authority": false,
+    "model_responses_in_tests": "authored fixtures",
+    "neural_head_or_CUDA_performance_qualified": false,
+    "official_task_success_measured": false,
+    "property_counts_are_remote_provider_usage": false,
+    "provider_call_count_instrumented": false,
+    "provider_usage_measured": false,
+    "runtime_archive_or_Docker_lifecycle_qualified": false,
+    "whole_task_token_savings_measured": false
+  },
+  "mandatory_ast_seals": 732,
+  "native_process_cleanup_verified": true,
+  "native_reservation_closed": true,
+  "opening_scope_sha256": "67bdad0eb8ae2e4b59dea41483d5b141903284cfe9c40a1fdb200a7e466d1fdf",
+  "optional_proof_reuse_mode": "off",
+  "owned_current_source_pins": {
+    "/home/barberb/lift_coding/external/ipfs_accelerate/benchmarks/agent_supervisor/container_coding/benchmark_comparison.py": {
+      "bytes": 82665,
+      "sha256": "1fda0d04f47baa0af83b2ccc6dc9a5e96571ae90c1c7996a44a703ef79142cc4"
+    },
+    "/home/barberb/lift_coding/external/ipfs_accelerate/benchmarks/agent_supervisor/container_coding/full_supervisor_harbor_agent.py": {
+      "bytes": 97530,
+      "sha256": "ad01c437322e2aa5ca20965f4217d0de621b6e49824acc94c162f51eb86234e6"
+    },
+    "/home/barberb/lift_coding/external/ipfs_accelerate/benchmarks/agent_supervisor/container_coding/native_usage_accounting.py": {
+      "bytes": 5525,
+      "sha256": "da0f8450ec69fe7d86bf7fff1a3008d2ada4aabf33fe96c3abbd23d211da36c0"
+    },
+    "/home/barberb/lift_coding/external/ipfs_accelerate/benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py": {
+      "bytes": 129150,
+      "sha256": "e3a0bf7d2080259620a78cb0c4a293caf0680b7c41d3a0d11d49807e0176855f"
+    },
+    "/home/barberb/lift_coding/external/ipfs_accelerate/benchmarks/agent_supervisor/container_coding/terminal_decision_usage_projection.py": {
+      "bytes": 9189,
+      "sha256": "bda4999cca5611df3cbc0ce2abe46c0190e63c11549944cc0c1ec0dc396f69e9"
+    },
+    "/home/barberb/lift_coding/external/ipfs_accelerate/benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py": {
+      "bytes": 87582,
+      "sha256": "6728707c0da86c7d00b7ed318e316e51b1b615f4d72939d1b57ebcd4753d559b"
+    },
+    "/home/barberb/lift_coding/external/ipfs_accelerate/benchmarks/agent_supervisor/container_coding/test_terminal_provider_receipt_collection.py": {
+      "bytes": 15422,
+      "sha256": "0ae1f1ea49f34875b8a63e3ea63ef175137057927045fe1362e4bc8b7d41da61"
+    },
+    "/home/barberb/lift_coding/external/ipfs_accelerate/benchmarks/agent_supervisor/container_coding/test_terminal_usage_coverage.py": {
+      "bytes": 5873,
+      "sha256": "e1b5387699807d854c12d8e8f163f5ca3e80be678a8ab9a9727702dec46e027f"
+    },
+    "/home/barberb/lift_coding/external/ipfs_accelerate/test/api/test_terminal_native_usage_coverage.py": {
+      "bytes": 10603,
+      "sha256": "7f9e5fc8593eb8e329cdc9669b6ffac679e365cf701f86c804a56a2e4e5fbce3"
+    },
+    "/home/barberb/lift_coding/external/ipfs_accelerate/test/api/test_terminal_usage_accounting.py": {
+      "bytes": 14655,
+      "sha256": "50162e9da68837e3401eb7dbc7e0cc8ee52f3f11256643c8e3fd3340583c450b"
+    }
+  },
+  "qualified": true,
+  "schema": "usage-coverage-qualification-result@1",
+  "scope": "incomplete terminal receipt coverage with retained native usage facts and withheld complete totals",
+  "selected_qualification": "qualification04",
+  "selected_test_file_count": 19,
+  "selected_test_files": [
+    "benchmarks/agent_supervisor/container_coding/test_benchmark_comparison.py",
+    "benchmarks/agent_supervisor/container_coding/test_benchmark_native_session_accounting.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_capsule_budget_comparison.py",
+    "benchmarks/agent_supervisor/container_coding/test_benchmark_formalization_comparison.py",
+    "benchmarks/agent_supervisor/container_coding/test_benchmark_controls.py",
+    "benchmarks/agent_supervisor/container_coding/test_setup_cache_comparison_controls.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_context_delivery_observation.py",
+    "test/api/test_context_delivery_accounting.py",
+    "test/api/test_native_context_delivery.py",
+    "test/api/test_codex_usage_growth.py",
+    "benchmarks/agent_supervisor/container_coding/test_baseline_session_overlap.py",
+    "benchmarks/agent_supervisor/container_coding/test_native_codex_baseline.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_provider_receipt_collection.py",
+    "benchmarks/agent_supervisor/container_coding/test_terminal_usage_coverage.py",
+    "test/api/test_terminal_decision_usage.py",
+    "test/api/test_semantic_decision_owner_usage.py",
+    "test/api/test_benchmark_decision_usage_projection.py",
+    "test/api/test_terminal_usage_accounting.py",
+    "test/api/test_terminal_native_usage_coverage.py"
+  ],
+  "skipped_cases": 0
+}

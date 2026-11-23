@@ -1,0 +1,20 @@
+{
+  "aggregate_complete_total_tokens_withheld": true,
+  "baseline_identity_inventory_complete": true,
+  "baseline_reported_total_tokens": 170,
+  "billing_total_verified": false,
+  "causal_claim": false,
+  "failed_supervisor_invocations": 1,
+  "identified_baseline_sessions": 1,
+  "live_provider_execution": false,
+  "measurement_scope": "authored_native_jsonl_baseline_and_supervisor",
+  "per_pass_ratios_withheld": true,
+  "provider_receipts_authenticity_verified": false,
+  "retained_trials": 2,
+  "schema": "baseline-session-overlap-observation@1",
+  "shared_native_sessions": 1,
+  "supervisor_native_sessions": 2,
+  "supervisor_reconciled_total_tokens": 247,
+  "token_savings_measured": false,
+  "whole_interaction_qualified": false
+}

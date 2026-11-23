@@ -1,0 +1,189 @@
+{
+  "MAIN_configuration_unchanged": true,
+  "actual_child_import_origins": {
+    "argv": [
+      "/home/barberb/lift_coding/.venvs/ipfs-datasets-duckdb-quack/bin/python",
+      "-B",
+      "-P",
+      "-c",
+      "import importlib.util, json, os, resource, sys\nfrom pathlib import Path\nresource.setrlimit(resource.RLIMIT_FSIZE, (65536, 65536))\nexpected = json.loads(sys.argv[1])\nassert os.environ['PYTHONPATH'] == expected['pythonpath']\nassert not set(expected['packages']).intersection(sys.modules)\ndef observe():\n    rows = {}\n    for name, source in expected['packages'].items():\n        spec = importlib.util.find_spec(name)\n        assert spec is not None and str(Path(spec.origin).resolve()) == source\n        assert [str(Path(path).resolve()) for path in spec.submodule_search_locations] == [str(Path(source).parent)]\n        rows[name] = str(Path(spec.origin).resolve())\n    return rows\ninherited = observe()\n# repository_source_mcp.py's direct-script entry inserts the captured A root.\nsys.path.insert(0, expected['accelerate'])\ndirect_script = observe()\nimport duckdb\norigin = str(Path(duckdb.__file__).resolve())\nassert Path(origin).is_relative_to(Path(expected['duckdb_site']))\nassert duckdb.__version__ == '1.5.5'\nassert not set(expected['packages']).intersection(sys.modules)\nprint(json.dumps({'schema': 'world-prompt-compaction-child-import-origin@1',\n    'inherited_packages': inherited, 'direct_script_packages': direct_script,\n    'duckdb_origin': origin, 'duckdb_version': duckdb.__version__,\n    'project_packages_executed': False, 'provider_calls': 0}, sort_keys=True), flush=True)\n",
+      "{\"accelerate\": \"/tmp/ipfs-world-prompt-compaction-20261016-qohkjce8/accelerate\", \"duckdb_site\": \"/home/barberb/lift_coding/.venvs/ipfs-datasets-duckdb-quack/lib/python3.12/site-packages\", \"packages\": {\"ipfs_accelerate_py\": \"/tmp/ipfs-world-prompt-compaction-20261016-qohkjce8/accelerate/ipfs_accelerate_py/__init__.py\", \"ipfs_datasets_py\": \"/tmp/ipfs-world-prompt-compaction-20261016-qohkjce8/datasets/ipfs_datasets_py/__init__.py\", \"ipfs_kit_py\": \"/tmp/ipfs-world-prompt-compaction-20261016-qohkjce8/kit/ipfs_kit_py/__init__.py\"}, \"pythonpath\": \"/tmp/ipfs-world-prompt-compaction-20261016-qohkjce8/datasets:/tmp/ipfs-world-prompt-compaction-20261016-qohkjce8/kit:/tmp/ipfs-world-prompt-compaction-20261016-qohkjce8/accelerate:/home/barberb/lift_coding/.venvs/ipfs-datasets-duckdb-quack/lib/python3.12/site-packages:/home/barberb/lift_coding/.venv/lib/python3.12/site-packages:/home/barberb/lift_coding/.venvs/terminal-bench-harbor/lib/python3.12/site-packages\"}"
+    ],
+    "cwd": "/tmp",
+    "elapsed_seconds": 0.11443313304334879,
+    "expected": {
+      "accelerate": "/tmp/ipfs-world-prompt-compaction-20261016-qohkjce8/accelerate",
+      "duckdb_site": "/home/barberb/lift_coding/.venvs/ipfs-datasets-duckdb-quack/lib/python3.12/site-packages",
+      "packages": {
+        "ipfs_accelerate_py": "/tmp/ipfs-world-prompt-compaction-20261016-qohkjce8/accelerate/ipfs_accelerate_py/__init__.py",
+        "ipfs_datasets_py": "/tmp/ipfs-world-prompt-compaction-20261016-qohkjce8/datasets/ipfs_datasets_py/__init__.py",
+        "ipfs_kit_py": "/tmp/ipfs-world-prompt-compaction-20261016-qohkjce8/kit/ipfs_kit_py/__init__.py"
+      },
+      "pythonpath": "/tmp/ipfs-world-prompt-compaction-20261016-qohkjce8/datasets:/tmp/ipfs-world-prompt-compaction-20261016-qohkjce8/kit:/tmp/ipfs-world-prompt-compaction-20261016-qohkjce8/accelerate:/home/barberb/lift_coding/.venvs/ipfs-datasets-duckdb-quack/lib/python3.12/site-packages:/home/barberb/lift_coding/.venv/lib/python3.12/site-packages:/home/barberb/lift_coding/.venvs/terminal-bench-harbor/lib/python3.12/site-packages"
+    },
+    "output": {
+      "direct_script_packages": {
+        "ipfs_accelerate_py": "/tmp/ipfs-world-prompt-compaction-20261016-qohkjce8/accelerate/ipfs_accelerate_py/__init__.py",
+        "ipfs_datasets_py": "/tmp/ipfs-world-prompt-compaction-20261016-qohkjce8/datasets/ipfs_datasets_py/__init__.py",
+        "ipfs_kit_py": "/tmp/ipfs-world-prompt-compaction-20261016-qohkjce8/kit/ipfs_kit_py/__init__.py"
+      },
+      "duckdb_origin": "/home/barberb/lift_coding/.venvs/ipfs-datasets-duckdb-quack/lib/python3.12/site-packages/duckdb/__init__.py",
+      "duckdb_version": "1.5.5",
+      "inherited_packages": {
+        "ipfs_accelerate_py": "/tmp/ipfs-world-prompt-compaction-20261016-qohkjce8/accelerate/ipfs_accelerate_py/__init__.py",
+        "ipfs_datasets_py": "/tmp/ipfs-world-prompt-compaction-20261016-qohkjce8/datasets/ipfs_datasets_py/__init__.py",
+        "ipfs_kit_py": "/tmp/ipfs-world-prompt-compaction-20261016-qohkjce8/kit/ipfs_kit_py/__init__.py"
+      },
+      "project_packages_executed": false,
+      "provider_calls": 0,
+      "schema": "world-prompt-compaction-child-import-origin@1"
+    },
+    "output_bytes": 984,
+    "output_sha256": "a56cb51c5477dc0ca38e1badfea175dffd71f420baa3c8ce1281d46598d6fae7",
+    "returncode": 0,
+    "schema": "world-prompt-compaction-child-import-probe-invocation@1",
+    "timeout_seconds": 60
+  },
+  "archive_deployment_qualified": false,
+  "chosen_qualification": "qualification04",
+  "default_enabled": true,
+  "evidence": {
+    "child-import-origin-probe.json": "4eb40a2324776d01d27867b2085e1b3adf434f9764fc4b446501c4b33e9ab69d",
+    "child-import-origin-probe.log": "a56cb51c5477dc0ca38e1badfea175dffd71f420baa3c8ce1281d46598d6fae7",
+    "collected-nodeids.json": "60369e1927a401fd478d3780a2b11c6e458659e1efdbfd87ba3f8fee354c2ce5",
+    "full-selected-tests.json": "3e1ce385927973872dac4806079ba0a70ceedc4c10fb8d64f58f98ec9a97008e",
+    "isolation-capture.json": "ae361bc5749246dded68ff5bf3d137114a5427f43f9e5c2c5b07666cb5b38745",
+    "junit.xml": "96613c9c0a31b9289c6689c0e812f9735e4315b05d969f969af462595c3f73c0",
+    "opening-scope.json": "cd0daa14dcb7fa50d92c7447db310f0d24c34e88ff415e2cc3c256595b96e4c6",
+    "qualification-process-invocation.json": "a503a3f45b0e8c6743900f0be50b22b92fd4e4ccc94279e997a670724ac42ba4",
+    "qualification-process-result.json": "2bb0c5b21a4bcf05c1419378704ae681b8a406973c351989134318bc65a47ea3",
+    "qualification-process.log": "44745fdd604ca068ea350f90d41eb3c56e7ce871cb8931f7af937c9143dadb4c",
+    "qualification.py": "ec95873f6957f7b29bc919e384daa6f291340c227069ee7f33466799dbd03cf0",
+    "run_qualification.py": "7d4a168d5949e2e1987057d444813015b294339be6efc9602e6ad3d9fee6f79c",
+    "selected-tests.json": "3e1ce385927973872dac4806079ba0a70ceedc4c10fb8d64f58f98ec9a97008e",
+    "source-census-opening.json": "3b2e21fbb753cbd97477cb4f68f4712f088e104f58d7f2f656c2f2c8961e860d",
+    "source-layout.json": "a07f87f611eae9f7fab2014df9d7176e261a0c2b9360d1d0ed3e921d60aff1b3",
+    "staging-receipt.json": "8b29600c8ed5d2c5a0c73cfef7bb296a73b997772ac980ca341228b46eb37bdd",
+    "verification.json": "f109dec6fc4cc010545d78ce8bbbcddbae58bd04e1ed3fb5584572e051b5978f"
+  },
+  "full_captured_source_bytes_verified": true,
+  "mandatory_ast_seals": true,
+  "model_behavior_equivalence_established": false,
+  "native_test_cases": 589,
+  "native_test_modules": 20,
+  "normal_inputs": 126,
+  "observation_test_cases": [
+    "test_default_compaction_displaces_complete_input_losslessly[tokenizer]",
+    "test_default_compaction_displaces_complete_input_losslessly[estimate]",
+    "test_default_compaction_displaces_complete_input_losslessly[automatic]"
+  ],
+  "observations": [
+    {
+      "count_kind": "tokenizer",
+      "exact_native_restoration": true,
+      "native_bytes": 27079,
+      "native_declared_count": 27079,
+      "provider_execution": "authored_fixture",
+      "provider_token_savings_measured": false,
+      "schema": "authored-world-prompt-compaction-observation@1",
+      "selected_bytes": 25923,
+      "selected_declared_count": 25923,
+      "whole_session_savings_established": false
+    },
+    {
+      "count_kind": "estimate",
+      "exact_native_restoration": true,
+      "native_bytes": 27079,
+      "native_declared_count": 27079,
+      "provider_execution": "authored_fixture",
+      "provider_token_savings_measured": false,
+      "schema": "authored-world-prompt-compaction-observation@1",
+      "selected_bytes": 25923,
+      "selected_declared_count": 25923,
+      "whole_session_savings_established": false
+    },
+    {
+      "count_kind": "automatic",
+      "exact_native_restoration": true,
+      "native_bytes": 27079,
+      "native_declared_count": 6770,
+      "provider_execution": "authored_fixture",
+      "provider_token_savings_measured": false,
+      "schema": "authored-world-prompt-compaction-observation@1",
+      "selected_bytes": 25923,
+      "selected_declared_count": 6481,
+      "whole_session_savings_established": false
+    }
+  ],
+  "optional_proof_reuse": "off",
+  "optout": "run(compact_world_prompt=False)",
+  "owned_process_group_closed": true,
+  "owned_reservation_released": true,
+  "owned_sources": {
+    "/home/barberb/lift_coding/external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/runtime/repository_world_invocation_replay.py": {
+      "bytes": 28488,
+      "sha256": "537dd5a9dec9f3a4343466b1523b19253f7a543d76314909d948266c96735656"
+    },
+    "/home/barberb/lift_coding/external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/runtime/repository_world_packet.py": {
+      "bytes": 32360,
+      "sha256": "491e7eb78e3906735bdda47331b8508cac03de5abbd8d92654da7965eeb7f7c6"
+    },
+    "/home/barberb/lift_coding/external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/runtime/router_implementation_runner.py": {
+      "bytes": 131313,
+      "sha256": "1c46bdde8659b51bf5651f5a2d4b9c1046c86be3248088ad3b94fdc64cca2d25"
+    },
+    "/home/barberb/lift_coding/external/ipfs_accelerate/test/api/test_repository_world_dispatch.py": {
+      "bytes": 28886,
+      "sha256": "230823d02cc97a86b39febf583274333ac55ea7ea93b53344ff9fef7851a996e"
+    },
+    "/home/barberb/lift_coding/external/ipfs_accelerate/test/api/test_repository_world_invocation_replay.py": {
+      "bytes": 28465,
+      "sha256": "17f7f6d6f488c6522eadc6883ae19504608cb36047255494256d737575ae89a8"
+    },
+    "/home/barberb/lift_coding/external/ipfs_accelerate/test/api/test_repository_world_packet.py": {
+      "bytes": 24779,
+      "sha256": "c325dd39e13252fb6fef3b78ce5ee03c775ae973244b8f7bb0da976d3cb04a30"
+    }
+  },
+  "prior_manifest_sha256": "037b9674fd09fc1672e39c0fbe735d363be312b3e2aca62f375dd2fe7dcb2100",
+  "provider_execution": "authored fixtures only",
+  "provider_token_savings_measured": false,
+  "reservation_sha256": "d44810f6f375826c56530964ee45f4642ffb30e3d70e4a782202c773cdd1a137",
+  "retained_prepared_unexecuted_generation": "qualification02",
+  "retained_runtime_source_root": "qualified-runtime",
+  "retained_unsuccessful_attempts": [
+    {
+      "claim_of_complete_selected_execution": false,
+      "final_verification_available": false,
+      "junit_errors": 5,
+      "junit_failures": 9,
+      "observed_test_calls": null,
+      "owned_process_group_closed": true,
+      "process_returncode": 1,
+      "production_sources_identical_to_qualified_generation": true,
+      "pytest_exit_code": null,
+      "root_stop_reason": "Known fixture preparation/native-assumption failures; interrupt this unsuccessful attempt, inspect actual traces and rerun unchanged full589case selection",
+      "run": "qualification01",
+      "status": "unsuccessful_interrupted_after_known_failures"
+    },
+    {
+      "claim_of_complete_selected_execution": false,
+      "final_verification_available": false,
+      "junit_errors": 0,
+      "junit_failures": 1,
+      "observed_test_calls": null,
+      "owned_process_group_closed": true,
+      "process_returncode": 1,
+      "production_sources_identical_to_qualified_generation": true,
+      "pytest_exit_code": null,
+      "root_stop_reason": "Single remaining new byte-gate fixture failure; retain unsuccessful attempt and inspect actual diagnostic before unchanged full-scope retry",
+      "run": "qualification03",
+      "status": "unsuccessful_interrupted_after_known_failures"
+    }
+  ],
+  "runtime_source_files": 13108,
+  "schema": "world-prompt-compaction-qualification@1",
+  "skipped": 0,
+  "status": "passed",
+  "whole_session_savings_established": false
+}

@@ -1,0 +1,43 @@
+{
+  "arms": {
+    "full_file": {
+      "canonical_result_sha256": "b2b732139520f4d5bd079d97bf6b739982cb3dd1faf13db89d2e18b949231812",
+      "fixture_validation_passed": true,
+      "prompt_and_wire_bytes": 23949,
+      "prompt_and_wire_local_tokens": 4648,
+      "rendered_prompt_bytes": 2886,
+      "rendered_prompt_sha256": "4c730ba6edcb7b203380fe35e08c64d7d47400a8085afd3e7293a9348fc6ecbd",
+      "replies": 8,
+      "reply_bytes": 19569,
+      "request_bytes": 1494,
+      "requests": 9
+    },
+    "line_range": {
+      "canonical_result_sha256": "b2b732139520f4d5bd079d97bf6b739982cb3dd1faf13db89d2e18b949231812",
+      "fixture_validation_passed": true,
+      "prompt_and_wire_bytes": 17631,
+      "prompt_and_wire_local_tokens": 3050,
+      "rendered_prompt_bytes": 2886,
+      "rendered_prompt_sha256": "4c730ba6edcb7b203380fe35e08c64d7d47400a8085afd3e7293a9348fc6ecbd",
+      "replies": 8,
+      "reply_bytes": 13149,
+      "request_bytes": 1596,
+      "requests": 9
+    }
+  },
+  "failed_read_included": true,
+  "official_task_success_measured": false,
+  "provider_internal_history_measured": false,
+  "provider_responses": "authored fixtures",
+  "provider_usage_measured": false,
+  "scope": "authored_worker_initial_prompt_and_complete_MCP_pipe_exchange",
+  "tokenizer_binding": {
+    "model": "pinned",
+    "provider": "codex_cli",
+    "special_token_policy": "tokenizers.encode:add_special_tokens=false",
+    "tokenizer_id": "authored-tiny-wordlevel-fixture",
+    "tokenizer_revision": "tokenizers/0.23.2/sha256:1971c1b8b420ed91f4ce4cb5531efc6b7378d914bbfd180179f56d7a1b43cc9f"
+  },
+  "tool_discovery_and_guidance_included": true,
+  "whole_task_token_savings_measured": false
+}

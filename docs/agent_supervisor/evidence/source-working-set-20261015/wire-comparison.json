@@ -1,0 +1,10 @@
+{
+  "full_local_tokens": 5457,
+  "full_reply_bytes": 32495,
+  "provider_usage_measured": false,
+  "range_local_tokens": 122,
+  "range_reply_bytes": 688,
+  "scope": "authored_local_complete_MCP_reply_only",
+  "tool_schema_and_guidance_cost_included": false,
+  "whole_task_token_savings_measured": false
+}

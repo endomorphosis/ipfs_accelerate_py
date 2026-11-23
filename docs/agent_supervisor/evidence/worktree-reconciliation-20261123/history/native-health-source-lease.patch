@@ -1,0 +1,240 @@
+--- a/ipfs_accelerate_py/agent_supervisor/rescue/native_executor_health.py
++++ b/ipfs_accelerate_py/agent_supervisor/rescue/native_executor_health.py
+@@ -474,0 +475,193 @@
++SOURCE_LEASE_RECOVERY_SCHEMA = 'agent-supervisor/scientific-source-lease-prestart-recovery@1'
++SOURCE_LEASE_RECOVERY_ENV = 'IPFS_SCIENTIFIC_SOURCE_LEASE_RECOVERY_SHA256'
++SOURCE_LEASE_RECOVERY_KEYS = frozenset({'schema','authorization','incident','prior_profile_ref',
++    'successor_profile_ref','prior_config_ref','successor_config_ref','generation_authorization_ref',
++    'generation_ack_ref','history_ref','independent_audit_ref','hold_ref','cycle_hold_ref','intent_ref',
++    'request_ref','owner_stdout_ref','owner_stderr_ref','last_health_receipt_ref','last_closed_cycle_ref',
++    'prior_main_identity','manager_before','current_boot_id','owner_currently_absent','recorded_at','source_successor_ref'})
++PROFILE_TRANSITION_RECEIPT_SCHEMA = 'agent-supervisor/native-executor-main-loop-health-profile-transition@1'
++SOURCE_LEASE_OWNER_SHA = 'e243cdf7b22a63f55e3c55101a2a7aeeee31492a98c8dbfe9f05b4d43b7fdc06'
++SOURCE_LEASE_MODULE_SHA = '42e9f07d0d458177079269d9f495f0b70512180c1adc2f7fe0bfdb05518a12f9'
++SOURCE_LEASE_MODULE_PATH = '/home/barberb/lift_coding/external/ipfs_datasets/ipfs_datasets_py/optimizers/logic_theorem_optimizer/autoencoder_source_lease.py'
++
++
++def classify_original_source_lease_deferral(profile_ref, request_ref, terminal, *, kind):
++    """Pure exact prestart predicate; never admission, closure or health authority.
++
++    Metadata/Git preparation may have happened. This proves only the pinned
++    owner's pre-control/native/storage/task-action failure point.
++    """
++    profile = _profile(profile_ref)
++    _need(kind == 'genuine_scoped_idle' and profile['owner_source']['sha256'] == SOURCE_LEASE_OWNER_SHA,
++          'source_lease_deferral_not_exact_idle_owner')
++    request = _document(request_ref)
++    _need(request.get('schema') == 'legal-ir-original-native-control-request/v1'
++          and request.get('purpose') == 'native_control_metadata'
++          and request.get('source_sha256', {}).get(profile['owner_source']['path']) == SOURCE_LEASE_OWNER_SHA,
++          'source_lease_deferral_request_source')
++    root = Path(SOURCE_LEASE_MODULE_PATH).parents[3]
++    _need(request.get('source_sha256',{}).get(SOURCE_LEASE_MODULE_PATH) == SOURCE_LEASE_MODULE_SHA
++          and request.get('source_roots') == [str(root),str(root.parent/'ipfs_accelerate')],
++          'source_lease_deferral_original_lease_source')
++    expected = {'schema':'legal-ir-original-native-control-terminal/v1','completed':False,
++        'child_launch_attempted':False,'child_reaped':False,'child_returncode':None,
++        'control_effects':'not_started','storage_status':'not_requested','original_native_compute_closed':True,
++        'source_READ_closed':True,'absolute_resource_operation_deadline_closed':True,
++        'cleanup_errors':[],'received_signals':[],'error_type':'SourceLeaseTimeout',
++        'error':'timed out waiting for admission source lease',
++        'task_completion_authority_granted_by_resource_owner':False,
++        'resource_profile':'original_orchestration_parented_disk_sampled_birth_bound_descendants',
++        'external_file_growth_enforcement':'polled_size_caps_and_original_conservative_precharge_not_sandbox',
++        'partial_or_failed_control_must_be_reconciled':True}
++    _need(type(terminal) is dict and set(terminal) == set(expected) | {
++          'request_sha256','owner_pid','owner_boot_id','elapsed_seconds'}
++          and all(type(terminal.get(k)) is type(v) and terminal.get(k) == v
++          for k,v in expected.items()), 'source_lease_deferral_not_proven_prestart')
++    _need(terminal.get('request_sha256') == request_ref['sha256']
++          and _integer(terminal.get('owner_pid'), 2) and _text(terminal.get('owner_boot_id'))
++          and _number(terminal.get('elapsed_seconds')) and 60 <= terminal['elapsed_seconds'] <= profile['max_cycle_seconds']
++          and not any(key in terminal for key in ('owner_birth','database_preimage_before_grants',
++              'reservation','execution_request','external_precharge','process_spawn_receipts')),
++          'source_lease_deferral_effect_or_source_point_unknown')
++    return dict(eligible=True, classification='known_prestart_idle_source_lease_timeout',
++                health_credit=False, native_or_storage_release_authority=False)
++
++
++def acknowledge_original_nonstarted_cycle(profile_ref, terminal_ref, request_ref, *, sequence, cycle_handle):
++    """Consume our genuine current Popen capability; publish no health/release."""
++    _need(threading.current_thread() is threading.main_thread(), 'producer_not_main_thread')
++    _need(type(cycle_handle) is _CycleHandle and cycle_handle in _CYCLES, 'original_cycle_capability_missing')
++    capability = _CYCLES[cycle_handle]; profile = _profile(profile_ref)
++    identity = _identity(profile_ref, profile, _manager, _process)
++    _need(Path(__file__).resolve() == Path(profile['health_module']['path'])
++          and _integer(sequence,1) and identity['pid'] == os.getpid() and capability['identity'] == identity
++          and capability['profile_ref'] == profile_ref and capability['request_ref'] == request_ref
++          and capability['sequence'] == sequence, 'negative_original_cycle_custody_changed')
++    process = capability['process']
++    _need(type(process) is subprocess.Popen, 'negative_requires_original_Popen_object')
++    # Genuine actual wait, never a returncode copied out of JSON.
++    code = process.wait(timeout=0)
++    _need(type(code) is int and code != 0 and process.returncode == code,
++          'negative_original_owner_wait_not_nonzero')
++    terminal = _document(terminal_ref)
++    classify_original_source_lease_deferral(profile_ref, request_ref, terminal, kind='genuine_scoped_idle')
++    original = capability['owner_observation']
++    _need(original['pid'] == terminal['owner_pid'] and original['boot_id'] == terminal['owner_boot_id']
++          and original['argv'] == [profile['unit']['argv'][0],'-B',profile['owner_source']['path'],
++              '--request',request_ref['path'],'--expected-request-sha256',request_ref['sha256']]
++          and original['ancestry'][-1]['pid'] == identity['pid'], 'negative_original_parent_request_source_changed')
++    _need(request_ref['sha256'] not in _USED_REQUESTS, 'original_request_replayed')
++    value = dict(schema='agent-supervisor/scientific-original-prestart-deferral@1',
++        profile_ref=profile_ref,request_ref=request_ref,terminal_ref=terminal_ref,sequence=sequence,
++        identity=identity,owner_observation=original,original_wait_returncode=code,
++        original_process_wait_completed=True,health_credit=False,completion_authority=False,
++        native_or_storage_release_authority=False,automatic_replay_permitted=False)
++    # Consume before any caller-side publication. An uncertain write cannot
++    # recreate this handle or retry the same request.
++    _USED_REQUESTS.add(request_ref['sha256']); del _CYCLES[cycle_handle]
++    return value
++
++
++def validate_source_profile_transition_value(grant, profile_ref, profile):
++    """One exact same-generation control-source transition, no native grant."""
++    _keys(grant, SOURCE_LEASE_RECOVERY_KEYS, 'source_recovery_shape')
++    _need(grant['schema'] == SOURCE_LEASE_RECOVERY_SCHEMA
++          and grant['authorization'] == 'one_exact_same_generation_source_lease_resume'
++          and grant['incident'] == 'cycle48-source-lease-timeout-v1'
++          and grant['successor_profile_ref'] == profile_ref, 'source_profile_transition_authority')
++    prior_ref = grant['prior_profile_ref']; prior = _profile(prior_ref)
++    old_sources={row['path']:row for row in prior['source_descriptors']}
++    new_sources={row['path']:row for row in profile['source_descriptors']}
++    _need(all(new_sources.get(path)==row for path,row in old_sources.items()),
++          'source_profile_transition_must_retain_all_original_pins')
++    for key in ('schema','catalogue','receipt_path','task_scope','max_age_seconds','max_cycle_seconds',
++                'proof_root','cycle_contract','owner_source','driver_source'):
++        _need(prior[key] == profile[key], 'source_profile_transition_scope_changed')
++    for key in ('name','interpreter','working_directory'):
++        _need(prior['unit'][key] == profile['unit'][key], 'source_profile_transition_unit_changed')
++    _need({k:v for k,v in prior['unit']['environment'].items() if k != 'PYTHONPATH'} ==
++          {k:v for k,v in profile['unit']['environment'].items() if k != 'PYTHONPATH'},
++          'source_profile_transition_environment_widened')
++    source = _document(grant['source_successor_ref'])
++    _keys(source, {'schema','prior_profile_ref','successor_profile_ref','producer_sources',
++                  'owner_environment','prior_unit_argv','successor_unit_argv'}, 'source_successor_shape')
++    _need(source['schema'] == 'agent-supervisor/scientific-producer-source-successor@1'
++          and source['prior_profile_ref'] == prior_ref and source['successor_profile_ref'] == profile_ref
++          and source['prior_unit_argv'] == prior['unit']['argv']
++          and source['successor_unit_argv'] == profile['unit']['argv']
++          and source['owner_environment'] == prior['unit']['environment'], 'source_successor_binding')
++    rows = source['producer_sources']; pins = {row['path']:row for row in profile['source_descriptors']}
++    _need(type(rows) is list and 2 <= len(rows) <= 4096
++          and all(type(row) is dict and pins.get(row.get('path')) == row for row in rows)
++          and profile['main_entrypoint'] in rows and profile['health_module'] in rows,
++          'source_successor_producer_population')
++    for row in rows:_bound_project_source(row, profile)
++    config = _document(grant['successor_config_ref']); previous_config = _document(grant['prior_config_ref'])
++    _need(all(config[key] == previous_config[key] for key in
++          ('schema','catalogue','idle_template_ref','execution_templates','poll_seconds','max_cycles','max_proof_bytes')),
++          'source_profile_transition_limits_or_templates_changed')
++    _need(config['max_cycles'] == 10000 and config['max_proof_bytes'] == 1073741824,
++          'source_profile_transition_original_finite_budget_changed')
++    return grant, prior_ref, prior
++
++
++def validate_source_profile_transition(reference, profile_ref, profile):
++    return validate_source_profile_transition_value(_document(reference),profile_ref,profile)
++
++
++def _source_transition_previous_receipt(reference, old_ref, profile_ref, profile, native, identity, proof, *, now):
++    grant, prior_ref, prior = validate_source_profile_transition(reference, profile_ref, profile)
++    flag='--known-source-lease-recovery'; argv=profile['unit']['argv']
++    _need(os.environ.get(SOURCE_LEASE_RECOVERY_ENV) == reference['sha256']
++          and argv.count(flag)==1 and argv[argv.index(flag)+1]==reference['path'],
++          'source_transition_not_original_unit_pinned')
++    _need(old_ref == grant['last_health_receipt_ref'], 'source_transition_prior_receipt_changed')
++    old = _document(old_ref)
++    _need(old['profile_ref'] == prior_ref and old['sequence'] == 34
++          and old['identity'] == grant['prior_main_identity'], 'source_transition_prior_epoch_changed')
++    old_proof = _document(old['cycle_proof_ref'])
++    old_native,_ = _linked_native(old_proof['native_diagnostic_ref'],prior,now=old['observed_at'])
++    _, old_proof = _receipt(old_ref, prior_ref, prior, old_native, old['identity'],
++        now=old['observed_at'], monotonic_ns=old['observed_monotonic_ns'])
++    _need(old['cycle_proof_ref'] == grant['last_closed_cycle_ref'] and proof['sequence'] == 1
++          and identity['invocation_id'] != old['identity']['invocation_id']
++          and _definitely_dead_identity(old['identity'], identity)
++          and proof['request_ref'] != old_proof['request_ref'], 'source_transition_new_cycle_not_fresh')
++    ack_path = Path(_document(grant['hold_ref'])['cycle_root']) / 'source-lease-reconciliation.json'
++    ack = _document(descriptor(ack_path))
++    _need(ack['schema'] == 'agent-supervisor/scientific-source-lease-reconciliation@1'
++          and ack['recovery_ref'] == reference and ack['consuming_main_identity'] == identity
++          and ack['health_credit'] is False and ack['spent_cycle_count'] == 48,
++          'source_transition_not_acknowledged_by_actual_Main')
++    archive = _epoch_archive_path(profile['receipt_path'], old_ref['sha256'])
++    _within(dict(path=str(archive)), profile['proof_root'])
++    return dict(previous_receipt_sha256=old_ref['sha256'],previous_ref=old_ref,
++        archive_path=str(archive),archive_raw=_bound(old_ref),profile_transition_ref=reference)
++
++
++def _verify_source_transition_receipt(receipt, profile_ref, profile):
++    reference = receipt['profile_transition_ref']
++    grant, prior_ref, prior = validate_source_profile_transition(reference, profile_ref, profile)
++    argv=profile['unit']['argv'];flag='--known-source-lease-recovery'
++    _need(argv.count(flag)==1 and argv[argv.index(flag)+1]==reference['path'],
++          'source_transition_receipt_not_unit_bound')
++    _need(receipt['sequence'] == 1 and receipt['previous_receipt_sha256'] == grant['last_health_receipt_ref']['sha256'],
++          'source_transition_receipt_boundary')
++    archive = _epoch_archive_path(profile['receipt_path'], receipt['previous_receipt_sha256'])
++    archived_ref = descriptor(archive); old = _document(archived_ref)
++    _need(archived_ref['bytes'] == grant['last_health_receipt_ref']['bytes']
++          and archived_ref['sha256'] == grant['last_health_receipt_ref']['sha256']
++          and old['profile_ref'] == prior_ref and old['identity'] == grant['prior_main_identity'],
++          'source_transition_archive_changed')
++    # Validate historical truth at its original clocks/profile/source paths.
++    old_proof = _document(old['cycle_proof_ref'])
++    old_native, _ = _linked_native(old_proof['native_diagnostic_ref'], prior, now=old['observed_at'])
++    _receipt(archived_ref, prior_ref, prior, old_native, old['identity'],
++        now=old['observed_at'], monotonic_ns=old['observed_monotonic_ns'])
++    ack_path=Path(_document(grant['hold_ref'])['cycle_root'])/'source-lease-reconciliation.json'
++    ack=_document(descriptor(ack_path))
++    _need(ack['recovery_ref']==reference and ack['consuming_main_identity']==receipt['identity']
++          and ack['health_credit'] is False and _definitely_dead_identity(old['identity'],receipt['identity']),
++          'source_transition_receipt_epoch_not_original')
++
++
+@@ -477,2 +670,3 @@
+-    _keys(receipt, RECEIPT_KEYS, 'receipt_shape')
+-    _need(receipt['schema'] == RECEIPT_SCHEMA and receipt['profile_ref'] == profile_ref and receipt['identity'] == identity, 'receipt_process_or_profile_changed')
++    transition_receipt = receipt.get('schema') == PROFILE_TRANSITION_RECEIPT_SCHEMA
++    _keys(receipt, RECEIPT_KEYS | {'profile_transition_ref'} if transition_receipt else RECEIPT_KEYS, 'receipt_shape')
++    _need(receipt['schema'] in (RECEIPT_SCHEMA, PROFILE_TRANSITION_RECEIPT_SCHEMA) and receipt['profile_ref'] == profile_ref and receipt['identity'] == identity, 'receipt_process_or_profile_changed')
+@@ -490,7 +684,11 @@
+-        archive = _epoch_archive_path(profile['receipt_path'], receipt['previous_receipt_sha256'])
+-        archive_ref = descriptor(archive)
+-        _need(archive_ref['sha256'] == receipt['previous_receipt_sha256'], 'previous_epoch_archive_digest_changed')
+-        archived = _document(archive_ref)
+-        _keys(archived, RECEIPT_KEYS, 'previous_epoch_archive_shape')
+-        _stored_identity(archived['identity'], profile_ref, profile)
+-        _need(archived['profile_ref'] == profile_ref and archived['identity']['invocation_id'] != identity['invocation_id'], 'previous_epoch_archive_binding_changed')
++        if transition_receipt:
++            _verify_source_transition_receipt(receipt, profile_ref, profile)
++        else:
++            archive = _epoch_archive_path(profile['receipt_path'], receipt['previous_receipt_sha256'])
++            archive_ref = descriptor(archive)
++            _need(archive_ref['sha256'] == receipt['previous_receipt_sha256'], 'previous_epoch_archive_digest_changed')
++            archived = _document(archive_ref)
++            _keys(archived, RECEIPT_KEYS, 'previous_epoch_archive_shape')
++            _stored_identity(archived['identity'], profile_ref, profile)
++            _need(archived['profile_ref'] == profile_ref and archived['identity']['invocation_id'] != identity['invocation_id'], 'previous_epoch_archive_binding_changed')
++    _need(not transition_receipt or (receipt['sequence'] == 1 and receipt['previous_receipt_sha256'] is not None), 'source_transition_receipt_requires_first_sequence')
+@@ -602 +800 @@
+-def _previous_receipt_transition(profile_ref, profile, native, identity, proof, *, now, monotonic_ns):
++def _previous_receipt_transition(profile_ref, profile, native, identity, proof, *, now, monotonic_ns, profile_transition_ref=None):
+@@ -613 +811,4 @@
+-    _keys(old, RECEIPT_KEYS, 'previous_receipt_shape')
++    if profile_transition_ref is not None and old.get('profile_ref') != profile_ref:
++        return _source_transition_previous_receipt(profile_transition_ref, old_ref, profile_ref,
++            profile, native, identity, proof, now=now)
++    _keys(old, RECEIPT_KEYS | {'profile_transition_ref'} if old.get('schema') == PROFILE_TRANSITION_RECEIPT_SCHEMA else RECEIPT_KEYS, 'previous_receipt_shape')
+@@ -664 +865 @@
+-def publish_after_native_cycle(profile_ref, cycle_proof_ref, native_diagnostic, *, sequence, cycle_handle):
++def publish_after_native_cycle(profile_ref, cycle_proof_ref, native_diagnostic, *, sequence, cycle_handle, profile_transition_ref=None):
+@@ -686 +887 @@
+-    transition = _previous_receipt_transition(profile_ref, profile, native, identity, proof, now=now, monotonic_ns=mono)
++    transition = _previous_receipt_transition(profile_ref, profile, native, identity, proof, now=now, monotonic_ns=mono, profile_transition_ref=profile_transition_ref)
+@@ -699,0 +901,3 @@
++    if transition.get('profile_transition_ref') is not None:
++        receipt['schema'] = PROFILE_TRANSITION_RECEIPT_SCHEMA
++        receipt['profile_transition_ref'] = transition['profile_transition_ref']

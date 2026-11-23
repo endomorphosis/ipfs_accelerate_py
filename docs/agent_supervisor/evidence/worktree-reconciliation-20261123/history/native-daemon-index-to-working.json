@@ -1,0 +1,35 @@
+{
+  "actual_three_way_result": "Cleanno-op: mergedworkingdelta equals publishedowner bytes exactly; current implementation retained.",
+  "admission_execution_completion_or_qualification_authority": false,
+  "distinct_working_delta": {
+    "bytes": 1778,
+    "format": "zero-context unifieddiff relative to exact preservedindexblob",
+    "path": "docs/agent_supervisor/evidence/worktree-reconciliation-20261123/history/native-daemon-index-to-working.patch",
+    "sha256": "b92864be10c65f701e708aa079b87d2408e40f7b262807a128738cb416493403"
+  },
+  "index": {
+    "blob_oid": "6318f644ae692c0f23c3c50d5165e9d07e5e1673",
+    "bytes": 3391478,
+    "history_witness": {
+      "blob_oid": "6318f644ae692c0f23c3c50d5165e9d07e5e1673",
+      "history_log": "2f6ffe86ad0cf8dd93d4bfdf13bb72c466aac8e8\tIsolated native metadata: avoid continuation import for empty running attempts\n0ca72b804cf87a0bbb85855cc44bfc3f15644640\tAdd native metadata executor in isolated explicit source closure\n"
+    },
+    "sha256": "83f3e9040262e8b1c072af63d7eb6f7909d85f57bcde10cafba9f89069d63701"
+  },
+  "published_HEAD": "317bd433b44791e1ff5f3eebee802832424f1953",
+  "published_owner_kept": {
+    "mode": "100644",
+    "oid": "a13f5892a989bbe2c161e55b446691348d876a63",
+    "type": "blob"
+  },
+  "schema": "distinct-index-and-working-source-preservation/v1",
+  "source_HEAD": "2f6ffe86ad0cf8dd93d4bfdf13bb72c466aac8e8",
+  "source_owner_path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+  "source_worktree_label": "legal-ir-native-metadata-executor-20261029",
+  "status": "PROPOSAL_NOT_ADOPTED",
+  "working": {
+    "blob_oid": "217c9f1518af59bd62f40fc8aeef8cb1cad5bc1b",
+    "bytes": 3392683,
+    "sha256": "36b6aa3725d5c55621d35809bc747f1901c0aed04d855a6e56e1049cfc105fd9"
+  }
+}

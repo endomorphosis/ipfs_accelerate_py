@@ -1,0 +1,12 @@
+{
+  "cid_codec": "raw",
+  "file_count": 13741,
+  "manifest_bytes": 3588322,
+  "manifest_raw_cidv1": "bafkreie2glgneobrvucvhgvehprhn7pbsvbtez5dtetx76wpvs4nvojmwa",
+  "manifest_sha256": "9a32ccd23831ad05539aa43be276fde195433267a399277ffacfacb8dab92cb0",
+  "multihash": "sha2-256",
+  "provider_delivery_attested": false,
+  "schema": "world-prompt-compaction-evidence-integrity@1",
+  "signature_attestation": false,
+  "total_file_bytes": 543189244
+}

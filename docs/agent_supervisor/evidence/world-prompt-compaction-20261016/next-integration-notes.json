@@ -1,0 +1,66 @@
+{
+  "kind": "read_only_source_audit_not_native_qualification",
+  "measured_savings": false,
+  "new_store_or_framework_proposed": false,
+  "opportunities": [
+    {
+      "join": "Existing Terminal implementation handoff to live world-packet/source/intent owners",
+      "preconditions": [
+        "Fresh task/tree/generation/admission/task revision/event watermark",
+        "Qualified live owner and worker-session handoff",
+        "Late owner recheck",
+        "Historical receipts and preparation handles do not confer live authority"
+      ],
+      "priority": 1
+    },
+    {
+      "join": "Existing deterministic-first decision gate before worker retries/provider admission",
+      "preconditions": [
+        "Independently checked resolutions only",
+        "Exact task/tree/context/policy and requirements identity",
+        "Retain validation and proof gates",
+        "Unknown residuals remain unresolved"
+      ],
+      "priority": 2
+    },
+    {
+      "join": "Existing checked Doctor candidates/residual results into successor obligations",
+      "preconditions": [
+        "Keep model-driven planning",
+        "Exact source preimages and admission",
+        "Complete required independent contract/solver/kernel checks",
+        "Candidate publication and Portal owner validation",
+        "Advisory projections cannot become repair authority"
+      ],
+      "priority": 3
+    }
+  ],
+  "provider_execution": false,
+  "schema": "world-context-next-integration-notes@1",
+  "source_pins": {
+    "benchmarks/agent_supervisor/container_coding/terminal_container_supervisor.py": {
+      "bytes": 129150,
+      "sha256": "e3a0bf7d2080259620a78cb0c4a293caf0680b7c41d3a0d11d49807e0176855f"
+    },
+    "benchmarks/agent_supervisor/container_coding/terminal_doctor_dispatch.py": {
+      "bytes": 34401,
+      "sha256": "8ca6938b3320b6ea20549d8c2add9657a186a60916409b4207168e8f4095c051"
+    },
+    "benchmarks/agent_supervisor/container_coding/terminal_indexed_preparation.py": {
+      "bytes": 85073,
+      "sha256": "7dd528f5c5e9fd7b02463254e0f60370e5f837c1d890b64285abf814d110369b"
+    },
+    "benchmarks/agent_supervisor/container_coding/terminal_initial_context.py": {
+      "bytes": 66411,
+      "sha256": "34c0bca1a6ece8a28a8b09f9be8e79c237d5c25d4dc5eb8678680721ef6ea74f"
+    },
+    "ipfs_accelerate_py/agent_supervisor/prompt/delta_task_packet.py": {
+      "bytes": 117263,
+      "sha256": "a1bd04036dae92477d6c101ead0f38be22030b51a5a187a03323fe97ad96104a"
+    },
+    "ipfs_accelerate_py/agent_supervisor/runtime/repository_intent_world.py": {
+      "bytes": 23448,
+      "sha256": "0a722587e82a1c73aada8fb30790db73043dc936171119ebd2c9dc47c3666238"
+    }
+  }
+}

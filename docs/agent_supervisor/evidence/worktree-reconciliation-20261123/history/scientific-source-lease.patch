@@ -1,0 +1,455 @@
+--- a/ipfs_accelerate_py/agent_supervisor/rescue/scientific_executor.py
++++ b/ipfs_accelerate_py/agent_supervisor/rescue/scientific_executor.py
+@@ -840 +840,184 @@
+-def run_cycle(config, profile_ref, profile, template_ref, kind, sequence, stop, *, cycle_number=None):
++SOURCE_LEASE_SCHEMA = 'agent-supervisor/scientific-source-lease-prestart-recovery@1'
++SOURCE_LEASE_ENV = 'IPFS_SCIENTIFIC_SOURCE_LEASE_RECOVERY_SHA256'
++SOURCE_LEASE_MAX_ADDITIONAL = 2
++SOURCE_LEASE_COOLDOWN_SECONDS = 60
++SOURCE_LEASE_INCIDENT = 'cycle48-source-lease-timeout-v1'
++SOURCE_LEASE_OLD_MAIN_SHA = '8f28efa64dd222dd2c92bc1e75375460fbe6d6914bc9c42b2d6bc694db09d06a'
++SOURCE_LEASE_OLD_PROFILE_SHA = '1adefd8d5f9e71fc6ded92359f5e8dfede91931da45a357d658931ea86558da3'
++SOURCE_LEASE_REQUEST_SHA = 'a0e48edc79e615636060d265eee57a0fe85148d5eddbb8bb8a25dbf16d099cfc'
++SOURCE_LEASE_STDOUT_SHA = '950def5cabc0cc27aaad5baac8d2079196328eb5e9a1944f5d39f6c2be71a08b'
++SOURCE_LEASE_AUDIT_SHA = '77367cc9ad4dc342c75ba63befa3cd0ff0a739f437d38716011566a079cf36a2'
++SOURCE_LEASE_LAST_HEALTH_SHA = 'ac696614679aa2f31cdf3c1b8cbf7d9d5d0e3ab3c6edd28e9bb3a4cd871e6507'
++SOURCE_LEASE_GENERATION_ACK_SHA = '3e5635e9ef0414e6f87772579d20cf16b1b295943f73d3b756120d3b91134c28'
++SOURCE_LEASE_GENERATION_AUTH_SHA = 'c54a0d595f42dbfa9a72593aa30b2188e21db0b73d7d1f11d842fbdcdc8dd7ae'
++
++
++def _source_lease_attempt_empty(request_ref, root, links):
++    h = health_owner(); request = h._document(request_ref)
++    attempt = h._path(request['attempt_directory'])
++    need(root in attempt.parents and attempt.is_dir() and not any(attempt.iterdir()),
++         'source_lease_attempt_not_empty')
++    need(not any(os.path.lexists(path) for path in links.values())
++         and not any(os.path.lexists(root/name) for name in ('cycle-proof.json','closed.json','native-diagnostic.json')),
++         'source_lease_attempt_has_execution_or_health_evidence')
++
++
++def _source_lease_history(reference, root):
++    """Bounded exact retained13 + current14..48; no counter reinterpretation."""
++    h = health_owner(); value = h._document(reference)
++    h._keys(value, {'schema','proof_root','retained_spent_cycle_count','spent_cycle_count','cycles'}, 'source_lease_history_shape')
++    need(value['schema'] == 'agent-supervisor/scientific-source-lease-cycle-history@1'
++         and value['proof_root'] == str(root) and type(value['retained_spent_cycle_count']) is int
++         and value['retained_spent_cycle_count'] == 13 and type(value['spent_cycle_count']) is int
++         and value['spent_cycle_count'] == 48, 'source_lease_history_counters')
++    rows = value['cycles']; need(type(rows) is list and len(rows) == 35, 'source_lease_history_population')
++    numbers = []; paths = set()
++    for row in rows:
++        h._keys(row, {'cycle_number','root','intent_ref','closed_ref','cycle_proof_ref'}, 'source_lease_history_row')
++        number = row['cycle_number']; cycle = h._path(row['root'])
++        need(h._integer(number, 14, 48) and cycle.parent == root
++             and cycle.name.startswith('cycle-%08d-'%number) and str(cycle) not in paths,
++             'source_lease_history_duplicate_or_path')
++        paths.add(str(cycle)); numbers.append(number)
++        intent = h._document(row['intent_ref'])
++        need(row['intent_ref']['path'] == str(cycle/'intent.json') and intent.get('cycle_number') == number,
++             'source_lease_history_intent')
++        if number == 48:
++            need(row['closed_ref'] is None and row['cycle_proof_ref'] is None,
++                 'source_lease_failed_cycle_has_health_credit')
++        else:
++            need(row['closed_ref']['path'] == str(cycle/'closed.json')
++                 and row['cycle_proof_ref']['path'] == str(cycle/'cycle-proof.json')
++                 and h._document(row['closed_ref'])['cycle_proof_ref'] == row['cycle_proof_ref'],
++                 'source_lease_history_original_closure')
++            h._document(row['cycle_proof_ref'])
++    need(sorted(numbers) == list(range(14,49))
++         and {str(path) for path in root.glob('cycle-*')} == paths,
++         'source_lease_history_gap_extra_or_duplicate')
++    return value
++
++
++def _validate_source_lease_recovery(value, profile_ref, profile, config, *, check_absence):
++    """Exact administrative negative acknowledgment; no recreated old handle."""
++    h = health_owner(); h._keys(value, h.SOURCE_LEASE_RECOVERY_KEYS, 'source_recovery_shape')
++    need(value['schema'] == SOURCE_LEASE_SCHEMA and value['authorization'] == 'one_exact_same_generation_source_lease_resume'
++         and value['incident'] == SOURCE_LEASE_INCIDENT and value['successor_profile_ref'] == profile_ref,
++         'source_recovery_authority')
++    prior_ref = value['prior_profile_ref']; prior = h._profile(prior_ref)
++    need(prior_ref['sha256'] == SOURCE_LEASE_OLD_PROFILE_SHA and prior['main_entrypoint']['sha256'] == SOURCE_LEASE_OLD_MAIN_SHA
++         and prior['owner_source']['sha256'] == h.SOURCE_LEASE_OWNER_SHA, 'source_recovery_not_exact_old_sources')
++    old_config = h._document(value['prior_config_ref'])
++    need(h._document(value['successor_config_ref']) == config
++         and all(config[key] == old_config[key] for key in ('schema','catalogue','idle_template_ref',
++             'execution_templates','poll_seconds','max_cycles','max_proof_bytes'))
++         and config['max_cycles'] == 10000 and config['max_proof_bytes'] == 1073741824
++         and config['poll_seconds'] == 60 and profile['max_cycle_seconds'] == 300,
++         'source_recovery_original_limits_changed')
++    root = Path(profile['proof_root']); hold = h._document(value['hold_ref']); failed = Path(hold['cycle_root'])
++    need(failed.parent == root and failed.name == 'cycle-00000048-17f06a2523a24ab6adb29cb345824635'
++         and value['hold_ref']['path'] == str(root/'executor-held.json')
++         and hold['schema'] == 'agent-supervisor/scientific-executor-persistent-hold@1'
++         and hold['reason'] == 'original_owner_failed' and hold['automatic_retry_admitted'] is False,
++         'source_recovery_exact_old_hold')
++    cycle_hold = h._document(value['cycle_hold_ref'])
++    need(value['cycle_hold_ref']['path'] == str(failed/'cycle-held.json')
++         and cycle_hold['schema'] == 'agent-supervisor/scientific-cycle-held@1'
++         and cycle_hold['reason'] == 'original_owner_failed' and cycle_hold['automatic_retry_admitted'] is False,
++         'source_recovery_exact_cycle_hold')
++    intent = h._document(value['intent_ref']); request = h._document(value['request_ref'])
++    need(value['intent_ref']['path'] == str(failed/'intent.json') and value['request_ref']['path'] == str(failed/'request.json')
++         and value['request_ref']['sha256'] == SOURCE_LEASE_REQUEST_SHA
++         and intent == {'kind':'genuine_scoped_idle','sequence':35,'cycle_number':48,
++             'request_ref':value['request_ref'],'automatic_retry_admitted':False}, 'source_recovery_original_intent')
++    need(value['owner_stdout_ref']['path'] == str(failed/'owner.stdout')
++         and value['owner_stdout_ref']['bytes'] == 1005 and value['owner_stdout_ref']['sha256'] == SOURCE_LEASE_STDOUT_SHA
++         and value['owner_stderr_ref']['path'] == str(failed/'owner.stderr')
++         and h._bound(value['owner_stderr_ref']) == b'', 'source_recovery_original_streams')
++    terminal = original_terminal(h._bound(value['owner_stdout_ref']), value['request_ref'])
++    h.classify_original_source_lease_deferral(prior_ref, value['request_ref'], terminal, kind='genuine_scoped_idle')
++    links = {'execution_request':failed/'attempt/execution-request.json',
++             'result':failed/'attempt/exports/result.json','origins':failed/'attempt/exports/origins.json'}
++    _source_lease_attempt_empty(value['request_ref'], failed, links)
++    need(value['independent_audit_ref']['sha256'] == SOURCE_LEASE_AUDIT_SHA, 'source_recovery_independent_audit_changed')
++    h._bound(value['independent_audit_ref'])
++    ack = h._document(value['generation_ack_ref']); generation = h._document(value['generation_authorization_ref'])
++    need(value['generation_ack_ref']['sha256'] == SOURCE_LEASE_GENERATION_ACK_SHA
++         and value['generation_authorization_ref']['sha256'] == SOURCE_LEASE_GENERATION_AUTH_SHA
++         and ack['schema'] == 'agent-supervisor/scientific-bounded-generation-ack@1'
++         and ack['handover_ref'] == value['generation_authorization_ref'] and ack['generation_number'] == 2
++         and ack['max_generations'] == 2 and ack['spent_cycle_count'] == 13 and ack['next_cycle_number'] == 14
++         and generation['generation_number'] == 2 and generation['max_generations'] == 2,
++         'source_recovery_original_generation_changed')
++    need(ack['retained_census_ref'] == generation['retained_census_ref']
++         and generation['global_max_bytes'] == GLOBAL_RETAINED_BYTES, 'source_recovery_retained_global_bound')
++    _generation_census(generation['retained_census_ref'])
++    history = _source_lease_history(value['history_ref'], root)
++    previous = h._document(value['last_health_receipt_ref'])
++    need(value['last_health_receipt_ref']['path'] == profile['receipt_path']
++         and value['last_health_receipt_ref']['sha256'] == SOURCE_LEASE_LAST_HEALTH_SHA
++         and previous['profile_ref'] == prior_ref and previous['sequence'] == 34
++         and previous['cycle_proof_ref'] == value['last_closed_cycle_ref']
++         and previous['identity'] == value['prior_main_identity'] == ack['consuming_main_identity'],
++         'source_recovery_last_actual_receipt_changed')
++    manager = value['manager_before']
++    need(manager.get('Id') == profile['unit']['name'] and manager.get('MainPID') == '0'
++         and manager.get('ActiveState') in ('failed','inactive')
++         and manager.get('InvocationID') == value['prior_main_identity']['invocation_id']
++         and value['current_boot_id'] == terminal['owner_boot_id'] == value['prior_main_identity']['boot_id']
++         and value['owner_currently_absent'] is True, 'source_recovery_original_manager_or_boot_unknown')
++    if check_absence:
++        current = dict(boot_id=Path('/proc/sys/kernel/random/boot_id').read_text().strip())
++        need(current['boot_id'] == value['current_boot_id']
++             and h._definitely_dead_identity(value['prior_main_identity'],current), 'source_recovery_old_Main_not_dead')
++        try:h._stat_identity(terminal['owner_pid'])
++        except (FileNotFoundError,ProcessLookupError):pass
++        else:raise ExecutorHold('source_recovery_owner_PID_not_absent_birth_unknown')
++    need(not any(key in terminal for key in ('owner_birth','database_preimage_before_grants')),
++         'source_recovery_must_not_backfill_original_absent_fields')
++    return failed
++
++
++def authorize_source_lease_recovery(spec_ref, output):
++    """Original stopped-owner administrative path; never starts a service."""
++    h = health_owner(); spec = h._document(spec_ref)
++    h._keys(spec, h.SOURCE_LEASE_RECOVERY_KEYS - {'manager_before','current_boot_id','owner_currently_absent','recorded_at'},
++            'source_recovery_spec')
++    profile_ref = spec['successor_profile_ref']; profile = h._profile(profile_ref)
++    config, _, _ = load_configuration(spec['successor_config_ref'])
++    root = Path(profile['proof_root']); output = h._path(str(output))
++    need(root/'reconciliation-source-lease-v01' in output.parents, 'source_recovery_authorization_outside_root')
++    with os.fdopen(os.open(root/'scientific-executor.lock', os.O_RDWR|os.O_NOFOLLOW),'rb') as lock:
++        fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
++        manager = h._manager(profile['unit']['name'])
++        value = dict(spec, manager_before=manager,
++            current_boot_id=Path('/proc/sys/kernel/random/boot_id').read_text().strip(),
++            owner_currently_absent=True, recorded_at=time.time())
++        _validate_source_lease_recovery(value,profile_ref,profile,config,check_absence=True)
++        h.validate_source_profile_transition_value(value,profile_ref,profile)
++        return put(output,value)
++
++
++def reconcile_source_lease_recovery(reference, profile_ref, profile, config, opening_identity):
++    h = health_owner(); need(os.environ.get(SOURCE_LEASE_ENV) == reference['sha256'], 'source_recovery_not_unit_pinned')
++    argv = profile['unit']['argv']; flag = '--known-source-lease-recovery'
++    need(argv.count(flag) == 1 and argv[argv.index(flag)+1] == reference['path'], 'source_recovery_not_exact_unit_argv')
++    value = h._document(reference)
++    h.validate_source_profile_transition(reference,profile_ref,profile)
++    failed = _validate_source_lease_recovery(value,profile_ref,profile,config,check_absence=True)
++    ack = dict(schema='agent-supervisor/scientific-source-lease-reconciliation@1', recovery_ref=reference,
++        consuming_main_identity=opening_identity,retained_global_hold_ref=value['hold_ref'],
++        retained_cycle_hold_ref=value['cycle_hold_ref'],spent_cycle_count=48,next_cycle_number=49,
++        additional_retry_limit=2,cooldown_seconds=60,health_credit=False,completion_authority=False,
++        dispatch_authority=False,original_owner_birth=None,original_owner_returncode=None,
++        original_wait_receipt=None,database_preimage_before_grants=None,
++        original_reaping_basis='independently_admitted_pinned_control_path_inference',
++        original_control_path_sources={'Main':SOURCE_LEASE_OLD_MAIN_SHA,'owner':h.SOURCE_LEASE_OWNER_SHA,
++                                      'independent_audit':SOURCE_LEASE_AUDIT_SHA})
++    path = failed/'source-lease-reconciliation.json'
++    need(not os.path.lexists(path), 'source_recovery_grant_already_consumed')
++    ref = put(path,ack)
++    return 48, dict(anchor_ref=ref,additional_slots_spent=0,cooldown_seconds=60)
++
++
++def run_cycle(config, profile_ref, profile, template_ref, kind, sequence, stop, *, cycle_number=None,
++              source_retry=None, profile_transition_ref=None):
+@@ -844,2 +1027 @@
+-    template=health_owner()._document(template_ref)
+-    selected_plan=health_owner()._document(template['plan_ref'])
++    template=h._document(template_ref);selected_plan=h._document(template['plan_ref'])
+@@ -847 +1029 @@
+-        original_request=health_owner()._document(template['request_ref'])
++        original_request=h._document(template['request_ref'])
+@@ -856 +1038,8 @@
+-        if cycle_number is not None: intent['cycle_number'] = cycle_number
++        if cycle_number is not None:intent['cycle_number']=cycle_number
++        if source_retry is not None:
++            h._keys(source_retry,{'anchor_ref','additional_slot'},'source_retry_slot_shape')
++            need(kind=='genuine_scoped_idle' and h._integer(source_retry['additional_slot'],1,2),
++                 'source_retry_not_finite_idle')
++            h._bound(source_retry['anchor_ref'])
++            intent['source_lease_retry']=source_retry
++        # This durable intent spends its cycle/slot BEFORE any original Popen.
+@@ -859,8 +1048,22 @@
+-        with os.fdopen(os.open(stdout_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), 'wb') as out, \
+-             os.fdopen(os.open(stderr_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), 'wb') as err:
+-            argv = [profile['unit']['argv'][0], '-B', profile['owner_source']['path'],
+-                '--request', request_ref['path'], '--expected-request-sha256', request_ref['sha256']]
+-            process = subprocess.Popen(argv, cwd=profile['unit']['working_directory'],
+-                stdin=subprocess.DEVNULL, stdout=out, stderr=err, close_fds=True)
+-            handle = h.track_original_cycle(profile_ref, process, request_ref, sequence=sequence)
+-            deadline = time.monotonic() + profile['max_cycle_seconds']
++        with os.fdopen(os.open(stdout_path, os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600),'wb') as out, \
++             os.fdopen(os.open(stderr_path, os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600),'wb') as err:
++            argv=[profile['unit']['argv'][0],'-B',profile['owner_source']['path'],
++                '--request',request_ref['path'],'--expected-request-sha256',request_ref['sha256']]
++            environment=None
++            if profile_transition_ref is not None:
++                grant,_,_=h.validate_source_profile_transition(profile_transition_ref,profile_ref,profile)
++                source=h._document(grant['source_successor_ref'])
++                # Producer roots may change; original payload owner/driver and
++                # ASREF cache retain their exact original environment roles.
++                environment={**os.environ,**source['owner_environment']}
++                environment.pop(SOURCE_LEASE_ENV,None)
++            keywords=dict(cwd=profile['unit']['working_directory'],stdin=subprocess.DEVNULL,
++                          stdout=out,stderr=err,close_fds=True)
++            if environment is not None:keywords['env']=environment
++            process=subprocess.Popen(argv,**keywords)
++            handle=h.track_original_cycle(profile_ref,process,request_ref,sequence=sequence)
++            start_fields=h.cycle_start_fields(handle)
++            start_ref=put(root/'owner-start.json',dict(schema='agent-supervisor/scientific-original-owner-start@1',
++                profile_ref=profile_ref,request_ref=request_ref,**start_fields,
++                source='genuine_current_original_cycle_handle',health_credit=False))
++            deadline=time.monotonic()+profile['max_cycle_seconds']
+@@ -868,3 +1071,3 @@
+-                need(not stop.is_set() and time.monotonic() < deadline, 'original_cycle_interrupted_or_timeout')
+-                need(stdout_path.stat().st_size <= h.MAX_JSON and stderr_path.stat().st_size <= h.MAX_JSON,
+-                    'original_owner_output_bound')
++                need(not stop.is_set() and time.monotonic()<deadline,'original_cycle_interrupted_or_timeout')
++                need(stdout_path.stat().st_size<=h.MAX_JSON and stderr_path.stat().st_size<=h.MAX_JSON,
++                     'original_owner_output_bound')
+@@ -872,14 +1075,30 @@
+-            need(process.wait() == 0, 'original_owner_failed')
+-        terminal_ref = put(root / 'terminal.json', original_terminal(h._raw(stdout_path), request_ref))
+-        native = observe_native(config)
+-        native_ref = put(root / 'native-diagnostic.json', native)
+-        proof = dict(h.cycle_start_fields(handle), schema=h.CYCLE_SCHEMA, kind=kind,
+-            finished_at=time.time(), finished_monotonic_ns=time.monotonic_ns(),
+-            request_ref=request_ref, plan_ref=plan_ref, terminal_ref=terminal_ref,
+-            execution_request_ref=h.descriptor(links['execution_request']),
+-            result_ref=h.descriptor(links['result']), origins_ref=h.descriptor(links['origins']),
+-            native_diagnostic_ref=native_ref)
+-        proof_ref = put(root / 'cycle-proof.json', proof)
+-        receipt_ref = h.publish_after_native_cycle(profile_ref, proof_ref, native,
+-            sequence=sequence, cycle_handle=handle)
+-        put(root / 'closed.json', {'cycle_proof_ref': proof_ref, 'receipt_ref': receipt_ref})
++            returncode=process.wait()
++            out.flush();err.flush();os.fsync(out.fileno());os.fsync(err.fileno())
++        wait_ref=put(root/'owner-wait.json',dict(schema='agent-supervisor/scientific-original-owner-wait@1',
++            owner_start_ref=start_ref,request_ref=request_ref,returncode=returncode,
++            actual_original_Popen_wait_completed=True,finished_monotonic_ns=time.monotonic_ns(),health_credit=False))
++        # Parse the actual original terminal BEFORE blanket nonzero failure.
++        terminal=original_terminal(h._raw(stdout_path),request_ref)
++        terminal_ref=put(root/'terminal.json',terminal)
++        if returncode != 0:
++            need(h._raw(stderr_path)==b'','nonstarted_owner_stderr_unknown')
++            h.classify_original_source_lease_deferral(profile_ref,request_ref,terminal,kind=kind)
++            _source_lease_attempt_empty(request_ref,root,links)
++            value=h.acknowledge_original_nonstarted_cycle(profile_ref,terminal_ref,request_ref,
++                sequence=sequence,cycle_handle=handle)
++            value.update(cycle_number=sequence if cycle_number is None else cycle_number,
++                         original_wait_ref=wait_ref,source_lease_retry=source_retry,
++                         cooldown_seconds=SOURCE_LEASE_COOLDOWN_SECONDS)
++            reference=put(root/'prestart-deferral.json',value)
++            return dict(deferred_source_lease=True,deferral_ref=reference,cycle_root=str(root),
++                        cycle_number=value['cycle_number'],health_credit=False)
++        native=observe_native(config);native_ref=put(root/'native-diagnostic.json',native)
++        proof=dict(start_fields,schema=h.CYCLE_SCHEMA,kind=kind,finished_at=time.time(),
++            finished_monotonic_ns=time.monotonic_ns(),request_ref=request_ref,plan_ref=plan_ref,terminal_ref=terminal_ref,
++            execution_request_ref=h.descriptor(links['execution_request']),result_ref=h.descriptor(links['result']),
++            origins_ref=h.descriptor(links['origins']),native_diagnostic_ref=native_ref)
++        proof_ref=put(root/'cycle-proof.json',proof)
++        arguments=dict(sequence=sequence,cycle_handle=handle)
++        if profile_transition_ref is not None:arguments['profile_transition_ref']=profile_transition_ref
++        receipt_ref=h.publish_after_native_cycle(profile_ref,proof_ref,native,**arguments)
++        put(root/'closed.json',{'cycle_proof_ref':proof_ref,'receipt_ref':receipt_ref})
+@@ -888,2 +1106,0 @@
+-        # A signal is handed to the original owner, which owns cancellation and
+-        # custody. No synthetic closure, SIGKILL, reservation release or replay.
+@@ -892,6 +1109,4 @@
+-            try:
+-                process.wait(timeout=60)
+-            except subprocess.TimeoutExpired:
+-                pass
+-        persistent_hold(profile['proof_root'], root, str(exc))
+-        if cycle_number is not None: _recovery_failure(Path(profile['proof_root']), cycle_number, sequence, exc)
++            try:process.wait(timeout=60)
++            except subprocess.TimeoutExpired:pass
++        persistent_hold(profile['proof_root'],root,str(exc))
++        if cycle_number is not None:_recovery_failure(Path(profile['proof_root']),cycle_number,sequence,exc)
+@@ -1177,11 +1392,16 @@
+-def serve(config_ref, stop, *, recovery_ref=None, generation_ref=None):
+-    h = health_owner(); config, profile_ref, profile = load_configuration(config_ref)
+-    root = h._path(profile['proof_root']); info = root.lstat()
+-    need(stat.S_ISDIR(info.st_mode) and info.st_uid == os.geteuid() and
+-        stat.S_IMODE(info.st_mode) == 0o700, 'service_proof_root_not_private')
+-    with os.fdopen(os.open(root / 'scientific-executor.lock', os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600), 'rb') as lock:
+-        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+-        reconciled_count = 0
+-        need(recovery_ref is None or generation_ref is None,'generation_recovery_modes_crossed')
+-        if generation_ref is not None:
+-            need(not os.path.lexists(root/'executor-held.json') and not any(root.glob('cycle-*')), 'generation_target_not_fresh')
++def serve(config_ref, stop, *, recovery_ref=None, generation_ref=None, source_lease_ref=None):
++    h=health_owner();config,profile_ref,profile=load_configuration(config_ref)
++    root=h._path(profile['proof_root']);info=root.lstat()
++    need(stat.S_ISDIR(info.st_mode) and info.st_uid==os.geteuid() and stat.S_IMODE(info.st_mode)==0o700,
++         'service_proof_root_not_private')
++    with os.fdopen(os.open(root/'scientific-executor.lock',os.O_RDWR|os.O_CREAT|os.O_NOFOLLOW,0o600),'rb') as lock:
++        fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
++        reconciled_count=0;retry_state=None
++        need(sum(ref is not None for ref in (recovery_ref,generation_ref,source_lease_ref))<=1,
++             'generation_recovery_modes_crossed')
++        if source_lease_ref is not None:
++            opening_identity=require_main_process(profile_ref,profile)
++            reconciled_count,retry_state=reconcile_source_lease_recovery(
++                source_lease_ref,profile_ref,profile,config,opening_identity)
++        elif generation_ref is not None:
++            need(not os.path.lexists(root/'executor-held.json') and not any(root.glob('cycle-*')),'generation_target_not_fresh')
+@@ -1191,3 +1411,4 @@
+-            need(not os.path.lexists(root / 'executor-held.json'), 'persistent_hold_requires_original_reconciliation')
+-            need(not any(not (path / 'closed.json').exists() for path in root.glob('cycle-*')), 'unfinished_cycle_requires_original_reconciliation')
+-            opening_identity = require_main_process(profile_ref, profile)
++            need(not os.path.lexists(root/'executor-held.json'),'persistent_hold_requires_original_reconciliation')
++            need(not any(not(path/'closed.json').exists() for path in root.glob('cycle-*')),
++                 'unfinished_cycle_requires_original_reconciliation')
++            opening_identity=require_main_process(profile_ref,profile)
+@@ -1195,4 +1416,4 @@
+-            opening_identity = require_main_process(profile_ref, profile)
+-            kind = h._document(recovery_ref).get('schema')
+-            if kind == RECOVERY_SCHEMA:
+-                reconciled_count = reconcile_known_nonstarted(recovery_ref, profile_ref, profile, config, opening_identity)
++            opening_identity=require_main_process(profile_ref,profile)
++            kind=h._document(recovery_ref).get('schema')
++            if kind==RECOVERY_SCHEMA:
++                reconciled_count=reconcile_known_nonstarted(recovery_ref,profile_ref,profile,config,opening_identity)
+@@ -1200,3 +1421,3 @@
+-                need(kind == CLOSED_IDLE_SCHEMA, 'unknown_typed_recovery')
+-                reconciled_count = reconcile_known_closed_idle(recovery_ref, profile_ref, profile, config, opening_identity)
+-        sequence = 1
++                need(kind==CLOSED_IDLE_SCHEMA,'unknown_typed_recovery')
++                reconciled_count=reconcile_known_closed_idle(recovery_ref,profile_ref,profile,config,opening_identity)
++        sequence=1
+@@ -1204,9 +1425,5 @@
+-            previous = h._document(h.descriptor(profile['receipt_path']))
+-            if previous.get('identity') == opening_identity:
+-                sequence = previous['sequence'] + 1
+-            # A new manager invocation starts sequence1; the canonical helper
+-            # requires the previous process definitely dead and archives its proof.
+-        cycle_number = reconciled_count + 1
+-        for _ in range(config['max_cycles'] - reconciled_count):
+-            if stop.is_set():
+-                return 0
++            previous=h._document(h.descriptor(profile['receipt_path']))
++            if previous.get('identity')==opening_identity:sequence=previous['sequence']+1
++        cycle_number=reconciled_count+1
++        for _ in range(config['max_cycles']-reconciled_count):
++            if stop.is_set():return 0
+@@ -1214,19 +1431,47 @@
+-                need(h._document(config_ref) == config and h._profile(profile_ref) == profile,
+-                    'service_binding_changed')
+-                need(require_main_process(profile_ref, profile) == opening_identity, 'service_main_identity_changed')
+-                if generation_ref is not None:
+-                    retained=h._document(generation_ref)
+-                    _generation_census(retained['retained_census_ref'])
+-                check_proof_budget(root, config['max_proof_bytes'])
+-                native = observe_native(config)
+-                template_ref, kind = select_template(config, profile, native)
+-                if recovery_ref is None and generation_ref is None:
+-                    run_cycle(config, profile_ref, profile, template_ref, kind, sequence, stop)
+-                else:
+-                    run_cycle(config, profile_ref, profile, template_ref, kind, sequence, stop, cycle_number=cycle_number)
+-                sequence += 1
+-                cycle_number += 1
+-                # An approved execution is one finite action. A fresh explicit
+-                # owner activation is needed before another task dispatch.
+-                if kind != 'genuine_scoped_idle':
+-                    persistent_hold(root, root, 'approved_execution_closed_no_automatic_followup')
++                need(h._document(config_ref)==config and h._profile(profile_ref)==profile,'service_binding_changed')
++                need(require_main_process(profile_ref,profile)==opening_identity,'service_main_identity_changed')
++                retained_generation=generation_ref
++                if source_lease_ref is not None:
++                    recovery=h._document(source_lease_ref)
++                    retained_generation=recovery['generation_authorization_ref']
++                if retained_generation is not None:
++                    retained=h._document(retained_generation)
++                    census=_generation_census(retained['retained_census_ref'])
++                    usage=check_proof_budget(root,config['max_proof_bytes'])
++                    need(census['source_bytes']+usage['bytes']+REUSE_CYCLE_RESERVE_BYTES<=GLOBAL_RETAINED_BYTES,
++                         'source_recovery_global_retained_bound')
++                check_proof_budget(root,config['max_proof_bytes'])
++                retry_context=None
++                if retry_state is not None:
++                    need(retry_state['additional_slots_spent']<SOURCE_LEASE_MAX_ADDITIONAL,
++                         'source_lease_retry_exhausted')
++                    # Control-only cooldown, before any new resource request.
++                    if stop.wait(SOURCE_LEASE_COOLDOWN_SECONDS):return 0
++                    need(h._document(config_ref)==config and h._profile(profile_ref)==profile,
++                         'service_binding_changed_during_source_cooldown')
++                    need(require_main_process(profile_ref,profile)==opening_identity,'service_main_identity_changed')
++                    retry_context=dict(anchor_ref=retry_state['anchor_ref'],
++                        additional_slot=retry_state['additional_slots_spent']+1)
++                native=observe_native(config);template_ref,kind=select_template(config,profile,native)
++                if retry_context is not None:need(kind=='genuine_scoped_idle','source_retry_scope_not_idle')
++                arguments={}
++                if recovery_ref is not None or generation_ref is not None or source_lease_ref is not None or retry_context is not None or cycle_number!=sequence:
++                    arguments['cycle_number']=cycle_number
++                if retry_context is not None:arguments['source_retry']=retry_context
++                if source_lease_ref is not None:arguments['profile_transition_ref']=source_lease_ref
++                result=run_cycle(config,profile_ref,profile,template_ref,kind,sequence,stop,**arguments)
++                cycle_number+=1
++                if type(result) is dict and result.get('deferred_source_lease') is True:
++                    if retry_state is None:
++                        retry_state=dict(anchor_ref=result['deferral_ref'],additional_slots_spent=0,cooldown_seconds=60)
++                    else:
++                        retry_state=dict(retry_state,additional_slots_spent=retry_context['additional_slot'])
++                    if retry_state['additional_slots_spent']>=SOURCE_LEASE_MAX_ADDITIONAL:
++                        _recovery_failure(root,cycle_number-1,sequence,'source_lease_retry_exhausted')
++                        persistent_hold(root,Path(result['cycle_root']),'source_lease_retry_exhausted')
++                        return HOLD_EXIT
++                    # No successful native observation or health sequence spent.
++                    continue
++                sequence+=1;retry_state=None
++                if kind!='genuine_scoped_idle':
++                    persistent_hold(root,root,'approved_execution_closed_no_automatic_followup')
+@@ -1235,3 +1480,3 @@
+-                persistent_hold(root, root, str(exc))
+-                if (recovery_ref is not None or generation_ref is not None) and str(exc)!='proof_projected_storage_bound':
+-                    _recovery_failure(root, cycle_number, sequence, exc)
++                persistent_hold(root,root,str(exc))
++                if (recovery_ref is not None or generation_ref is not None or source_lease_ref is not None or retry_state is not None) and str(exc)!='proof_projected_storage_bound':
++                    _recovery_failure(root,cycle_number,sequence,exc)
+@@ -1239,3 +1484,2 @@
+-            if stop.wait(config['poll_seconds']):
+-                return 0
+-        persistent_hold(root, root, 'finite_cycle_budget_exhausted')
++            if stop.wait(config['poll_seconds']):return 0
++        persistent_hold(root,root,'finite_cycle_budget_exhausted')
+@@ -1253,0 +1498 @@
++    recovery_flags.add_argument('--known-source-lease-recovery')
+@@ -1271 +1516,2 @@
+-        return serve(config_ref, stop, recovery_ref=recovery_ref, generation_ref=generation_ref)
++        source_lease_ref = health_owner().descriptor(args.known_source_lease_recovery) if args.known_source_lease_recovery else None
++        return serve(config_ref, stop, recovery_ref=recovery_ref, generation_ref=generation_ref, source_lease_ref=source_lease_ref)
