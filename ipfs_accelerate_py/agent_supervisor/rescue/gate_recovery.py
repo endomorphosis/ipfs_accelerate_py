@@ -91,6 +91,348 @@ def _json(value: Any) -> str:
     return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
 
 
+_PREREQUISITE_STEPS = {
+    "MISSING_OWNER_POINTER": ("discover_registered_preparer", "verify_preparer_identity"),
+    "MISSING_RUNTIME_WITNESS": ("locate_approved_runtime_witness", "verify_runtime_identity"),
+    "MISSING_ARTIFACT_POINTER": ("resolve_retained_artifact_reference", "verify_artifact_identity"),
+    "INPUT_SERIALIZATION_ERROR": ("reconstruct_from_verified_bytes", "verify_exact_reference_transport"),
+    "LOSSLESS_CACHE_UNAVAILABLE": ("resolve_retained_artifact_reference", "verify_artifact_identity"),
+}
+_EXTERNAL_PREREQUISITES = {
+    "MISSING_EXECUTION_AUTHORITY": "A current execution admission from its existing authority.",
+    "MISSING_REVIEW": "An independent review from its existing review owner.",
+    "OPERATOR_HOLD": "An explicit release from the owner of the hold.",
+    "LOOKUP_BUDGET_EXHAUSTED": "A separately selected scope; preserve the spent budget.",
+    "MISSING_LOOKUP_SCOPE": "An existing bounded discovery scope and registered handler.",
+    "INVALID_PREREQUISITE_DIAGNOSTICS": "A complete bounded typed prerequisite declaration; no partial plan was admitted.",
+}
+_PREREQUISITE_ALIASES = {
+    "MISSING_APPROVED_HISTORICAL_RUNTIME_WITNESS": "MISSING_RUNTIME_WITNESS",
+    "MISSING_APPROVED_RUNTIME_WITNESS": "MISSING_RUNTIME_WITNESS",
+}
+MAX_PREREQUISITES = 16
+_PREREQUISITE_DIAGNOSTIC_FIELDS = {"prerequisite_requirements", "prerequisite_diagnostics_sha256"}
+
+
+def _declared_prerequisites(raw: str) -> list[Any]:
+    def unique(pairs):
+        value = {}
+        for key, item in pairs:
+            if key in value:
+                raise ValueError("duplicate prerequisite field")
+            value[key] = item
+        return value
+
+    def nonfinite(_value):
+        raise ValueError("nonfinite prerequisite field")
+
+    if len(raw.encode("utf-8")) > 32768:
+        raise ValueError("prerequisite declaration exceeds bound")
+    value = json.loads(raw, object_pairs_hook=unique, parse_constant=nonfinite)
+    if not isinstance(value, list):
+        raise ValueError("prerequisite declaration must be a list")
+    if len(value) > 64:
+        raise ValueError("prerequisite diagnostics exceed bound")
+    return value
+
+
+def _prerequisite(value: Any) -> dict[str, str]:
+    if not isinstance(value, dict) or not isinstance(value.get("code"), str):
+        raise ValueError("typed prerequisite code required")
+    if {"command", "argv", "shell", "script", "prompt", "instructions"}.intersection(value):
+        raise ValueError("diagnostics cannot supply a recovery command")
+    code = value["code"].upper()
+    if not re.fullmatch(r"[A-Z][A-Z0-9_]{0,95}", code):
+        raise ValueError("invalid prerequisite code")
+    code = _PREREQUISITE_ALIASES.get(code, code)
+    subject = value.get("subject", code)
+    if (not isinstance(subject, str) or not subject.strip()
+            or len(subject.encode("utf-8")) > 512
+            or any(ord(char) < 32 or ord(char) == 127 for char in subject)):
+        raise ValueError("bounded prerequisite subject required")
+    result = {"code": code, "subject": subject}
+    if "expected_sha256" in value:
+        digest = value["expected_sha256"]
+        if not isinstance(digest, str) or not re.fullmatch(r"[0-9a-f]{64}", digest):
+            raise ValueError("exact prerequisite digest required")
+        result["expected_sha256"] = digest
+    # Clocks, prose, commands and self-asserted approvals are not work or authority.
+    return result
+
+
+def _prerequisite_task_fields(task_id: str, fields: Mapping[str, Any]) -> dict[str, Any]:
+    """Keep declared requirements as bounded data, including rejected-input identity."""
+
+    result = dict(fields)
+    declared = fields.get("prerequisite_requirements")
+    if declared is not None and declared != "":
+        try:
+            normalized = sorted({_json(_prerequisite(item)) for item in _declared_prerequisites(declared)})
+            result["prerequisite_requirements"] = "[" + ",".join(normalized) + "]"
+        except (ValueError, TypeError, AttributeError, RecursionError):
+            result["prerequisite_requirements"] = _json([dict(
+                code="INVALID_PREREQUISITE_DIAGNOSTICS", subject=task_id)])
+            # Identify rejected Python text losslessly even when it has no
+            # valid UTF-8 encoding. This never admits those bytes as an artifact.
+            result["prerequisite_diagnostics_sha256"] = hashlib.sha256(
+                str(declared).encode("utf-8", errors="surrogatepass")).hexdigest()
+    return result
+
+
+
+def _read_budget_scope(value: Any, task_id: str) -> dict[str, str]:
+    keys = {"parent_task_id", "parent_context_id", "budget_scope_id", "source_epoch", "selection_sha256"}
+    if not isinstance(value, Mapping) or set(value) != keys:
+        raise ValueError("missing_or_invalid_selected_scope")
+    result = dict(value)
+    for item in result.values():
+        if (type(item) is not str or not item or item != item.strip()
+                or len(item.encode("utf-8")) > 512
+                or any(ord(char) < 32 or ord(char) == 127 for char in item)):
+            raise ValueError("invalid_scope_identity")
+    if result["parent_task_id"] != task_id:
+        raise ValueError("different_parent_task")
+    if not re.fullmatch(r"[0-9a-f]{64}", result["selection_sha256"]):
+        raise ValueError("invalid_selection_identity")
+    return result
+
+
+def _read_budget_artifact_ref(value: Any) -> dict[str, Any]:
+    # Structural validation is NOT artifact authentication. The dispatcher must
+    # use the existing reader on the selected bytes before consuming this data.
+    if not isinstance(value, Mapping) or set(value) != {"path", "bytes", "sha256", "full9"}:
+        raise ValueError("missing_artifact_reference")
+    path, size, digest, full9 = (value[key] for key in ("path", "bytes", "sha256", "full9"))
+    if (type(path) is not str or not Path(path).is_absolute() or ".." in Path(path).parts
+            or "\0" in path or len(path.encode("utf-8")) > 8192
+            or type(size) is not int or size < 1
+            or type(digest) is not str or not re.fullmatch(r"[0-9a-f]{64}", digest)):
+        raise ValueError("invalid_artifact_reference")
+    keys = {"st_dev", "st_ino", "st_mode", "st_uid", "st_gid", "st_nlink", "st_size", "st_mtime_ns", "st_ctime_ns"}
+    if not isinstance(full9, Mapping) or set(full9) != keys:
+        raise ValueError("missing_artifact_full9")
+    for item in full9.values():
+        if type(item) is not str or not item.isascii() or not item.isdecimal() or str(int(item)) != item:
+            raise ValueError("invalid_artifact_full9")
+    if (full9["st_size"] != str(size) or full9["st_nlink"] != "1"
+            or int(full9["st_mode"]) & 0o170000 != 0o100000):
+        raise ValueError("artifact_reference_not_regular")
+    return {"path": path, "bytes": size, "sha256": digest, "full9": dict(full9)}
+
+
+def _runtime_read_budget_projection(
+    task_id: str, observation: Any, selected_scope: Any,
+) -> dict[str, Any]:
+    """Observe one task's byte costs; never reserve, authenticate or admit work.
+
+    The expected selection comes separately from the trusted current caller.
+    Runtime counters stay outside task/source semantic fingerprint inputs.
+    Both actual Source-ledger caps apply. Python integer comparisons do not
+    wrap a large cost into a false fit, and no cap/spend is changed here.
+    """
+    blocked = {"code": "INVALID_READ_BUDGET_CONTEXT", "subject": task_id,
+               "required_input": "Complete current task/revision/Source/budget scope, exact costs, both byte ledgers and authenticated evidence from their existing owner."}
+    try:
+        scope = _read_budget_scope(selected_scope, task_id)
+        required_keys = {"scope", "ledger", "required_source_bytes", "authenticated_evidence"}
+        if (not isinstance(observation, Mapping) or not required_keys.issubset(observation)
+                or set(observation) - required_keys - {"cache_candidates"}
+                or len(_json(dict(observation)).encode("utf-8")) > 262144):
+            raise ValueError("missing_or_invalid_read_budget_observation")
+        if _read_budget_scope(observation["scope"], task_id) != scope:
+            raise ValueError("selected_scope_mismatch")
+        ledger = observation["ledger"]
+        keys = {"global_cap", "used", "captures", "internal_cap", "internal_used"}
+        if (not isinstance(ledger, Mapping) or set(ledger) != keys
+                or any(type(value) is not int or value < 0 for value in ledger.values())
+                or ledger["used"] > ledger["global_cap"]
+                or ledger["internal_used"] > ledger["internal_cap"]):
+            raise ValueError("invalid_source_byte_ledger")
+        costs = observation["required_source_bytes"]
+        if (not isinstance(costs, Mapping) or set(costs) != {"global", "internal"}
+                or any(type(value) is not int or value < 0 for value in costs.values())
+                or costs["internal"] > costs["global"]):
+            raise ValueError("missing_or_invalid_source_cost")
+        evidence = observation["authenticated_evidence"]
+        if not isinstance(evidence, Mapping) or set(evidence) != {"artifact_refs", "source_provenance"}:
+            raise ValueError("missing_authentication_evidence")
+        refs = evidence["artifact_refs"]
+        if not isinstance(refs, list) or len(refs) > 256:
+            raise ValueError("invalid_authentication_evidence")
+        references = [_read_budget_artifact_ref(item) for item in refs]
+        provenance = _read_budget_artifact_ref(evidence["source_provenance"])
+        candidates = observation.get("cache_candidates", [])
+        if not isinstance(candidates, list) or len(candidates) > MAX_PREREQUISITES:
+            raise ValueError("invalid_cache_candidates")
+        projected = []
+        for candidate in candidates:
+            if (not isinstance(candidate, Mapping) or set(candidate) != {
+                    "operation", "required_fresh_Source_bytes", "scope", "artifact_ref", "source_provenance"}
+                    or candidate["operation"] != "read_authenticated_private_artifact"
+                    or type(candidate["required_fresh_Source_bytes"]) is not int
+                    or candidate["required_fresh_Source_bytes"] != 0
+                    or _read_budget_scope(candidate["scope"], task_id) != scope):
+                raise ValueError("cache_candidate_scope_or_cost_mismatch")
+            artifact = _read_budget_artifact_ref(candidate["artifact_ref"])
+            if artifact not in references or _read_budget_artifact_ref(candidate["source_provenance"]) != provenance:
+                raise ValueError("cache_candidate_evidence_mismatch")
+            projected.append({"operation": candidate["operation"], "required_fresh_Source_bytes": 0,
+                "scope": dict(scope), "artifact_ref": artifact, "source_provenance": provenance,
+                "authentication_required": True, "admission_granted": False,
+                "execution_authority": False, "completion_authority": False, "work_complete": False})
+        remaining = {"global": ledger["global_cap"] - ledger["used"],
+                     "internal": ledger["internal_cap"] - ledger["internal_used"]}
+        insufficient = [key for key in ("global", "internal") if costs[key] > remaining[key]]
+        requirement = None if not insufficient else {
+            "code": "INSUFFICIENT_READ_BUDGET", "subject": task_id,
+            "required_input": "A separately selected admissible read budget from its existing owner, or an authenticated zero-fresh-Source input path; retain every prior charge."}
+        return {"requirement": requirement, "cache_candidates": projected,
+                "diagnostics": {"status": "insufficient" if insufficient else "within_observed_budget",
+                    "reason": "insufficient_" + "_and_".join(insufficient) if insufficient else "cost_fits_snapshot_only",
+                    "scope": scope, "ledger": dict(ledger), "required_source_bytes": dict(costs),
+                    "remaining_source_bytes": remaining, "authentication_required": True,
+                    "admission_granted": False, "execution_authority": False,
+                    "completion_authority": False, "work_complete": False, "budget_reset_allowed": False}}
+    except (ValueError, TypeError, AttributeError, UnicodeError, RecursionError, OverflowError):
+        return {"requirement": blocked, "cache_candidates": [],
+                "diagnostics": {"status": "unknown", "reason": "read_budget_context_refused",
+                    "authentication_required": True, "admission_granted": False,
+                    "execution_authority": False, "completion_authority": False,
+                    "work_complete": False, "budget_reset_allowed": False}}
+
+
+def _attach_runtime_read_budget(plan: dict[str, Any], observation: dict[str, Any] | None) -> dict[str, Any]:
+    if observation is None:
+        return plan
+    plan["read_budget"] = observation["diagnostics"]
+    plan["cache_candidates"] = observation["cache_candidates"]
+    if observation["requirement"] is not None:
+        plan["external_requirements"].append(dict(observation["requirement"]))
+    if plan["external_requirements"]:
+        plan.update(status="external_dependency", steps=[], recheck_after=[])
+    return plan
+
+def prerequisite_recovery_plan(
+    task_id: str, evidence: Mapping[str, Any], *,
+    runtime_read_budget: Mapping[str, Any] | None = None,
+    selected_scope: Mapping[str, str] | None = None,
+) -> dict[str, Any] | None:
+    """Propose metadata work for typed missing inputs; never admit or run it.
+
+    Existing fenced task admission must bind each proposal to a selected scope,
+    its remaining budget and registered handler. Verification still requires
+    actual independent evidence; neither a proposal nor a child exit satisfies
+    the parent gate. Children deliberately do not depend on the blocked parent.
+    """
+
+    plan: dict[str, Any] = dict(
+        schema="ipfs_accelerate_py/agent-supervisor/prerequisite-recovery-plan@1",
+        parent_task_id=task_id, status="recovery_required", requirements=[], steps=[], recheck_after=[],
+        external_requirements=[], work_complete=False, completion_authority=False,
+        execution_authority=False, admission_granted=False, operator_hold_removal_allowed=False,
+        budget_reset_allowed=False,
+    )
+    read_budget = (None if runtime_read_budget is None else
+                   _runtime_read_budget_projection(task_id, runtime_read_budget, selected_scope))
+    has_typed_input = False
+    try:
+        values = []
+        fields = (evidence.get("tasks") or {}).get(task_id) or {}
+        declared = fields.get("prerequisite_requirements")
+        if declared is not None and declared != "":
+            has_typed_input = True
+            values.extend(_declared_prerequisites(declared))
+        artifacts = evidence.get("artifacts") or {}
+        if not isinstance(artifacts, Mapping):
+            raise ValueError("prerequisite artifacts must be a mapping")
+        typed_artifacts = 0
+        for artifact in artifacts.values():
+            if not isinstance(artifact, dict):
+                continue
+            if artifact.get("passed") is True or str(artifact.get("decision", "")).upper() == "GO":
+                continue
+            gaps = artifact.get("gaps", [])
+            typed = "prerequisite" in str(artifact.get("schema", "")).lower()
+            if typed:
+                has_typed_input = True
+                typed_artifacts += 1
+                if typed_artifacts > 256:
+                    raise ValueError("prerequisite diagnostics exceed bound")
+            if not isinstance(gaps, list):
+                if typed:
+                    raise ValueError("typed prerequisite gaps must be a list")
+                continue
+            if len(gaps) > 64:
+                if typed:
+                    raise ValueError("prerequisite diagnostics exceed bound")
+                # Ordinary diagnostics do not opt in through their size. Their
+                # legacy packet/threshold behavior belongs to the original gate.
+                continue
+            matched = False
+            for gap in gaps:
+                if isinstance(gap, dict):
+                    code = gap.get("code")
+                    if not isinstance(code, str):
+                        if typed:
+                            raise ValueError("typed prerequisite code required")
+                        continue
+                    code = _PREREQUISITE_ALIASES.get(code.upper(), code.upper())
+                    if typed or code in _PREREQUISITE_STEPS or code in _EXTERNAL_PREREQUISITES:
+                        has_typed_input = True
+                        matched = True
+                        values.append(gap)
+                elif typed:
+                    raise ValueError("typed prerequisite object required")
+                if len(values) > 64:
+                    raise ValueError("prerequisite diagnostics exceed bound")
+            if matched and not typed:
+                typed_artifacts += 1
+                if typed_artifacts > 256:
+                    raise ValueError("prerequisite diagnostics exceed bound")
+        requirements = {_json(item): item for item in map(_prerequisite, values)}
+        if len(requirements) > MAX_PREREQUISITES:
+            raise ValueError("prerequisite count exceeds bound")
+    except (ValueError, TypeError, AttributeError, RecursionError):
+        if not has_typed_input:
+            if read_budget is None or read_budget["requirement"] is None:
+                return None
+            return _attach_runtime_read_budget(plan, read_budget)
+        plan.update(status="external_dependency", external_requirements=[dict(
+            code="INVALID_PREREQUISITE_DIAGNOSTICS", subject=task_id,
+            required_input="A complete bounded typed prerequisite declaration; no partial plan was admitted.")])
+        return _attach_runtime_read_budget(plan, read_budget)
+    if not requirements:
+        if read_budget is None or read_budget["requirement"] is None:
+            # No budget prerequisite is NOT authentication, selection or admission.
+            return None
+        return _attach_runtime_read_budget(plan, read_budget)
+    plan["requirements"] = [item for _, item in sorted(requirements.items())]
+    prefix = task_id.partition("-")[0]
+    if not re.fullmatch(r"[A-Za-z][A-Za-z0-9]*", prefix):
+        prefix = "REC"
+    for key, requirement in sorted(requirements.items()):
+        code = requirement["code"]
+        if code not in _PREREQUISITE_STEPS:
+            plan["external_requirements"].append({**requirement, "required_input":
+                _EXTERNAL_PREREQUISITES.get(code, "An existing registered resolver for this typed requirement.")})
+            continue
+        identity = hashlib.sha256(_json({"parent": task_id, **requirement}).encode("utf-8")).hexdigest()
+        previous = []
+        for index, kind in enumerate(_PREREQUISITE_STEPS[code], 1):
+            identifier = f"{prefix}-PR-{identity}-{index}"
+            plan["steps"].append(dict(
+                task_id=identifier, kind=kind, depends_on=previous, requirement=dict(requirement),
+                purpose="control_metadata_analysis" if index == 1 else "metadata_validation",
+                requires_admission=True, scope_policy="inherit_selected_unit_only"))
+            previous = [identifier]
+        plan["recheck_after"].extend(previous)
+    if plan["external_requirements"]:
+        # A partial plan cannot authorize work around a global hold, unknown
+        # policy or spent scope. Other independently selected units may proceed.
+        plan.update(status="external_dependency", steps=[], recheck_after=[])
+    return _attach_runtime_read_budget(plan, read_budget)
+
+
 def evidence_file_fingerprint(path: Path) -> str:
     """Fingerprint file meaning without treating regenerated JSON clocks as work."""
     try:
@@ -206,6 +548,11 @@ def gate_evidence(
     dependencies = dependency_closure(task_id, blocks)
     tasks = {key: {field: str((blocks.get(key) or {}).get(field) or "")
                    for field in _FIELDS} for key in [task_id, *dependencies]}
+    # Opt-in only: legacy task fingerprints and refusal ledgers stay unchanged.
+    for key, fields in list(tasks.items()):
+        declared = (blocks.get(key) or {}).get("prerequisite_requirements")
+        if declared is not None and declared != "":
+            tasks[key] = _prerequisite_task_fields(key, {**fields, "prerequisite_requirements": declared})
     artifacts: dict[str, Any] = {}
     scope: set[str] = set()
     excluded = {todo_path.resolve(), log_path.resolve()}
@@ -244,7 +591,12 @@ def gate_source_contract(evidence: Mapping[str, Any], command_contract: str) -> 
 
     sources = {path: value for path, value in (evidence.get("artifacts") or {}).items()
                if _is_source_path(Path(path))}
-    payload = {"tasks": evidence.get("tasks"), "sources": sources, "command_contract": command_contract}
+    tasks = evidence.get("tasks")
+    if isinstance(tasks, Mapping):
+        tasks = {task: {key: value for key, value in fields.items()
+                        if key not in _PREREQUISITE_DIAGNOSTIC_FIELDS}
+                 if isinstance(fields, Mapping) else fields for task, fields in tasks.items()}
+    payload = {"tasks": tasks, "sources": sources, "command_contract": command_contract}
     return hashlib.sha256(_json(payload).encode("utf-8")).hexdigest()
 
 
@@ -305,7 +657,7 @@ class GateRecovery:
         if source_contract and not same_source:
             record = {}
         if same_source:
-            for name in ("dependencies_revalidated", "dependency_validations", "repair_attempted", "deterministic_repair"):
+            for name in ("dependencies_revalidated", "dependency_validations", "dependency_validation_fingerprint", "repair_attempted", "deterministic_repair"):
                 if name in previous:
                     record[name] = previous[name]
         count = max(0, int(record.get("unchanged_probes") or 0)) + 1
@@ -323,7 +675,9 @@ class GateRecovery:
         return record
 
     def packet(
-        self, task_id: str, record: Mapping[str, Any], evidence: Mapping[str, Any],
+        self, task_id: str, record: Mapping[str, Any], evidence: Mapping[str, Any], *,
+        runtime_read_budget: Mapping[str, Any] | None = None,
+        selected_scope: Mapping[str, str] | None = None,
     ) -> Path:
         safe = re.sub(r"[^A-Za-z0-9_-]", "-", task_id)[:80] or "task"
         path = self.path.with_name(f"gate-recovery-{safe}.json")
@@ -341,6 +695,14 @@ class GateRecovery:
             "body_free": True, "withheld_stage": record.get("withheld_stage", "command"),
             "contract_warnings": _contract_warnings(task_id, evidence),
             "dependency_validations": validations,
+            # Retain spent probes and old failures without presenting them as
+            # validation of a different evidence fingerprint. Legacy origins
+            # are unknown until an actually reserved probe records its input.
+            "dependency_validation_evidence_fingerprint": record.get("dependency_validation_fingerprint"),
+            "dependency_validations_current": bool(validations
+                and record.get("dependency_validation_fingerprint")
+                and record.get("dependency_validation_fingerprint") == record.get("fingerprint")),
+            "dependency_validation_budget_spent": bool(record.get("dependencies_revalidated")),
             "deterministic_repair": record.get("deterministic_repair"),
             "required_actions": [
                 "Inspect failed or presence-only upstream validation and implement missing behavior.",
@@ -350,6 +712,20 @@ class GateRecovery:
             ],
             "work_complete": False, "completion_authority": False,
         }
+        if isinstance(evidence.get("tasks"), Mapping):
+            packet["tasks"] = {key: _prerequisite_task_fields(key, fields)
+                               for key, fields in evidence["tasks"].items()}
+        if runtime_read_budget is None:
+            prerequisite_plan = prerequisite_recovery_plan(task_id, evidence)
+        else:
+            prerequisite_plan = prerequisite_recovery_plan(
+                task_id, evidence, runtime_read_budget=runtime_read_budget, selected_scope=selected_scope)
+        if prerequisite_plan is not None:
+            packet["prerequisite_recovery"] = prerequisite_plan
+            packet["required_actions"].append(
+                "Route typed prerequisite proposals through existing fenced task admission and registered metadata handlers. "
+                "Continue a selected finite unit from verified lossless cache within its original cumulative budget; "
+                "do not request per-file approval or promote a proposal into runtime authority.")
         _write(path, packet)
         return path
 

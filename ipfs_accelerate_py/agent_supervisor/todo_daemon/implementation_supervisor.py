@@ -19516,15 +19516,22 @@ class PortalImplementationSupervisor:
         timeout_seconds: float,
         timeout_error: type[TimeoutError],
         callback,
+        allow_unbounded_fallback: bool = True,
     ):
         if timeout_seconds <= 0.0:
             return callback()
         if threading.current_thread() is not threading.main_thread():
+            if not allow_unbounded_fallback:
+                raise RuntimeError(f"{phase} cannot enforce its positive timeout outside the main thread; callback was not run")
             return callback()
         if not hasattr(signal, "setitimer") or not hasattr(signal, "SIGALRM"):
+            if not allow_unbounded_fallback:
+                raise RuntimeError(f"{phase} cannot enforce its positive timeout without an alarm timer; callback was not run")
             return callback()
         previous_timer = signal.getitimer(signal.ITIMER_REAL)
         if previous_timer[0] > 0:
+            if not allow_unbounded_fallback:
+                raise RuntimeError(f"{phase} cannot enforce its positive timeout while an alarm timer is active; callback was not run")
             return callback()
 
         def _handle_timeout(_signum, _frame):
@@ -19545,6 +19552,7 @@ class PortalImplementationSupervisor:
             timeout_seconds=float(self.config.objective_refill_timeout_seconds or 0.0),
             timeout_error=ObjectiveRefillTimeoutError,
             callback=lambda: run_objective_daemon(args),
+            allow_unbounded_fallback=False,
         )
 
     def _refresh_objective_goal_completion_artifacts(self) -> dict[str, Any]:
@@ -19917,9 +19925,10 @@ class PortalImplementationSupervisor:
                 if not target:
                     return {**empty, "reason": "quack_endpoint_absent"}
             else:
-                store_path = Path(str(program.store_id or ""))
-                if not str(store_path):
+                store_id = str(program.store_id or "")
+                if not store_id:
                     return {**empty, "reason": "database_store_absent"}
+                store_path = Path(store_id)
                 target = (
                     store_path
                     if store_path.is_absolute()

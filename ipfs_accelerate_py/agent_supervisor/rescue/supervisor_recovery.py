@@ -88,6 +88,7 @@ class RecoveryDisposition(str, Enum):
     NOOP = "noop"
     QUARANTINED = "quarantined"
     FAILED_CLOSED = "failed_closed"
+    PARTIAL_PROGRESS = "partial_progress"
 
 
 def _canonical_bytes(value: Any) -> bytes:
@@ -2042,6 +2043,43 @@ class RecoveryActionSpec:
 
 
 @dataclass(frozen=True)
+class ControlMetadataRecoveryContext:
+    """A trusted owner's current, read-only metadata scope; never request flags.
+
+    The supplying owner must bind the current parent revision/generation in
+    parent_context_id and enforce its actual remaining lookup budget through
+    reserve_attempt. These callbacks are capabilities supplied by trusted code,
+    not serialized admission or approval fields in a task or diagnostic packet.
+    """
+
+    parent_task_id: str
+    parent_context_id: str
+    repository_root_cid: str
+    policy_root: str
+    run_cid: str
+    source_contract: str
+    gate_evidence_fingerprint: str
+    requirements_sha256: str
+    budget_scope_id: str
+    assert_current: Callable[[], None]
+    assert_registered_handler: Callable[[Callable[..., Any]], None]
+    reserve_attempt: Callable[[str], str]
+
+    def __post_init__(self) -> None:
+        for name in ("parent_task_id", "parent_context_id", "repository_root_cid",
+                     "policy_root", "run_cid", "budget_scope_id"):
+            object.__setattr__(self, name, _required_text(getattr(self, name), name))
+        for name in ("source_contract", "gate_evidence_fingerprint", "requirements_sha256"):
+            value = getattr(self, name)
+            if (type(value) is not str or len(value) != 64
+                    or any(char not in "0123456789abcdef" for char in value)):
+                raise RecoveryIntegrityError(f"exact control metadata {name} required")
+        if not all(callable(getattr(self, name)) for name in (
+                "assert_current", "assert_registered_handler", "reserve_attempt")):
+            raise RecoveryIntegrityError("trusted current/registry/budget callbacks required")
+
+
+@dataclass(frozen=True)
 class ProgrammaticRecoveryContext:
     """The only input passed to a registered deterministic action handler."""
 
@@ -2050,6 +2088,7 @@ class ProgrammaticRecoveryContext:
     attempt: int
     started_at_ms: int
     deadline_at_ms: int
+    control_metadata: ControlMetadataRecoveryContext | None = None
 
 
 @dataclass(frozen=True)
@@ -2128,9 +2167,12 @@ class ProgrammaticRecoveryReceipt:
             isinstance(item, RecoveryAttempt) for item in self.attempts
         ):
             raise TypeError("attempts must contain RecoveryAttempt records")
+        metadata_progress = self.operation is RescueOperation.RESOLVE_CONTROL_METADATA
+        expected_outcome = (RecoveryAttemptOutcome.PARTIAL_PROGRESS if metadata_progress
+                            else RecoveryAttemptOutcome.SUCCEEDED)
         if (
             self.attempts[-1].operation is not self.operation
-            or self.attempts[-1].outcome is not RecoveryAttemptOutcome.SUCCEEDED
+            or self.attempts[-1].outcome is not expected_outcome
         ):
             raise RecoveryIntegrityError(
                 "programmatic recovery receipt requires a successful final attempt"
@@ -2143,7 +2185,7 @@ class ProgrammaticRecoveryReceipt:
                 "disposition",
                 RecoveryDisposition(str(self.disposition)),
             )
-        expected_disposition = (
+        expected_disposition = RecoveryDisposition.PARTIAL_PROGRESS if metadata_progress else (
             RecoveryDisposition.QUARANTINED
             if self.operation is RescueOperation.QUARANTINE
             else RecoveryDisposition.RECOVERED
@@ -2167,10 +2209,22 @@ class ProgrammaticRecoveryReceipt:
         if not isinstance(health, dict):
             raise TypeError("post_action_health must be a JSON object")
         object.__setattr__(self, "post_action_health", _freeze_json(health))
-        if not (
+        healthy = (
             health.get("healthy") is True
             or str(health.get("status") or "").lower() in {"healthy", "ok", "recovered"}
-        ):
+        )
+        if metadata_progress:
+            if (healthy or health.get("healthy") is not False
+                    or health.get("control_metadata_verified") is not True
+                    or health.get("original_gate_pending") is not True
+                    or any(health.get(name) is True for name in (
+                        "work_complete", "completion_authority", "admission_granted", "execution_authority",
+                        "operator_hold_removal_allowed", "budget_reset_allowed"))
+                    or self.action.post_health_required
+                    or set(self.action.expected_effects) != {"control_metadata_verified"}
+                    or self.compensations):
+                raise RecoveryIntegrityError("metadata progress cannot grant health or gate completion")
+        elif not healthy:
             raise RecoveryIntegrityError(
                 "programmatic recovery receipt requires post-action health"
             )
@@ -2276,6 +2330,11 @@ class ProgrammaticRecoveryResult:
     @property
     def recovered(self) -> bool:
         return bool(self.receipt is not None and self.receipt.recovered)
+
+    @property
+    def metadata_progress(self) -> bool:
+        return bool(self.receipt is not None
+                    and self.receipt.disposition is RecoveryDisposition.PARTIAL_PROGRESS)
 
     @property
     def quarantined(self) -> bool:
@@ -2511,8 +2570,12 @@ class ProgrammaticRecoveryController:
         policy: ProgrammaticRecoveryPolicy | None = None,
         clock_ms: Callable[[], int] | None = None,
         fault_injector: FaultInjector | None = None,
+        control_metadata_context_factory: Callable[[RecoveryDiagnosis], ControlMetadataRecoveryContext] | None = None,
     ) -> None:
         self.state_dir = Path(state_dir)
+        if control_metadata_context_factory is not None and not callable(control_metadata_context_factory):
+            raise TypeError("control metadata context factory must be a trusted callable")
+        self.control_metadata_context_factory = control_metadata_context_factory
         self.policy = policy or ProgrammaticRecoveryPolicy()
         self.handlers = {
             (key if isinstance(key, RescueOperation) else RescueOperation(str(key))): handler
@@ -2525,6 +2588,366 @@ class ProgrammaticRecoveryController:
         self.fault_injector = fault_injector or FaultInjector()
         self.results_dir = self.state_dir / "programmatic-recovery"
         self._thread_lock = threading.RLock()
+
+    def _metadata_blocked(self, diagnosis: RecoveryDiagnosis, reason: str,
+                          attempts: tuple[RecoveryAttempt, ...] = ()) -> ProgrammaticRecoveryResult:
+        now = self.clock_ms()
+        receipt = ProgrammaticRecoveryExhaustionReceipt(
+            incident_cid=diagnosis.incident_cid,
+            repository_root_cid=diagnosis.incident.repository_root_cid,
+            policy_root=diagnosis.incident.policy_root, run_cid=diagnosis.incident.run_cid,
+            attempts=attempts, inapplicable_operations=(RescueOperation.RESOLVE_CONTROL_METADATA,),
+            exhaustion_reason=reason,
+            budget=PromptWorkflowBudget(max_latency_ms=min(self.policy.deadline_ms, 3_600_000),
+                                        max_rescue_actions=1),
+            circuit_open=False, status=RecordStatus.BLOCKED, created_at_ms=now, updated_at_ms=now)
+        return ProgrammaticRecoveryResult(diagnosis=diagnosis, attempts=attempts, exhaustion_receipt=receipt)
+
+    def _control_metadata_packet(self, diagnosis: RecoveryDiagnosis) -> tuple[dict[str, Any], str]:
+        packets = [_plain_json(item.value) for item in diagnosis.evidence
+                   if item.kind.value == "task"
+                   and item.value.get("schema") == "ipfs_accelerate_py/agent-supervisor/gate-recovery@1"]
+        if len(packets) != 1 or len(diagnosis.target_ids) != 1:
+            raise RecoveryIntegrityError("one exact current metadata parent is required")
+        packet = packets[0]
+        plan = packet.get("prerequisite_recovery")
+        if (not isinstance(plan, dict)
+                or plan.get("schema") != "ipfs_accelerate_py/agent-supervisor/prerequisite-recovery-plan@1"
+                or plan.get("status") != "recovery_required"
+                or plan.get("parent_task_id") != packet.get("task_id")
+                or packet.get("task_id") != diagnosis.target_ids[0]
+                or plan.get("external_requirements") != []):
+            raise RecoveryIntegrityError("complete nonexternal typed metadata plan required")
+        flags = ("work_complete", "completion_authority", "execution_authority", "admission_granted",
+                 "operator_hold_removal_allowed", "budget_reset_allowed")
+        if any(plan.get(name) is not False for name in flags):
+            raise RecoveryIntegrityError("metadata diagnostics cannot supply authority")
+        if any(packet.get(name) is True for name in flags):
+            raise RecoveryIntegrityError("metadata packet cannot supply authority")
+        requirements, steps = plan.get("requirements"), plan.get("steps")
+        allowed = {"MISSING_ARTIFACT_POINTER", "LOSSLESS_CACHE_UNAVAILABLE", "MISSING_OWNER_POINTER",
+                   "MISSING_RUNTIME_WITNESS", "INPUT_SERIALIZATION_ERROR"}
+        allowed_steps = {"resolve_retained_artifact_reference", "verify_artifact_identity",
+                         "discover_registered_preparer", "verify_preparer_identity",
+                         "locate_approved_runtime_witness", "verify_runtime_identity",
+                         "reconstruct_from_verified_bytes", "verify_exact_reference_transport"}
+        if (not isinstance(requirements, list) or not 1 <= len(requirements) <= 16
+                or not isinstance(steps, list) or not 1 <= len(steps) <= 32):
+            raise RecoveryIntegrityError("bounded typed control metadata requirements required")
+        forbidden = {"command", "argv", "shell", "script", "prompt", "instructions"}
+        for item in requirements:
+            if (not isinstance(item, dict) or set(item) - {"code", "subject", "expected_sha256"}
+                    or item.get("code") not in allowed or type(item.get("subject")) is not str
+                    or not item["subject"].strip() or len(item["subject"].encode("utf-8")) > 512
+                    or forbidden.intersection(item)):
+                raise RecoveryIntegrityError("registered metadata requirement required")
+            if "expected_sha256" in item:
+                value = item["expected_sha256"]
+                if type(value) is not str or len(value) != 64 or any(c not in "0123456789abcdef" for c in value):
+                    raise RecoveryIntegrityError("exact metadata artifact digest required")
+        for step in steps:
+            if (not isinstance(step, dict) or step.get("kind") not in allowed_steps
+                    or step.get("requires_admission") is not True
+                    or step.get("scope_policy") != "inherit_selected_unit_only"
+                    or forbidden.intersection(step)):
+                raise RecoveryIntegrityError("metadata steps cannot supply execution")
+        if len(_canonical_bytes(packet)) > self.policy.max_receipt_bytes:
+            raise RecoveryBoundExceeded("metadata diagnostic exceeds policy bound")
+        return packet, hashlib.sha256(_canonical_bytes(requirements)).hexdigest()
+
+    def _recover_control_metadata(self, diagnosis: RecoveryDiagnosis,
+                                  handlers: Mapping[RescueOperation, Callable[..., Any]]) -> ProgrammaticRecoveryResult:
+        # This path deliberately never uses RETRY, VALIDATION_REPLAY or a health
+        # restoration claim. The existing original gate remains authoritative.
+        # Match the ordinary recovery entry contract before even a refusal
+        # receipt, local reservation, owner budget callback or handler can run.
+        started = self.clock_ms()
+        if isinstance(started, bool) or not isinstance(started, int) or started < 0:
+            raise RecoveryIntegrityError("recovery clock returned an invalid timestamp")
+        operation = RescueOperation.RESOLVE_CONTROL_METADATA
+        handler = handlers.get(operation)
+        if handler is None or self.control_metadata_context_factory is None:
+            return self._metadata_blocked(diagnosis, "trusted_control_metadata_provider_unavailable")
+        deadline = started + self.policy.deadline_ms
+        try:
+            packet, requirements_sha = self._control_metadata_packet(diagnosis)
+            selected = self.control_metadata_context_factory(diagnosis)
+            if not isinstance(selected, ControlMetadataRecoveryContext):
+                raise RecoveryIntegrityError("trusted control metadata context required")
+            selected.assert_current()
+            selected.assert_registered_handler(handler)
+            if (selected.parent_task_id != diagnosis.target_ids[0]
+                    or selected.repository_root_cid != diagnosis.incident.repository_root_cid
+                    or selected.policy_root != diagnosis.incident.policy_root
+                    or selected.run_cid != diagnosis.incident.run_cid
+                    or selected.source_contract != packet.get("source_contract")
+                    or selected.gate_evidence_fingerprint != packet.get("gate_evidence_fingerprint")
+                    or selected.requirements_sha256 != requirements_sha):
+                raise RecoveryIntegrityError("current parent/root/source/requirement scope differs")
+        except Exception as exc:
+            return self._metadata_blocked(diagnosis, "control_metadata_context_refused:" + type(exc).__name__)
+        catalog = prompt_workflow_cid({"schema": "control-metadata-recovery-catalog@1",
+                                      "operation": operation.value,
+                                      "effects": ["control_metadata_verified"],
+                                      "outcome": RecoveryAttemptOutcome.PARTIAL_PROGRESS.value})
+        scope = {"budget_scope_id": selected.budget_scope_id, "parent_task_id": selected.parent_task_id,
+                 "parent_context_id": selected.parent_context_id,
+                 "repository_root_cid": selected.repository_root_cid, "policy_root": selected.policy_root,
+                 "run_cid": selected.run_cid, "policy_cid": self.policy.policy_cid, "catalog_cid": catalog}
+        key = hashlib.sha256(_canonical_bytes(scope)).hexdigest()
+        path = self.results_dir / ("control-metadata-" + key + ".json")
+        try:
+            self.results_dir.mkdir(parents=True, exist_ok=True)
+            lock = os.open(path.with_suffix(".lock"), os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
+        except Exception as exc:
+            return self._metadata_blocked(diagnosis, "control_metadata_lock_unavailable:" + type(exc).__name__)
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            selected.assert_current()
+            selected.assert_registered_handler(handler)
+            try:
+                fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+            except FileNotFoundError:
+                journal = {"schema": "control-metadata-reservations@1", "scope": scope, "records": []}
+            else:
+                try:
+                    raw = os.read(fd, self.policy.max_receipt_bytes + 1)
+                finally:
+                    os.close(fd)
+                if len(raw) > self.policy.max_receipt_bytes:
+                    raise RecoveryBoundExceeded("control metadata journal exceeds bound")
+                journal = json.loads(raw)
+                if (not isinstance(journal, dict) or set(journal) != {"schema", "scope", "records"}
+                        or journal["schema"] != "control-metadata-reservations@1" or journal["scope"] != scope
+                        or not isinstance(journal["records"], list) or _canonical_bytes(journal) != raw):
+                    raise RecoveryIntegrityError("control metadata budget journal differs")
+            limit = min(self.policy.max_attempts_per_action, self.policy.max_total_attempts)
+            if len(journal["records"]) > limit:
+                raise RecoveryIntegrityError("control metadata journal exceeds attempt budget")
+            matched: list[ProgrammaticRecoveryReceipt] = []
+            pending = False
+            # Validate the entire shared-scope journal before returning any
+            # earlier receipt. A later crash must never be hidden by deduplication.
+            for row in journal["records"]:
+                if (not isinstance(row, dict)
+                        or set(row) != {"state", "incident_cid", "reservation_id", "receipt", "error"}
+                        or row["state"] not in {"pending", "failed", "completed"}
+                        or type(row["incident_cid"]) is not str or not row["incident_cid"].strip()
+                        or type(row["reservation_id"]) is not str or type(row["error"]) is not str):
+                    raise RecoveryIntegrityError("invalid control metadata reservation")
+                if row["state"] == "pending":
+                    if row["receipt"] is not None or row["error"]:
+                        raise RecoveryIntegrityError("pending control metadata reservation differs")
+                    pending = True
+                elif row["state"] == "failed":
+                    if row["receipt"] is not None or not row["error"]:
+                        raise RecoveryIntegrityError("failed control metadata reservation differs")
+                else:
+                    if not row["reservation_id"].strip() or row["error"]:
+                        raise RecoveryIntegrityError("completed control metadata reservation differs")
+                    receipt = ProgrammaticRecoveryReceipt.from_dict(row["receipt"])
+                    if (receipt.incident_cid != row["incident_cid"]
+                            or receipt.repository_root_cid != selected.repository_root_cid
+                            or receipt.policy_root != selected.policy_root
+                            or receipt.run_cid != selected.run_cid
+                            or receipt.target_id != selected.parent_task_id
+                            or receipt.operation is not operation
+                            or receipt.disposition is not RecoveryDisposition.PARTIAL_PROGRESS):
+                        raise RecoveryIntegrityError("control metadata result changed scope or operation")
+                    if row["incident_cid"] == diagnosis.incident_cid:
+                        matched.append(receipt)
+            if pending:
+                return self._metadata_blocked(diagnosis, "unfinished_control_metadata_reservation")
+            if len(matched) > 1:
+                raise RecoveryIntegrityError("ambiguous completed control metadata reservation")
+            if matched:
+                receipt = matched[0]
+                self._verify_terminal_bindings(diagnosis, incident_cid=receipt.incident_cid,
+                    repository_root_cid=receipt.repository_root_cid, policy_root=receipt.policy_root,
+                    run_cid=receipt.run_cid)
+                selected.assert_current()
+                selected.assert_registered_handler(handler)
+                return ProgrammaticRecoveryResult(diagnosis=diagnosis, attempts=receipt.attempts,
+                                                   receipt=receipt, deduplicated=True)
+            if len(journal["records"]) >= limit:
+                return self._metadata_blocked(diagnosis, "control_metadata_reserved_budget_exhausted")
+            ordinal = len(journal["records"]) + 1
+            record = {"state": "pending", "incident_cid": diagnosis.incident_cid,
+                      "reservation_id": "", "receipt": None, "error": ""}
+            journal["records"].append(record)
+
+            def save() -> None:
+                payload = _canonical_bytes(journal)
+                if len(payload) > self.policy.max_receipt_bytes:
+                    raise RecoveryBoundExceeded("control metadata journal exceeds bound")
+                _atomic_write(path, payload)
+
+            save()  # Reserve locally before either the owner budget or handler callback.
+            spec = RecoveryActionSpec(operation=operation, preconditions=("trusted_current_metadata_scope",),
+                expected_effects=("control_metadata_verified",), compensation=None,
+                max_attempts=limit, cooldown_ms=0, deadline_ms=self.policy.deadline_ms,
+                post_health_required=False)
+            observation = None
+            try:
+                reservation_key = prompt_workflow_cid({"scope": scope, "attempt": ordinal})
+                reservation = selected.reserve_attempt(reservation_key)
+                if type(reservation) is not str or not reservation.strip():
+                    raise RecoveryIntegrityError("actual owner budget reservation required")
+                record["reservation_id"] = reservation
+                save()
+                selected.assert_current()
+                selected.assert_registered_handler(handler)
+                if self.clock_ms() >= deadline:
+                    raise RecoveryBoundExceeded("control metadata deadline exhausted")
+                context = ProgrammaticRecoveryContext(incident=diagnosis.incident, action=spec,
+                    attempt=ordinal, started_at_ms=started, deadline_at_ms=deadline,
+                    control_metadata=selected)
+                observation = self._observation(handler(context), spec)
+                selected.assert_current()
+                selected.assert_registered_handler(handler)
+                health = observation.post_action_health
+                if (not observation.succeeded or not observation.partial or observation.healthy
+                        or set(observation.observed_effects) != {"control_metadata_verified"}
+                        or health.get("healthy") is not False
+                        or health.get("control_metadata_verified") is not True
+                        or health.get("original_gate_pending") is not True
+                        or any(health.get(name) is True for name in (
+                            "work_complete", "completion_authority", "admission_granted", "execution_authority",
+                            "operator_hold_removal_allowed", "budget_reset_allowed"))
+                        or self.clock_ms() >= deadline):
+                    raise RecoveryIntegrityError("metadata verification cannot imply gate recovery")
+                finished = self.clock_ms()
+                attempt = self._attempt_receipt(diagnosis=diagnosis, spec=spec, attempt=ordinal,
+                    outcome=RecoveryAttemptOutcome.PARTIAL_PROGRESS, started_at_ms=started,
+                    finished_at_ms=finished, observation=observation)
+                receipt = ProgrammaticRecoveryReceipt(incident_cid=diagnosis.incident_cid,
+                    repository_root_cid=diagnosis.incident.repository_root_cid,
+                    policy_root=diagnosis.incident.policy_root, run_cid=diagnosis.incident.run_cid,
+                    operation=operation, target_id=selected.parent_task_id, attempts=(attempt,), action=spec,
+                    disposition=RecoveryDisposition.PARTIAL_PROGRESS,
+                    observed_effects=observation.observed_effects, post_action_health=health,
+                    started_at_ms=started, finished_at_ms=finished)
+            except Exception as exc:
+                primary = "control_metadata_attempt_failed:" + type(exc).__name__
+                record.update(state="failed", error=type(exc).__name__)
+                try:
+                    save()
+                except Exception as persistence_error:
+                    # The on-disk pending reservation remains spent and unknown.
+                    # Preserve the actual denial instead of replacing it with
+                    # a secondary failure while recording its diagnostic.
+                    return self._metadata_blocked(diagnosis, primary
+                        + ";journal_persistence_error:" + type(persistence_error).__name__)
+                return self._metadata_blocked(diagnosis, primary)
+            record.update(state="completed", receipt=receipt.to_dict())
+            save()
+            selected.assert_current()
+            selected.assert_registered_handler(handler)
+            return ProgrammaticRecoveryResult(diagnosis=diagnosis, attempts=(attempt,), receipt=receipt)
+        except Exception as exc:
+            return self._metadata_blocked(diagnosis, "control_metadata_reservation_refused:" + type(exc).__name__)
+        finally:
+            fcntl.flock(lock, fcntl.LOCK_UN)
+            os.close(lock)
+
+    def _attempt_reservations(self, diagnosis: RecoveryDiagnosis) -> dict[str, Any]:
+        """Recover the same incident/policy/catalog spend without refunding a crash."""
+
+        path = self._result_path(diagnosis.incident_cid).with_suffix(".attempts.json")
+        scope = {
+            "incident_cid": diagnosis.incident_cid,
+            "repository_root_cid": diagnosis.incident.repository_root_cid,
+            "policy_root": diagnosis.incident.policy_root,
+            "run_cid": diagnosis.incident.run_cid,
+            "policy_cid": self.policy.policy_cid,
+            "catalog_cid": PROGRAMMATIC_RECOVERY_CATALOG_CID,
+        }
+        try:
+            descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+        except FileNotFoundError:
+            return {"schema": "programmatic-recovery-attempt-reservations@1",
+                    "scope": scope, "counts": {}, "pending": None, "completed_attempts": []}
+        try:
+            raw = os.read(descriptor, self.policy.max_receipt_bytes + 1)
+            if len(raw) > self.policy.max_receipt_bytes:
+                raise RecoveryBoundExceeded("recovery reservation exceeds receipt bound")
+        finally:
+            os.close(descriptor)
+        try:
+            value = json.loads(raw)
+        except (ValueError, UnicodeError) as exc:
+            raise RecoveryIntegrityError("invalid recovery reservation") from exc
+        if (not isinstance(value, dict) or set(value) != {"schema", "scope", "counts", "pending", "completed_attempts"}
+                or value["schema"] != "programmatic-recovery-attempt-reservations@1"
+                or value["scope"] != scope or not isinstance(value["counts"], dict)
+                or _canonical_bytes(value) != raw):
+            raise RecoveryIntegrityError("recovery reservation binding changed")
+        for key, count in value["counts"].items():
+            try:
+                RescueOperation(key)
+            except (ValueError, TypeError) as exc:
+                raise RecoveryIntegrityError("unknown reserved recovery operation") from exc
+            if type(count) is not int or count < 1:
+                raise RecoveryIntegrityError("invalid recovery reservation count")
+        if not isinstance(value["completed_attempts"], list):
+            raise RecoveryIntegrityError("invalid completed recovery attempts")
+        completed = tuple(RecoveryAttempt.from_dict(row) for row in value["completed_attempts"])
+        if any(row.target_id != diagnosis.target_ids[0]
+               or row.attempt > value["counts"].get(row.operation.value, 0) for row in completed):
+            raise RecoveryIntegrityError("completed recovery attempt binding changed")
+        if len({(row.operation.value, row.attempt) for row in completed}) != len(completed):
+            raise RecoveryIntegrityError("duplicate completed recovery attempt")
+        pending = value["pending"]
+        if pending is not None and (
+                not isinstance(pending, dict) or set(pending) != {"operation", "attempt", "started_at_ms"}
+                or pending["operation"] not in value["counts"]
+                or type(pending["attempt"]) is not int
+                or pending["attempt"] != value["counts"][pending["operation"]]
+                or type(pending["started_at_ms"]) is not int or pending["started_at_ms"] < 0):
+            raise RecoveryIntegrityError("invalid pending recovery reservation")
+        return value
+
+    def _save_attempt_reservations(self, diagnosis: RecoveryDiagnosis, value: Mapping[str, Any]) -> None:
+        raw = _canonical_bytes(value)
+        if len(raw) > self.policy.max_receipt_bytes:
+            raise RecoveryBoundExceeded("recovery reservation exceeds receipt bound")
+        _atomic_write(self._result_path(diagnosis.incident_cid).with_suffix(".attempts.json"), raw)
+
+    def _reserve_attempt(self, diagnosis: RecoveryDiagnosis, value: dict[str, Any],
+                         spec: RecoveryActionSpec, started_at_ms: int) -> int:
+        if value["pending"] is not None:
+            raise RecoveryIntegrityError("unfinished reserved recovery attempt requires owner reconciliation")
+        count = value["counts"].get(spec.operation.value, 0)
+        if count >= spec.max_attempts or sum(value["counts"].values()) >= self.policy.max_total_attempts:
+            raise RecoveryBoundExceeded("reserved recovery attempt budget exhausted")
+        count += 1
+        value["counts"][spec.operation.value] = count
+        value["pending"] = {"operation": spec.operation.value, "attempt": count,
+                            "started_at_ms": started_at_ms}
+        self._save_attempt_reservations(diagnosis, value)
+        return count
+
+    def _finish_reserved_attempt(self, diagnosis: RecoveryDiagnosis, value: dict[str, Any],
+                                 completed: RecoveryAttempt) -> None:
+        value["completed_attempts"].append(completed.to_record())
+        value["pending"] = None
+        self._save_attempt_reservations(diagnosis, value)
+
+    def _unfinished_reservation_result(self, diagnosis: RecoveryDiagnosis,
+                                       value: Mapping[str, Any], now_ms: int) -> ProgrammaticRecoveryResult:
+        # A missing callback receipt is unknown custody, not permission to replay.
+        receipt = ProgrammaticRecoveryExhaustionReceipt(
+            incident_cid=diagnosis.incident_cid,
+            repository_root_cid=diagnosis.incident.repository_root_cid,
+            policy_root=diagnosis.incident.policy_root, run_cid=diagnosis.incident.run_cid,
+            attempts=tuple(RecoveryAttempt.from_dict(row) for row in value["completed_attempts"]),
+            inapplicable_operations=tuple(RescueOperation(key) for key in value["counts"]),
+            exhaustion_reason="unfinished_reserved_recovery_attempt",
+            budget=PromptWorkflowBudget(max_latency_ms=min(self.policy.deadline_ms, 3_600_000),
+                                        max_rescue_actions=self.policy.max_actions),
+            circuit_open=True, status=RecordStatus.BLOCKED,
+            created_at_ms=now_ms, updated_at_ms=now_ms)
+        return ProgrammaticRecoveryResult(diagnosis=diagnosis, attempts=receipt.attempts, exhaustion_receipt=receipt)
 
     def _result_path(self, incident_cid: str) -> Path:
         digest = hashlib.sha256(
@@ -2838,6 +3261,10 @@ class ProgrammaticRecoveryController:
                 raise TypeError("every recovery handler must be callable")
             selected_handlers[operation] = handler
 
+        if diagnosis.kind is IncidentKind.METADATA_PREREQUISITE:
+            with self._thread_lock:
+                return self._recover_control_metadata(diagnosis, selected_handlers)
+
         with self._thread_lock:
             existing = self._load(diagnosis)
             if existing is not None:
@@ -2845,12 +3272,17 @@ class ProgrammaticRecoveryController:
             started = self.clock_ms()
             if isinstance(started, bool) or not isinstance(started, int) or started < 0:
                 raise RecoveryIntegrityError("recovery clock returned an invalid timestamp")
+            reservations = self._attempt_reservations(diagnosis)
+            if (reservations["pending"] is not None
+                    or any(row["outcome"] == RecoveryAttemptOutcome.SUCCEEDED.value
+                           for row in reservations["completed_attempts"])):
+                return self._unfinished_reservation_result(diagnosis, reservations, started)
             overall_deadline = started + self.policy.deadline_ms
-            attempts: list[RecoveryAttempt] = []
+            attempts = [RecoveryAttempt.from_dict(row) for row in reservations["completed_attempts"]]
             compensations: list[RescueOperation] = []
             inapplicable: set[RescueOperation] = set()
             last_reason = "no_applicable_registered_action"
-            total_attempts = 0
+            total_attempts = sum(reservations["counts"].values())
             halt_recovery = False
 
             for spec in self._specs(diagnosis):
@@ -2872,8 +3304,13 @@ class ProgrammaticRecoveryController:
                     inapplicable.add(spec.operation)
                     last_reason = "action_cooldown_active"
                     continue
+                prior_attempts = reservations["counts"].get(spec.operation.value, 0)
+                if prior_attempts >= spec.max_attempts or total_attempts >= self.policy.max_total_attempts:
+                    inapplicable.add(spec.operation)
+                    last_reason = "reserved_attempt_bound_exhausted"
+                    continue
                 action_deadline = min(overall_deadline, now + spec.deadline_ms)
-                for action_attempt in range(1, spec.max_attempts + 1):
+                for action_attempt in range(prior_attempts + 1, spec.max_attempts + 1):
                     if total_attempts >= self.policy.max_total_attempts:
                         last_reason = "total_attempt_bound_exhausted"
                         break
@@ -2881,7 +3318,8 @@ class ProgrammaticRecoveryController:
                     if attempt_started >= action_deadline:
                         last_reason = "recovery_deadline_exhausted"
                         break
-                    total_attempts += 1
+                    action_attempt = self._reserve_attempt(diagnosis, reservations, spec, attempt_started)
+                    total_attempts = sum(reservations["counts"].values())
                     context = ProgrammaticRecoveryContext(
                         incident=diagnosis.incident,
                         action=spec,
@@ -2952,6 +3390,7 @@ class ProgrammaticRecoveryController:
                         error=error,
                     )
                     attempts.append(attempt_record)
+                    self._finish_reserved_attempt(diagnosis, reservations, attempts[-1])
                     if succeeded:
                         assert observation is not None
                         disposition = (
@@ -3024,14 +3463,19 @@ class ProgrammaticRecoveryController:
                                 cooldown_ms=0,
                                 deadline_ms=max(1, action_deadline - finished),
                             )
-                            total_attempts += 1
+                            if reservations["counts"].get(compensation_spec.operation.value, 0) >= compensation_spec.max_attempts:
+                                last_reason = "compensation_reserved_bound_exhausted"
+                                halt_recovery = True
+                                break
+                            compensation_attempt = self._reserve_attempt(diagnosis, reservations, compensation_spec, finished)
+                            total_attempts = sum(reservations["counts"].values())
                             compensation_observation = None
                             compensation_error = ""
                             try:
                                 compensation_context = ProgrammaticRecoveryContext(
                                     incident=diagnosis.incident,
                                     action=compensation_spec,
-                                    attempt=1,
+                                    attempt=compensation_attempt,
                                     started_at_ms=finished,
                                     deadline_at_ms=action_deadline,
                                 )
@@ -3070,6 +3514,7 @@ class ProgrammaticRecoveryController:
                                     error=compensation_error,
                                 )
                             )
+                            self._finish_reserved_attempt(diagnosis, reservations, attempts[-1])
                             if compensation_succeeded:
                                 compensations.append(spec.compensation)
                             else:

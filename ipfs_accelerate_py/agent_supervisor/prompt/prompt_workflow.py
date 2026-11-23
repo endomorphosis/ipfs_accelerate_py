@@ -261,6 +261,7 @@ class RecoveryAttemptOutcome(str, Enum):
     INAPPLICABLE = "inapplicable"
     DENIED = "denied"
     TIMED_OUT = "timed_out"
+    PARTIAL_PROGRESS = "partial_progress"
 
 
 class IncidentKind(str, Enum):
@@ -279,6 +280,7 @@ class IncidentKind(str, Enum):
     PROVIDER_UNAVAILABLE = "provider_unavailable"
     SPLIT_BRAIN = "split_brain"
     UNKNOWN = "unknown"
+    METADATA_PREREQUISITE = "metadata_prerequisite"
 
 
 class RescueOperation(str, Enum):
@@ -305,6 +307,7 @@ class RescueOperation(str, Enum):
     RESUME = "resume"
     DRAIN = "drain"
     STOP = "stop"
+    RESOLVE_CONTROL_METADATA = "resolve_control_metadata"
 
 
 def _enum(value: Any, kind: type[Enum], name: str) -> Any:

@@ -361,6 +361,19 @@ class RecoveryDiagnosis:
         return tuple(item for item in self.evidence if item.kind is selected)
 
 
+def _is_metadata_prerequisite_packet(value: Mapping[str, Any]) -> bool:
+    """Recognize a typed gate wait, never an execution or health grant.
+
+    Malformed declarations remain in this non-liveness channel so that they
+    cannot accidentally become a generic failed-task restart request. The
+    selected resolver must still validate the complete bounded declaration.
+    """
+
+    return (value.get("schema") == "ipfs_accelerate_py/agent-supervisor/gate-recovery@1"
+            and value.get("gate_recovery_needed", True) is True
+            and "prerequisite_recovery" in value)
+
+
 def _classify(
     records: Mapping[RecoveryEvidenceKind, tuple[RecoveryEvidence, ...]],
 ) -> tuple[IncidentKind, tuple[str, ...], bool, bool]:
@@ -375,6 +388,8 @@ def _classify(
     lease = values(RecoveryEvidenceKind.LEASE)
     lock = values(RecoveryEvidenceKind.LOCK)
     task = values(RecoveryEvidenceKind.TASK)
+    metadata_tasks = tuple(item for item in task if _is_metadata_prerequisite_packet(item))
+    ordinary_tasks = tuple(item for item in task if not _is_metadata_prerequisite_packet(item))
     attempt = values(RecoveryEvidenceKind.ATTEMPT)
     source = values(RecoveryEvidenceKind.TASK_SOURCE)
     worktree = values(RecoveryEvidenceKind.WORKTREE)
@@ -448,7 +463,7 @@ def _classify(
         candidates.append((IncidentKind.STALE_LIFECYCLE, "lifecycle_projection_stale"))
     if any(
         _failed(item) or _explicitly_false(item, "alive", "healthy", "ok", "ready")
-        for item in process + health + task
+        for item in process + health + ordinary_tasks
     ):
         candidates.append((IncidentKind.LANE_FAILURE, "live_lane_fault"))
 
@@ -483,6 +498,8 @@ def _classify(
         selected = candidates[0][0]
         reasons = tuple(sorted({reason for kind, reason in candidates if kind is selected}))
         return selected, reasons, True, False
+    if metadata_tasks:
+        return IncidentKind.METADATA_PREREQUISITE, ("typed_metadata_prerequisite",), False, False
     return IncidentKind.UNKNOWN, ("no_supported_fault_signal",), False, False
 
 
@@ -664,6 +681,7 @@ def diagnose_supervisor_incident(
         IncidentKind.RESOURCE_EXHAUSTION: {RecoveryEvidenceKind.DISK},
         IncidentKind.PROVIDER_UNAVAILABLE: {RecoveryEvidenceKind.PROVIDER},
         IncidentKind.SPLIT_BRAIN: {RecoveryEvidenceKind.PROCESS},
+        IncidentKind.METADATA_PREREQUISITE: {RecoveryEvidenceKind.TASK},
         IncidentKind.UNKNOWN: {
             RecoveryEvidenceKind.STATUS,
             RecoveryEvidenceKind.TASK,

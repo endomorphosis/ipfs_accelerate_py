@@ -29,7 +29,7 @@ import signal
 import tempfile
 import threading
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Final, Mapping, Sequence
@@ -38,10 +38,12 @@ from ..control.control_plane import (
     LIFECYCLE_STATUS_SCHEMA,
     SupervisorLifecycleState,
 )
-from ..prompt.prompt_workflow import RecordStatus, RescueOperation, prompt_workflow_cid
+from ..prompt.prompt_workflow import IncidentKind, RecordStatus, RescueOperation, prompt_workflow_cid
 from .recovery_diagnostics import (
     RecoveryDiagnosticError,
     RecoveryDiagnosis,
+    RecoveryEvidence,
+    RecoveryEvidenceKind,
     diagnose_supervisor_incident,
 )
 from .rescue_planner import (
@@ -51,6 +53,7 @@ from .rescue_planner import (
 from .lane_resume import resume_stopped_lane
 from .storage_pressure import MINIMUM_FREE_BYTES, check_storage_capacity, is_storage_pressure, publish_emergency_status, read_emergency_status
 from .supervisor_recovery import (
+    ControlMetadataRecoveryContext,
     ProgrammaticRecoveryController,
     ProgrammaticRecoveryPolicy,
     ProgrammaticRecoveryResult,
@@ -109,6 +112,8 @@ _AUTONOMOUS_UNSTALL_EVIDENCE_SLOTS: Final[frozenset[str]] = frozenset(
 _AUTONOMOUS_UNSTALL_PHASES: Final[frozenset[str]] = frozenset(
     {
         "deterministic_recovery",
+        "metadata_progress",
+        "metadata_blocked",
         "quarantined",
         "recovered",
         "rescue_executing",
@@ -229,6 +234,7 @@ class AutonomousUnstallCoordinator:
         ]
         | None = None,
         clock_ms: Callable[[], int] | None = None,
+        control_metadata_context_factory: Callable[[RecoveryDiagnosis], ControlMetadataRecoveryContext] | None = None,
     ) -> None:
         self.state_dir = Path(state_dir)
         self.repository_root = Path(repository_root).resolve()
@@ -248,6 +254,9 @@ class AutonomousUnstallCoordinator:
         self.rescue_orchestrator = rescue_orchestrator
         self.rescue_execution_request_factory = rescue_execution_request_factory
         self.clock_ms = clock_ms or (lambda: time.time_ns() // 1_000_000)
+        if control_metadata_context_factory is not None and not callable(control_metadata_context_factory):
+            raise TypeError("control metadata context factory must be callable")
+        self.control_metadata_context_factory = control_metadata_context_factory
         self.state_path = self.state_dir / "autonomous-unstall-state.json"
         self.recovery_state_dir = self.state_dir / "autonomous-unstall-recovery"
         self._lock = threading.RLock()
@@ -566,6 +575,12 @@ class AutonomousUnstallCoordinator:
             "deterministic": dict(entry.get("deterministic") or {}),
             "rescue": dict(entry.get("rescue") or {}),
         }
+        if diagnosis.kind is IncidentKind.METADATA_PREREQUISITE:
+            result.update(metadata_only=True,
+                          metadata_verified=entry.get("phase") == "metadata_progress",
+                          original_gate_pending=True, admission_granted=False,
+                          execution_authority=False, operator_hold_removal_allowed=False,
+                          budget_reset_allowed=False)
         for key in ("health", "operating_policy", "state_repair"):
             value = entry.get(key)
             if isinstance(value, Mapping):
@@ -585,6 +600,7 @@ class AutonomousUnstallCoordinator:
                 context: Any,
                 *,
                 selected: Callable[[Any], Any] = handler,
+                selected_operation: RescueOperation | str = operation,
             ) -> Any:
                 if self._roots() != dict(initial_roots):
                     return RecoveryActionObservation(
@@ -609,12 +625,53 @@ class AutonomousUnstallCoordinator:
                 # The controller verifies exact observed effects separately.
                 if isinstance(raw, Mapping):
                     checked = dict(raw)
-                    checked["post_action_health"] = self._health()
+                    # Metadata verification must retain its explicit unhealthy,
+                    # original-gate-pending observation. It cannot borrow lane health.
+                    if selected_operation not in {RescueOperation.RESOLVE_CONTROL_METADATA,
+                                                   RescueOperation.RESOLVE_CONTROL_METADATA.value}:
+                        checked["post_action_health"] = self._health()
                     return checked
                 return raw
 
             wrapped[operation] = invoke
         return wrapped
+
+    def _control_metadata_factory(
+        self,
+        roots: Mapping[str, str],
+        handlers: Mapping[RescueOperation | str, Callable[[Any], Any]],
+        wrapped: Mapping[RescueOperation | str, Callable[[Any], Any]],
+    ) -> Callable[[RecoveryDiagnosis], ControlMetadataRecoveryContext] | None:
+        factory = self.control_metadata_context_factory
+        if factory is None:
+            return None
+        operation = RescueOperation.RESOLVE_CONTROL_METADATA
+        original = handlers.get(operation, handlers.get(operation.value))
+        selected_wrapper = wrapped.get(operation, wrapped.get(operation.value))
+
+        def bind(diagnosis: RecoveryDiagnosis) -> ControlMetadataRecoveryContext:
+            selected = factory(diagnosis)
+            if not isinstance(selected, ControlMetadataRecoveryContext):
+                raise TypeError("trusted control metadata context required")
+
+            def assert_current() -> None:
+                if self._roots() != dict(roots):
+                    raise ValueError("control metadata roots changed")
+                selected.assert_current()
+                if self._roots() != dict(roots):
+                    raise ValueError("control metadata roots changed during owner check")
+
+            def assert_registered(candidate: Callable[[Any], Any]) -> None:
+                current = self.recovery_handlers.get(operation,
+                    self.recovery_handlers.get(operation.value))
+                if candidate is not selected_wrapper or original is None or current is not original:
+                    raise ValueError("control metadata handler registration changed")
+                selected.assert_registered_handler(original)
+
+            return replace(selected, assert_current=assert_current,
+                           assert_registered_handler=assert_registered)
+
+        return bind
 
     def _unstall_locked(
         self,
@@ -622,6 +679,7 @@ class AutonomousUnstallCoordinator:
         evidence: Mapping[str, Any],
         prior_actions: Sequence[Mapping[str, Any]] = (),
         recovery_handlers: Mapping[RescueOperation | str, Callable[[Any], Any]] | None = None,
+        control_metadata_only: bool = False,
     ) -> dict[str, Any]:
         """Run one finite incident-bound recovery pass."""
 
@@ -654,6 +712,19 @@ class AutonomousUnstallCoordinator:
                 observed_at_ms=self.clock_ms(),
                 **dict(evidence),
             )
+            if control_metadata_only and diagnosis.kind is not IncidentKind.METADATA_PREREQUISITE:
+                return {"schema": AUTONOMOUS_UNSTALL_RESULT_SCHEMA,
+                        "incident_cid": diagnosis.incident_cid,
+                        "incident_kind": diagnosis.kind.value,
+                        "target_ids": list(diagnosis.target_ids),
+                        "status": "metadata_blocked", "metadata_only": True,
+                        "reason": "control_metadata_diagnosis_kind_refused",
+                        "recovered": False, "quarantined": False, "deduplicated": False,
+                        "metadata_verified": False, "original_gate_pending": True,
+                        "independent_work_preserved": True, "work_complete": False,
+                        "completion_authority": False, "admission_granted": False,
+                        "execution_authority": False, "operator_hold_removal_allowed": False,
+                        "budget_reset_allowed": False}
             state = self._load_state()
             existing = state["incidents"].get(diagnosis.incident_cid)
             if isinstance(existing, Mapping):
@@ -707,12 +778,17 @@ class AutonomousUnstallCoordinator:
                 **self.recovery_handlers,
                 **dict(recovery_handlers or {}),
             }
+            wrapped = self._wrapped_handlers(roots, handlers)
+            metadata_factory = self._control_metadata_factory(roots, handlers, wrapped)
+            metadata_kwargs = ({} if metadata_factory is None else
+                               {"control_metadata_context_factory": metadata_factory})
             controller = ProgrammaticRecoveryController(
                 self.recovery_state_dir,
-                handlers=self._wrapped_handlers(roots, handlers),
+                handlers=wrapped,
                 health_check=lambda _context, _observation: self._health(),
                 policy=self.policy.deterministic_policy,
                 clock_ms=self.clock_ms,
+                **metadata_kwargs,
             )
             deterministic_result: ProgrammaticRecoveryResult = controller.recover(diagnosis)
             deterministic = {
@@ -728,6 +804,21 @@ class AutonomousUnstallCoordinator:
                     else deterministic_result.exhaustion_receipt.receipt_cid
                 ),
             }
+            if diagnosis.kind is IncidentKind.METADATA_PREREQUISITE:
+                current = self._roots() == roots
+                progress = current and deterministic_result.metadata_progress
+                reason = ("control_metadata_verified_original_gate_pending" if progress else
+                          "semantic_root_drift_after_control_metadata" if not current else
+                          deterministic_result.exhaustion_receipt.exhaustion_reason
+                          if deterministic_result.exhaustion_receipt is not None else
+                          "control_metadata_verification_unavailable")
+                entry = self._record(state, diagnosis.incident_cid,
+                    phase="metadata_progress" if progress else "metadata_blocked",
+                    reason=reason, targets=diagnosis.target_ids,
+                    deterministic=deterministic, quarantined=False,
+                    health={"healthy": False, "original_gate_pending": True})
+                return self._result(diagnosis, entry,
+                                    deduplicated=deterministic_result.deduplicated)
             if self._roots() != roots:
                 return self._quarantine(
                     state,
@@ -1022,9 +1113,13 @@ class AutonomousUnstallCoordinator:
         evidence: Mapping[str, Any],
         prior_actions: Sequence[Mapping[str, Any]] = (),
         recovery_handlers: Mapping[RescueOperation | str, Callable[[Any], Any]] | None = None,
+        control_metadata_only: bool = False,
     ) -> dict[str, Any]:
         """Serialize durable incident/provider state across processes."""
 
+        if type(control_metadata_only) is not bool:
+            raise TypeError("control metadata dispatch mode must be boolean")
+        mode_kwargs = {"control_metadata_only": True} if control_metadata_only else {}
         self.state_dir.mkdir(parents=True, exist_ok=True)
         lock_path = self.state_dir / ".autonomous-unstall.lock"
         with lock_path.open("a+b") as stream:
@@ -1034,6 +1129,7 @@ class AutonomousUnstallCoordinator:
                     evidence=evidence,
                     prior_actions=prior_actions,
                     recovery_handlers=recovery_handlers,
+                    **mode_kwargs,
                 )
             finally:
                 fcntl.flock(stream.fileno(), fcntl.LOCK_UN)
@@ -2067,6 +2163,9 @@ class SupervisorWatchdog:
             [RecoveryDiagnosis, Any, Any, Mapping[str, str]], Any
         ]
         | None = None,
+        control_metadata_packet_provider: Callable[[Mapping[str, Any], Mapping[str, str]], RecoveryEvidence] | None = None,
+        control_metadata_context_factory: Callable[[RecoveryDiagnosis], ControlMetadataRecoveryContext] | None = None,
+        control_metadata_handler: Callable[[Any], Any] | None = None,
     ) -> None:
         self.manifest_path = manifest_path
         self.repo_root = repo_root
@@ -2084,6 +2183,17 @@ class SupervisorWatchdog:
         self.rescue_request_factory = rescue_request_factory
         self.rescue_orchestrator = rescue_orchestrator
         self.rescue_execution_request_factory = rescue_execution_request_factory
+        for capability in (control_metadata_packet_provider, control_metadata_context_factory,
+                           control_metadata_handler):
+            if capability is not None and not callable(capability):
+                raise TypeError("trusted control metadata capabilities must be callable")
+        capabilities = (control_metadata_packet_provider, control_metadata_context_factory,
+                        control_metadata_handler)
+        if any(item is not None for item in capabilities) and not all(callable(item) for item in capabilities):
+            raise TypeError("a complete trusted control metadata provider bundle is required")
+        self.control_metadata_packet_provider = control_metadata_packet_provider
+        self.control_metadata_context_factory = control_metadata_context_factory
+        self.control_metadata_handler = control_metadata_handler
         self._consecutive_restart_counts: dict[str, int] = {}
         self._restart_backoff_remaining: dict[str, int] = {}
         self._recent_restarts: dict[str, tuple[int, float]] = {}
@@ -2405,8 +2515,27 @@ class SupervisorWatchdog:
         heartbeat_check: Mapping[str, Any],
     ) -> dict[str, Any] | None:
         policy = self.autonomous_unstall_policy or self._manifest_unstall_policy(manifest)
+        metadata_capabilities = (self.control_metadata_packet_provider,
+                                 self.control_metadata_context_factory,
+                                 self.control_metadata_handler)
+        metadata_wait = (all(callable(item) for item in metadata_capabilities)
+                         and heartbeat_check.get("gate_recovery_needed") is True
+                         and pid_check.get("alive") is True
+                         and heartbeat_check.get("stale") is False
+                         and heartbeat_check.get("state_inconsistent") is not True
+                         # check_lane_heartbeat supplies normalized lifecycle names.
+                         # Terminal observations belong to the existing fault route.
+                         and heartbeat_check.get("state") not in {"stopped", "failed"})
+        if metadata_wait and (policy is None or not policy.enabled
+                              or not all(callable(item) for item in metadata_capabilities)):
+            return {"status": "metadata_blocked", "metadata_only": True,
+                    "reason": "trusted_control_metadata_provider_unavailable",
+                    "recovered": False, "quarantined": False, "metadata_verified": False,
+                    "original_gate_pending": True, "work_complete": False,
+                    "completion_authority": False, "admission_granted": False,
+                    "execution_authority": False}
         leftover_fail_closed = (
-            heartbeat_check.get("last_exit_code") == 78
+            not metadata_wait and heartbeat_check.get("last_exit_code") == 78
             and bool(pid_check.get("alive"))
         )
         if leftover_fail_closed:
@@ -2543,6 +2672,32 @@ class SupervisorWatchdog:
             }
 
         roots = current_roots(manifest)
+        metadata_kwargs: dict[str, Any] = {}
+        if metadata_wait:
+            # The provider is installed by the trusted scope owner. No file path,
+            # command, handler registration or authority is accepted from the heartbeat.
+            try:
+                packet = self.control_metadata_packet_provider(dict(heartbeat_check), dict(roots))
+                if (not isinstance(packet, RecoveryEvidence)
+                        or packet.kind is not RecoveryEvidenceKind.TASK
+                        or not packet.target_id or not isinstance(packet.value, Mapping)):
+                    raise ValueError("typed current task evidence required")
+                parent = heartbeat_check.get("active_task_id")
+                fingerprint = heartbeat_check.get("gate_evidence_fingerprint")
+                if ((parent and packet.target_id != parent)
+                        or (fingerprint and packet.value.get("gate_evidence_fingerprint") != fingerprint)
+                        or packet.value.get("schema") != "ipfs_accelerate_py/agent-supervisor/gate-recovery@1"
+                        or current_roots(read_lane_manifest(self.manifest_path)) != roots):
+                    raise ValueError("current gate metadata evidence differs")
+            except Exception as exc:
+                return {"status": "metadata_blocked", "metadata_only": True,
+                        "reason": "control_metadata_packet_refused:" + type(exc).__name__,
+                        "recovered": False, "quarantined": False, "metadata_verified": False,
+                        "original_gate_pending": True, "work_complete": False,
+                        "completion_authority": False, "admission_granted": False,
+                        "execution_authority": False}
+            handlers = {RescueOperation.RESOLVE_CONTROL_METADATA: self.control_metadata_handler}
+            metadata_kwargs["control_metadata_context_factory"] = self.control_metadata_context_factory
         coordinator = self.autonomous_unstall_factory(
             state_dir=state_dir / "autonomous-unstall",
             repository_root=self.repo_root,
@@ -2564,7 +2719,10 @@ class SupervisorWatchdog:
             rescue_request_factory=self.rescue_request_factory,
             rescue_orchestrator=self.rescue_orchestrator,
             rescue_execution_request_factory=(self.rescue_execution_request_factory),
+            **metadata_kwargs,
         )
+        if metadata_wait:
+            return coordinator.unstall(evidence={"task": packet}, control_metadata_only=True)
         return coordinator.unstall(
             evidence={
                 "status": {
@@ -2791,6 +2949,33 @@ class SupervisorWatchdog:
             alive = bool(pid_check["alive"])
             heartbeat_stale = bool(heartbeat_check.get("stale", False))
             inconsistent = bool(heartbeat_check.get("state_inconsistent"))
+            if (all(callable(item) for item in (self.control_metadata_packet_provider,
+                                                 self.control_metadata_context_factory,
+                                                 self.control_metadata_handler))
+                    and heartbeat_check.get("gate_recovery_needed") is True
+                    and pid_check.get("alive") is True
+                    and heartbeat_check.get("stale") is False and not inconsistent
+                    and observed_state not in {"stopped", "failed"}):
+                # A fresh typed prerequisite wait is not a dead or stalled lane.
+                # Run only the trusted metadata path, then keep this task pending
+                # while the cycle continues with independent lanes.
+                metadata_result = self._watchdog_unstall(
+                    manifest=manifest, lane=lane, lane_started=lane_started,
+                    bundle_key=str(bundle_key), state_dir=state_dir,
+                    state_prefix=str(state_prefix), pid_check=pid_check,
+                    heartbeat_check=heartbeat_check)
+                report["autonomous_unstall"] = metadata_result
+                report["action"] = ("control_metadata_progress"
+                    if metadata_result and metadata_result.get("metadata_verified") is True
+                    else "control_metadata_blocked")
+                report["reason"] = str((metadata_result or {}).get("reason")
+                                       or "control_metadata_verification_unavailable")
+                report["status"] = lifecycle_status_projection(
+                    pid_check=pid_check, heartbeat_check=heartbeat_check,
+                    state="blocked", target_id=str(bundle_key))
+                report["status"].update(work_complete=False, completion_authority=False)
+                reports.append(report)
+                continue
             progress = self._classify_lane_progress(
                 lane,
                 process_alive=alive,
