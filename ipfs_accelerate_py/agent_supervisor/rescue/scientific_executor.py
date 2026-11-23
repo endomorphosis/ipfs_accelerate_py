@@ -3210,12 +3210,12 @@ def run_cycle(config, profile_ref, profile, template_ref, kind, sequence, stop, 
                     terminal_ref = put(root/'terminal.json', terminal)
                     value = h.acknowledge_original_nonstarted_cycle(
                         profile_ref, terminal_ref, request_ref, sequence=sequence, cycle_handle=handle)
-                    value.update(cycle_number=cycle_number, original_wait_ref=wait_ref,
+                    value.update(cycle_number=sequence if cycle_number is None else cycle_number, original_wait_ref=wait_ref,
                                  source_lease_retry=source_retry,
                                  cooldown_seconds=SOURCE_LEASE_COOLDOWN_SECONDS)
                     reference = put(root/'prestart-deferral.json', value)
                     return dict(deferred_source_lease=True, deferral_ref=reference,
-                                cycle_root=str(root), cycle_number=cycle_number, health_credit=False)
+                                cycle_root=str(root), cycle_number=value['cycle_number'], health_credit=False)
             if original_returncode!=0 and kind=='genuine_scoped_idle' and not stop.is_set():
                 try:
                     request=h._document(request_ref)

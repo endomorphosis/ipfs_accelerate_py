@@ -785,7 +785,7 @@ def task_statuses_from_todo_text(
         if line.startswith("## "):
             current_task_id = ""
             continue
-        if current_task_id and line.startswith("- Status:"):
+        if current_task_id and line.lower().startswith("- status:"):
             statuses[current_task_id] = line.split(":", 1)[1].strip().lower()
             current_task_id = ""
     return statuses
@@ -918,6 +918,58 @@ def load_strategy(path: Path) -> dict[str, Any]:
     return strategy
 
 
+def _refill_task_statuses_from_todo_text(
+    todo_text: str, *, task_prefix: str = DEFAULT_TASK_ID_PREFIX
+) -> dict[str, str]:
+    """Project existing board headers for refill, without allocating task IDs.
+
+    Legacy boards may contain hierarchical display IDs. Keep the strict
+    numeric allocator unchanged, while recognizing the same literal header
+    prefix used by the existing board reader. Missing statuses, conflicting
+    fields and duplicate task headings remain unresolved work. Repeating an
+    identical normalized field is harmless; this view never claims a task.
+    """
+
+    header_prefix = task_header_prefix(task_prefix)
+    numeric = task_id_pattern(task_prefix)
+    statuses: dict[str, str] = {}
+    duplicates: set[str] = set()
+    status_seen: set[str] = set()
+    current_task_id = ""
+    for line in todo_text.splitlines():
+        heading = numeric.match(line)
+        task_id = heading.group(1) if heading is not None else ""
+        if not task_id and line.startswith(header_prefix):
+            fields = line[3:].split(maxsplit=1)
+            task_id = fields[0] if fields else ""
+        if task_id:
+            current_task_id = task_id
+            if task_id in statuses:
+                duplicates.add(task_id)
+            statuses[task_id] = "unknown"
+            continue
+        if line.startswith("## "):
+            current_task_id = ""
+            continue
+        if current_task_id and line.lower().startswith("- status:"):
+            value = line.split(":", 1)[1].strip().lower() or "unknown"
+            if (current_task_id in duplicates
+                    or (current_task_id in status_seen and statuses[current_task_id] != value)):
+                duplicates.add(current_task_id)
+                statuses[current_task_id] = "unknown"
+            else:
+                statuses[current_task_id] = value
+            status_seen.add(current_task_id)
+    return statuses
+
+
+def _refill_open_task_count(
+    todo_text: str, *, task_prefix: str = DEFAULT_TASK_ID_PREFIX
+) -> int:
+    statuses = _refill_task_statuses_from_todo_text(todo_text, task_prefix=task_prefix)
+    return sum(1 for status in statuses.values() if status not in {"completed", "blocked"})
+
+
 def effective_open_task_count(
     todo_text: str,
     *,
@@ -925,24 +977,27 @@ def effective_open_task_count(
     task_prefix: str = DEFAULT_TASK_ID_PREFIX,
 ) -> int:
     if state_path is None or not state_path.exists():
-        return open_task_count(todo_text, task_prefix=task_prefix)
+        return _refill_open_task_count(todo_text, task_prefix=task_prefix)
     payload = load_json_dict(state_path)
     statuses = payload.get("task_statuses")
     if not isinstance(statuses, dict):
-        return open_task_count(todo_text, task_prefix=task_prefix)
-    todo_statuses = task_statuses_from_todo_text(todo_text, task_prefix=task_prefix)
+        return _refill_open_task_count(todo_text, task_prefix=task_prefix)
+    todo_statuses = _refill_task_statuses_from_todo_text(todo_text, task_prefix=task_prefix)
+    if any(status not in {"todo", "ready", "in_progress", "waiting", "blocked", "completed"}
+           for status in todo_statuses.values()):
+        return _refill_open_task_count(todo_text, task_prefix=task_prefix)
     task_ids = set(todo_statuses)
     normalized = {str(task_id): str(status).lower() for task_id, status in statuses.items()}
     if set(normalized) != task_ids or not state_statuses_match_todo_statuses(
         todo_statuses, normalized
     ):
-        return open_task_count(todo_text, task_prefix=task_prefix)
+        return _refill_open_task_count(todo_text, task_prefix=task_prefix)
     try:
         state_task_count = int(payload.get("task_count") or 0)
     except (TypeError, ValueError):
-        return open_task_count(todo_text, task_prefix=task_prefix)
+        return _refill_open_task_count(todo_text, task_prefix=task_prefix)
     if state_task_count != len(task_ids):
-        return open_task_count(todo_text, task_prefix=task_prefix)
+        return _refill_open_task_count(todo_text, task_prefix=task_prefix)
     return sum(1 for status in normalized.values() if status not in {"completed", "blocked"})
 
 
@@ -958,7 +1013,10 @@ def refill_state_counts(
     statuses = payload.get("task_statuses")
     if not isinstance(statuses, dict):
         return {}
-    todo_statuses = task_statuses_from_todo_text(todo_text, task_prefix=task_prefix)
+    todo_statuses = _refill_task_statuses_from_todo_text(todo_text, task_prefix=task_prefix)
+    if any(status not in {"todo", "ready", "in_progress", "waiting", "blocked", "completed"}
+           for status in todo_statuses.values()):
+        return {}
     task_ids = set(todo_statuses)
     normalized = {str(task_id): str(status).lower() for task_id, status in statuses.items()}
     if set(normalized) != task_ids:
@@ -978,7 +1036,7 @@ def refill_state_counts(
 
     completed = sum(1 for status in normalized.values() if status == "completed")
     blocked = sum(1 for status in normalized.values() if status == "blocked")
-    ready = sum(1 for status in normalized.values() if status == "todo")
+    ready = sum(1 for status in normalized.values() if status in {"todo", "ready"})
     waiting = sum(1 for status in normalized.values() if status == "waiting")
     return {
         "task_count": state_task_count,
@@ -1548,7 +1606,7 @@ def should_refill_backlog(
     current_open = effective_open_task_count(
         todo_text, state_path=state_path, task_prefix=task_prefix
     )
-    task_count = len(task_ids_from_todo_text(todo_text, task_prefix=task_prefix))
+    task_count = len(_refill_task_statuses_from_todo_text(todo_text, task_prefix=task_prefix))
     state_counts = refill_state_counts(todo_text, state_path=state_path, task_prefix=task_prefix)
     eligible_ready_for_refill = int(
         state_counts.get("eligible_ready_count", state_counts.get("ready_count") or 0) or 0
@@ -1571,7 +1629,11 @@ def should_refill_backlog(
         return False, "open_task_threshold", current_open, task_count
     drained = current_open == 0
     try:
-        last_drained_count = int(strategy.get(last_drained_scan_task_count_key) or -1)
+        saved_drained_count = strategy.get(last_drained_scan_task_count_key)
+        if saved_drained_count is None or saved_drained_count is False:
+            last_drained_count = -1
+        else:
+            last_drained_count = int(saved_drained_count)
     except (TypeError, ValueError):
         last_drained_count = -1
     if drained and last_drained_count != task_count:
