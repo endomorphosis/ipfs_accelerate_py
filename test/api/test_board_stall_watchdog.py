@@ -422,3 +422,273 @@ def test_expired_unchanged_stall_rechecks_release_but_keeps_repair_deduplication
     assert second["preserve_operator_hold"] is True
     assert hold.read_bytes() == b"preserve existing operator hold\n"
     assert second["set_ready"] is False and second["executor_start_allowed"] is False
+
+
+import time
+
+def _active_and_blocked_repo(release=None):
+    return _Repo(
+        (
+            {"task_alias": "LAW-ACTIVE", "task_cid": "active", "status": "in_progress"},
+            _blocked("LAW-METADATA"),
+        ),
+        release=release,
+    )
+
+
+def _forbid_active_repair(_repo, _spec):
+    raise AssertionError("active work must not spawn a repair callback")
+
+
+def test_active_task_does_not_starve_independent_metadata_resolution():
+    repo = _active_and_blocked_repo(
+        {"completed": [], "spawned": [{"task_alias": "LAW-METADATA--definition"}], "retired": []}
+    )
+    rows_before = [dict(row) for row in repo._records]
+    report = BoardStallWatchdog().tick(
+        repo, operator_hold_present=True, spawn_repair=_forbid_active_repair
+    )
+    assert repo.release_calls == 1
+    assert report["action"] == "continue"
+    assert report["release"] == {"completed": [], "spawned": ["LAW-METADATA--definition"], "retired": []}
+    assert report["executor_start_allowed"] is False
+    assert report["set_ready"] is False
+    assert report["grant_admission"] is False
+    assert report["preserve_operator_hold"] is True
+    assert repo._records == rows_before
+    assert "repair_spec" not in report and "repair_report" not in report
+
+
+def test_active_resolution_reports_trusted_metadata_completion_without_launch():
+    repo = _active_and_blocked_repo(
+        {"completed": [{"task_alias": "LAW-METADATA"}], "spawned": [], "retired": []}
+    )
+    report = BoardStallWatchdog().tick(
+        repo, operator_hold_present=False, spawn_repair=_forbid_active_repair
+    )
+    assert repo.release_calls == 1
+    assert report["action"] == "continue"
+    assert report["release"]["completed"] == ["LAW-METADATA"]
+    assert report["executor_start_allowed"] is False
+    assert report["set_ready"] is False
+    assert report["grant_admission"] is False
+
+
+def test_active_blocked_hold_remains_held_without_a_repair_attempt():
+    repo = _active_and_blocked_repo(
+        {"completed": [], "spawned": [], "retired": [], "held": [{"decision": "runtime_authority_hold"}]}
+    )
+    report = BoardStallWatchdog().tick(
+        repo, operator_hold_present=True, spawn_repair=_forbid_active_repair
+    )
+    assert repo.release_calls == 1
+    assert report["action"] == "continue"
+    assert report["release"] == {"completed": [], "spawned": [], "retired": []}
+    assert repo._records[1]["status"] == "blocked"
+    assert report["preserve_operator_hold"] is True
+    assert "repair_report" not in report
+
+
+def test_active_recheck_does_not_reset_or_spend_the_idle_repair_latch():
+    repo = _active_and_blocked_repo()
+    owner = BoardStallWatchdog()
+    signature = observe_tasks(repo._records, operator_hold_present=True)["signature"]
+    owner._idle_signatures.add(signature)
+    owner._idle_checked_at[signature] = time.monotonic()
+    before = (set(owner._idle_signatures), dict(owner._idle_checked_at))
+    report = owner.tick(repo, operator_hold_present=True, spawn_repair=_forbid_active_repair)
+    assert repo.release_calls == 1
+    assert report["action"] == "continue"
+    assert (owner._idle_signatures, owner._idle_checked_at) == before
+
+
+def test_existing_serve_fast_path_does_not_hide_an_active_blocked_frontier():
+    repo = _active_and_blocked_repo()
+    owner = BoardStallWatchdog()
+    signature = observe_tasks(repo._records, operator_hold_present=True)["signature"]
+    owner._idle_signatures.add(signature)
+    owner._idle_checked_at[signature] = time.monotonic()
+    report = serve(
+        repo,
+        watchdog=owner,
+        once=True,
+        readonly_observe=lambda: observe_tasks(repo._records, operator_hold_present=True),
+        spawn_repair=_forbid_active_repair,
+    )
+    assert repo.release_calls == 1
+    assert report["action"] == "continue"
+    assert owner._idle_signatures == {signature}
+
+
+def test_active_only_frontier_does_not_call_the_metadata_resolver():
+    repo = _Repo(({"task_alias": "LAW-ACTIVE", "status": "in_progress"},))
+    report = BoardStallWatchdog().tick(
+        repo, operator_hold_present=True, spawn_repair=_forbid_active_repair
+    )
+    assert report["action"] == "continue"
+    assert repo.release_calls == 0
+    assert report["preserve_operator_hold"] is True
+
+
+def test_active_recheck_preserves_the_actual_lock_exception():
+    error = RuntimeError("database is locked")
+
+    class LockedRepo(_Repo):
+        def release_dependency_satisfied_blocks(self):
+            self.release_calls += 1
+            raise error
+
+    repo = LockedRepo(_active_and_blocked_repo()._records)
+    try:
+        BoardStallWatchdog().tick(
+            repo, operator_hold_present=True, spawn_repair=_forbid_active_repair
+        )
+    except RuntimeError as caught:
+        assert caught is error
+    else:
+        raise AssertionError("the existing database-lock refusal must propagate")
+    assert repo.release_calls == 1
+
+
+def test_active_release_failure_does_not_claim_progress_or_spawn_repair():
+    from copy import deepcopy
+
+    class FailingRepo(_Repo):
+        def release_dependency_satisfied_blocks(self):
+            self.release_calls += 1
+            raise ValueError("fictional metadata refusal")
+
+    repo = FailingRepo(_active_and_blocked_repo()._records)
+    repo._records[0].update({"claim_id": "fictional-claim", "lease_id": "fictional-lease"})
+    repo._records[1].update({"operator_hold": True, "budget_exhausted": True,
+                             "retry_budget": 0, "source_lease_id": "fictional-source"})
+    records_before = deepcopy(repo._records)
+    owner = BoardStallWatchdog()
+    signature = observe_tasks(repo._records, operator_hold_present=True)["signature"]
+    owner._idle_signatures.add(signature)
+    owner._idle_checked_at[signature] = 123.0
+    latches_before = (set(owner._idle_signatures), dict(owner._idle_checked_at))
+    report = owner.tick(
+        repo, operator_hold_present=True, spawn_repair=_forbid_active_repair
+    )
+    assert repo.release_calls == 1
+    assert report["action"] == "continue"
+    assert report["release_failure"] == {"action": "release_failed", "error": "ValueError"}
+    assert "error" not in report and "release" not in report
+    assert report["signature"] == signature
+    assert report["executor_start_allowed"] is False
+    assert report["set_ready"] is False
+    assert report["grant_admission"] is False
+    assert report["preserve_operator_hold"] is True
+    assert "repair_spec" not in report and "repair_report" not in report
+    assert repo._records == records_before
+    assert (owner._idle_signatures, owner._idle_checked_at) == latches_before
+
+    # The pre-existing inactive error disposition remains unchanged.
+    idle_repo = FailingRepo((_blocked("LAW-IDLE"),))
+    idle_owner = BoardStallWatchdog()
+    idle_report = idle_owner.tick(
+        idle_repo, operator_hold_present=True, spawn_repair=_forbid_active_repair
+    )
+    assert idle_repo.release_calls == 1
+    assert idle_report["action"] == "release_failed"
+    assert idle_report["error"] == "ValueError"
+    assert "release_failure" not in idle_report and "release" not in idle_report
+    assert idle_report["executor_start_allowed"] is False
+    assert idle_report["set_ready"] is False
+    assert idle_report["grant_admission"] is False
+    assert idle_report["preserve_operator_hold"] is True
+    assert idle_owner._idle_signatures == set() and idle_owner._idle_checked_at == {}
+
+
+def test_active_run_once_preserves_the_operator_hold_and_truthful_status(tmp_path):
+    hold = tmp_path / "hold"
+    status = tmp_path / "status.json"
+    hold.write_bytes(b"operator-owned legal review hold\n")
+    repo = _active_and_blocked_repo()
+    report = run_once(
+        repo,
+        watchdog=BoardStallWatchdog(),
+        hold_path=hold,
+        status_path=status,
+        spawn_repair=_forbid_active_repair,
+    )
+    assert repo.release_calls == 1
+    assert hold.read_bytes() == b"operator-owned legal review hold\n"
+    import json
+    saved = json.loads(status.read_bytes())
+    assert saved["action"] == report["action"] == "continue"
+    assert saved["set_ready"] is False and saved["grant_admission"] is False
+
+
+def test_active_recheck_never_grants_execution_even_for_malformed_resolver_output():
+    repo = _active_and_blocked_repo()
+    repo._release = object()
+    report = BoardStallWatchdog().tick(
+        repo, operator_hold_present=True, spawn_repair=_forbid_active_repair
+    )
+    assert repo.release_calls == 1
+    assert report["action"] == "continue"
+    assert report["release"] == {"completed": [], "spawned": [], "retired": []}
+    assert report["executor_start_allowed"] is False
+    assert report["set_ready"] is False
+    assert report["grant_admission"] is False
+
+
+def test_active_owner_does_not_starve_real_repository_metadata_obligations(tmp_path):
+    """Normal-import/DuckDB integration; private call-count fixtures do not qualify it."""
+    repo = _catalogue(tmp_path)
+    try:
+        _task(
+            repo, "task:independent-done", "LAW-DONE", status="completed",
+            body={"completion": "manual", "execution_packet_required": True},
+        )
+        _task(
+            repo, "task:independent-active", "LAW-ACTIVE", status="in_progress",
+            body={"completion": "manual", "execution_packet_required": True},
+        )
+        _task(
+            repo, "task:independent-metadata", "LAW-METADATA", status="blocked",
+            body=_manual_body("This authored fixture remains unresolved until each clause is recorded."),
+            dependencies=["task:independent-done"],
+            acceptance=(
+                "Every accepted component retains complete material meaning.",
+                "Input context and output capacities stay separate.",
+            ),
+        )
+        _task(
+            repo, "task:independent-held", "LAW-HELD", status="blocked",
+            body={**_manual_body("Await the existing resource owner."),
+                  "budget_exhausted": True, "retry_budget": 0},
+            dependencies=["task:independent-done"],
+        )
+        active_before = dict(repo.get_task("task:independent-active"))
+        held_before = dict(repo.get_task("task:independent-held"))
+        hold = tmp_path / "operator.hold"
+        hold.write_bytes(b"operator-owned review and runtime hold\n")
+        report = run_once(
+            repo,
+            watchdog=BoardStallWatchdog(),
+            hold_path=hold,
+            spawn_repair=_forbid_active_repair,
+        )
+        assert report["action"] == "continue"
+        assert set(report["release"]["spawned"]) == {
+            "LAW-METADATA--00-every-accepted-component-retains",
+            "LAW-METADATA--01-input-context-output-capacities",
+        }
+        assert report["release"]["completed"] == []
+        assert dict(repo.get_task("task:independent-active")) == active_before
+        assert dict(repo.get_task("task:independent-held")) == held_before
+        assert repo.get_task("task:independent-metadata")["status"] == "blocked"
+        assert hold.read_bytes() == b"operator-owned review and runtime hold\n"
+        assert report["executor_start_allowed"] is False
+        assert report["set_ready"] is False
+        assert report["grant_admission"] is False
+        for task in repo.list_tasks(limit=20, offset=0):
+            assert task["status"] != "ready"
+            for flag in ("admitted", "formalized", "gold_or_teacher_admission_granted",
+                         "constitution_roundtrip_ok"):
+                assert task["body"].get(flag) is not True
+    finally:
+        repo.close()

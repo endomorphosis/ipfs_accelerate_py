@@ -288,11 +288,14 @@ class BoardStallWatchdog:
             list_task_records(repo),
             operator_hold_present=operator_hold_present,
         )
-        if int(observation["active_count"]) > 0 or int(observation["incomplete_count"]) == 0:
+        active_work = int(observation["active_count"]) > 0
+        if int(observation["incomplete_count"]) == 0 or (
+            active_work and not observation["blocked_aliases"]
+        ):
             return decide_board_stall(observation)
         signature = str(observation["signature"])
         repair_already_requested = signature in self._idle_signatures
-        if self.idle_recorded(signature):
+        if not active_work and self.idle_recorded(signature):
             decision = decide_board_stall(
                 observation,
                 release_result={"completed": [], "spawned": []},
@@ -305,6 +308,13 @@ class BoardStallWatchdog:
         except Exception as exc:
             if lock_conflict(exc):
                 raise
+            if active_work:
+                decision = decide_board_stall(observation)
+                decision["release_failure"] = {
+                    "action": "release_failed", "error": type(exc).__name__
+                }
+                decision["signature"] = signature
+                return decision
             decision = _fence(observation)
             decision["action"] = "release_failed"
             decision["error"] = type(exc).__name__
@@ -312,6 +322,14 @@ class BoardStallWatchdog:
             return decision
         if not isinstance(release_result, Mapping):
             release_result = {}
+        if active_work:
+            # The repository resolves only eligible blocked metadata tasks. Its
+            # claim, lease, evidence and revision fences retain authority.
+            # Active work never starts a repair or consumes/resets its latch.
+            decision = decide_board_stall(observation)
+            decision["release"] = _release_summary(release_result)
+            decision["signature"] = signature
+            return decision
         decision = decide_board_stall(
             observation,
             release_result=release_result,
@@ -435,7 +453,8 @@ def serve(
             if readonly_observe is not None:
                 observation = readonly_observe()
                 signature = str(observation.get("signature") or "")
-                if owner.idle_recorded(signature):
+                if (int(observation.get("active_count") or 0) == 0
+                        and owner.idle_recorded(signature)):
                     report = _stall_recorded(
                         observation,
                         hold_path=hold_path,
