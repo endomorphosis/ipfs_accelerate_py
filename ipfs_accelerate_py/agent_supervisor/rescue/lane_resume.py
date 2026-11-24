@@ -2322,7 +2322,7 @@ def run_resume_cycle(
         )
         gate_record = gate_recovery.current(task_id, fingerprint) if same_source else {}
         if int(gate_record.get("next_retry_at_ms") or 0) > now_ms and not retry_changed_evidence:
-            packet = gate_recovery.path.with_name(f"gate-recovery-{task_id}.json")
+            packet = gate_recovery.packet_path(task_id)
             gate_waits.append({
                 "state": "degraded", "phase": "gate_retry_wait", "active_task_id": task_id,
                 "terminal_reason": "", "backpressure_reasons": [f"{task_id}:gate_fixed_point"],
@@ -2352,7 +2352,7 @@ def run_resume_cycle(
                     active_task_id=task_id, state="degraded", phase="gate_evidence_revalidation",
                     gate_evidence_fingerprint=fingerprint,
                     gate_recovery_needed=int(previous_gate.get("source_refusals") or 0) >= GATE_REPEAT_LIMIT,
-                    repair_packet=str(gate_recovery.path.with_name(f"gate-recovery-{task_id}.json"))
+                    repair_packet=str(gate_recovery.packet_path(task_id))
                     if int(previous_gate.get("source_refusals") or 0) >= GATE_REPEAT_LIMIT else "",
                     next_retry_at_ms=int(previous_gate.get("next_retry_at_ms") or 0),
                 ),

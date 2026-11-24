@@ -674,13 +674,23 @@ class GateRecovery:
         self.store(task_id, record)
         return record
 
+    def packet_path(self, task_id: str) -> Path:
+        """Keep each task's durable handoff separate without renaming legacy IDs."""
+
+        safe = re.sub(r"[^A-Za-z0-9_-]", "-", task_id)
+        if not safe or safe != task_id or len(safe) > 80:
+            # Generated prerequisite IDs can differ only beyond the old
+            # filename cutoff. Bind the suffix to the complete original ID.
+            digest = hashlib.sha256(task_id.encode("utf-8", errors="surrogatepass")).hexdigest()
+            safe = (safe[:48] or "task") + "." + digest
+        return self.path.with_name(f"gate-recovery-{safe}.json")
+
     def packet(
         self, task_id: str, record: Mapping[str, Any], evidence: Mapping[str, Any], *,
         runtime_read_budget: Mapping[str, Any] | None = None,
         selected_scope: Mapping[str, str] | None = None,
     ) -> Path:
-        safe = re.sub(r"[^A-Za-z0-9_-]", "-", task_id)[:80] or "task"
-        path = self.path.with_name(f"gate-recovery-{safe}.json")
+        path = self.packet_path(task_id)
         validations = record.get("dependency_validations") or []
         packet = {
             "schema": "ipfs_accelerate_py/agent-supervisor/gate-recovery@1",

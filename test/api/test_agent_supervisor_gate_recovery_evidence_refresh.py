@@ -2849,3 +2849,111 @@ class TestGateReadBudgetWorkaroundPlanning(_read_budget_unittest.TestCase):
             self.assertEqual(len(after['cache_candidates']), 1)
             self._assert_cache_requires_authentication(
                 after['cache_candidates'][0], observation['cache_candidates'][0])
+
+
+# Distinct dependency requests must retain distinct durable handoff files.
+import json
+import os
+import tempfile
+import unittest
+from pathlib import Path
+from ipfs_accelerate_py.agent_supervisor.rescue import gate_recovery as _handoff_gate
+
+
+class TestGateHandoffPacketIdentity(unittest.TestCase):
+    def packet_for(self, recovery, task_id, fingerprint="a" * 64):
+        record = {"fingerprint": fingerprint, "source_contract": "b" * 64,
+                  "source_refusals": 3, "unchanged_probes": 3,
+                  "dependencies_revalidated": True, "dependency_validations": [],
+                  "next_retry_at_ms": 1234}
+        return recovery.packet(task_id, record, {"tasks": {}, "artifacts": {}})
+
+    def test_long_distinct_parent_requests_do_not_overwrite_each_other(self):
+        with tempfile.TemporaryDirectory() as directory:
+            recovery = _handoff_gate.GateRecovery(Path(directory) / "attempts.json")
+            first_id, second_id = "LAW-" + "a" * 90 + "-owner", "LAW-" + "a" * 90 + "-test"
+            first = self.packet_for(recovery, first_id)
+            before = first.read_bytes()
+            second = self.packet_for(recovery, second_id)
+            self.assertNotEqual(first, second)
+            self.assertEqual(first.read_bytes(), before)
+            self.assertEqual(json.loads(first.read_text())["task_id"], first_id)
+            self.assertEqual(json.loads(second.read_text())["task_id"], second_id)
+
+    def test_existing_two_stage_planner_ids_have_separate_handoffs(self):
+        parent = "AUTOMATEDLEGALFORMALIZATION-02"
+        evidence = {"tasks": {parent: {"prerequisite_requirements": json.dumps([
+            {"code": "LOSSLESS_CACHE_UNAVAILABLE", "subject": "fictional retained owner body",
+             "expected_sha256": "c" * 64}])}}, "artifacts": {}}
+        plan = _handoff_gate.prerequisite_recovery_plan(parent, evidence)
+        self.assertEqual(len(plan["steps"]), 2)
+        ids = [step["task_id"] for step in plan["steps"]]
+        self.assertGreater(len(ids[0]), 80)
+        self.assertEqual(ids[0][:80], ids[1][:80])
+        with tempfile.TemporaryDirectory() as directory:
+            recovery = _handoff_gate.GateRecovery(Path(directory) / "attempts.json")
+            paths = [self.packet_for(recovery, task) for task in ids]
+            self.assertEqual(len(set(paths)), 2)
+            self.assertEqual([json.loads(path.read_text())["task_id"] for path in paths], ids)
+
+    def test_legacy_short_safe_task_paths_and_false_authority_are_unchanged(self):
+        with tempfile.TemporaryDirectory() as directory:
+            recovery = _handoff_gate.GateRecovery(Path(directory) / "attempts.json")
+            for task in ("LIR-02", "LAW_101", "A" * 80):
+                with self.subTest(task=task):
+                    path = self.packet_for(recovery, task)
+                    self.assertEqual(path.name, "gate-recovery-" + task + ".json")
+                    payload = json.loads(path.read_text())
+                    self.assertIs(payload["work_complete"], False)
+                    self.assertIs(payload["completion_authority"], False)
+
+    def test_restart_keeps_long_request_identity_and_spent_validation_fence(self):
+        with tempfile.TemporaryDirectory() as directory:
+            attempt = Path(directory) / "attempts.json"
+            task = "LAW-" + "p" * 100
+            recovery = _handoff_gate.GateRecovery(attempt)
+            record = recovery.observe(task, "a" * 64, now_ms=1, source_contract="b" * 64)
+            record.update(dependencies_revalidated=True, repair_attempted=True)
+            recovery.store(task, record)
+            first = recovery.packet(task, record, {"tasks": {}, "artifacts": {}})
+            retained = recovery.path.read_bytes()
+            restarted = _handoff_gate.GateRecovery(attempt)
+            second = restarted.packet(task, restarted.current(task, "a" * 64),
+                                      {"tasks": {}, "artifacts": {}})
+            self.assertEqual(first, second)
+            self.assertEqual(restarted.path.read_bytes(), retained)
+            self.assertIs(restarted.current(task, "a" * 64)["dependencies_revalidated"], True)
+            self.assertIs(restarted.current(task, "a" * 64)["repair_attempted"], True)
+            self.assertLessEqual(len(os.fsencode(second.name)), 255)
+
+    def test_same_request_can_update_evidence_without_changing_identity_or_authority(self):
+        with tempfile.TemporaryDirectory() as directory:
+            recovery = _handoff_gate.GateRecovery(Path(directory) / "attempts.json")
+            task = "LAW-" + "q" * 100
+            first = self.packet_for(recovery, task)
+            second = self.packet_for(recovery, task, "d" * 64)
+            self.assertEqual(first, second)
+            payload = json.loads(second.read_text())
+            self.assertEqual(payload["task_id"], task)
+            self.assertEqual(payload["gate_evidence_fingerprint"], "d" * 64)
+            self.assertIs(payload["work_complete"], False)
+            self.assertIs(payload["completion_authority"], False)
+
+
+import hashlib as _handoff_hashlib
+
+
+class TestGateHandoffNormalizedIdentity(unittest.TestCase):
+    def test_normalized_request_and_legacy_safe_digest_spelling_cannot_alias(self):
+        task = "LAW-1/"
+        legacy = "LAW-1--" + _handoff_hashlib.sha256(task.encode("utf-8")).hexdigest()
+        self.assertLessEqual(len(legacy), 80)
+        with tempfile.TemporaryDirectory() as directory:
+            recovery = _handoff_gate.GateRecovery(Path(directory) / "attempts.json")
+            first = TestGateHandoffPacketIdentity.packet_for(self, recovery, task)
+            retained = first.read_bytes()
+            second = TestGateHandoffPacketIdentity.packet_for(self, recovery, legacy)
+            self.assertNotEqual(first, second)
+            self.assertEqual(first.read_bytes(), retained)
+            self.assertEqual(json.loads(first.read_text())["task_id"], task)
+            self.assertEqual(json.loads(second.read_text())["task_id"], legacy)
