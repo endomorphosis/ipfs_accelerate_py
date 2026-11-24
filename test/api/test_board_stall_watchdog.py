@@ -643,10 +643,34 @@ def test_active_owner_does_not_starve_real_repository_metadata_obligations(tmp_p
             repo, "task:independent-done", "LAW-DONE", status="completed",
             body={"completion": "manual", "execution_packet_required": True},
         )
+        from ipfs_accelerate_py.agent_supervisor.task_sources.intent_repository import (
+            IntentRepositoryConflictError,
+        )
+
+        # Ordinary activation remains forbidden without its current Native packet.
+        with pytest.raises(
+            IntentRepositoryConflictError,
+            match="^packet_current_native_contract_required$",
+        ):
+            _task(
+                repo, "task:independent-active", "LAW-ACTIVE", status="in_progress",
+                body={"completion": "manual", "execution_packet_required": True},
+            )
+        assert repo.get_task("task:independent-active") is None
+
+        # This owned DB fixture models an interrupted/legacy active projection.
+        # Seed only its status; create no execution packet, claim, approval or lease.
         _task(
-            repo, "task:independent-active", "LAW-ACTIVE", status="in_progress",
+            repo, "task:independent-active", "LAW-ACTIVE", status="blocked",
             body={"completion": "manual", "execution_packet_required": True},
         )
+        with repo._connection(write=True) as connection:
+            connection.execute(
+                "UPDATE tasks SET status = ? WHERE task_cid = ? AND status = ?",
+                ["in_progress", "task:independent-active", "blocked"],
+            )
+        assert repo.get_task("task:independent-active")["status"] == "in_progress"
+        assert repo.get_task("task:independent-active")["body"]["execution_packet_required"] is True
         _task(
             repo, "task:independent-metadata", "LAW-METADATA", status="blocked",
             body=_manual_body("This authored fixture remains unresolved until each clause is recorded."),
