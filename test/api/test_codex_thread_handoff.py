@@ -1381,3 +1381,363 @@ class DurableHandoffProducerTests(unittest.TestCase):
         self.assertFalse(outcome["retryable"])
         self.assertEqual(receipt.read_bytes(), retained)
         send.assert_not_called()
+
+
+class ManifestHandoffRecoveryTests(unittest.TestCase):
+    """Fictional handoffs; real bounded private-file verification, no delivery."""
+
+    def setUp(self):
+        import hashlib
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        self.root.chmod(0o700)
+        self.body = b'{"task":"fictional-legal-software-unit","legal_admission":false}'
+        self.target = self.root / "unit.json"
+        self.target.write_bytes(self.body)
+        self.target.chmod(0o400)
+        self.manifest = self.root / "handoff.json"
+        self.index = {"artifacts": {"unit": {
+            "file": self.target.name, "bytes": len(self.body),
+            "sha256": hashlib.sha256(self.body).hexdigest(),
+        }}}
+        self._retain_manifest()
+
+    def _retain_manifest(self):
+        import hashlib
+        self.manifest.chmod(0o600) if self.manifest.exists() else None
+        raw = json.dumps(self.index, sort_keys=True).encode("utf-8")
+        self.manifest.write_bytes(raw)
+        self.manifest.chmod(0o400)
+        self.options = dict(
+            private_root=self.root, manifest_path=self.manifest,
+            manifest_bytes=len(raw), manifest_sha256=hashlib.sha256(raw).hexdigest(),
+            artifact_name="unit", max_manifest_bytes=4096,
+            max_artifact_bytes=4096, max_total_bytes=8192,
+        )
+
+    def _assert_no_authority(self, result):
+        for key in ("delivery_assessed", "processing_confirmed", "completion_eligible",
+                    "execution_granted", "claim_granted", "snapshot_atomic"):
+            self.assertIs(result[key], False, key)
+        self.assertIs(result["read_only"], True)
+
+    def test_pinned_manifest_recovers_exact_missing_leaf_reference(self):
+        import base64
+        from unittest.mock import patch
+        with patch.object(mod, "_open_codex_app_connection", side_effect=AssertionError("no RPC")):
+            result = mod.read_codex_handoff_manifest_artifact(**self.options)
+        self.assertEqual(result["artifact_state"], "verified")
+        self.assertIs(result["manifest_verified"], True)
+        self.assertEqual(base64.b64decode(result["payload_base64"], validate=True), self.body)
+        self.assertEqual(result["sha256"], self.index["artifacts"]["unit"]["sha256"])
+        self.assertEqual(result["manifest"]["sha256"], self.options["manifest_sha256"])
+        self._assert_no_authority(result)
+
+    def test_manifest_pin_and_target_pin_changes_refuse(self):
+        for change in ("manifest_hash", "manifest_bytes", "target_hash", "target_bytes"):
+            with self.subTest(change=change):
+                original = json.loads(json.dumps(self.index))
+                options = dict(self.options)
+                if change == "manifest_hash":
+                    options["manifest_sha256"] = "0" * 64
+                elif change == "manifest_bytes":
+                    options["manifest_bytes"] += 1
+                else:
+                    row = self.index["artifacts"]["unit"]
+                    row["sha256" if change == "target_hash" else "bytes"] = (
+                        "0" * 64 if change == "target_hash" else len(self.body) + 1)
+                    self._retain_manifest()
+                    options = dict(self.options)
+                result = mod.read_codex_handoff_manifest_artifact(**options)
+                self.assertNotEqual(result["artifact_state"], "verified")
+                self.assertIsNone(result["payload_base64"])
+                self._assert_no_authority(result)
+                self.index = original
+                self._retain_manifest()
+
+    def test_payload_claims_do_not_become_reader_authority(self):
+        import hashlib
+        self.body = b'{"claim_granted":true,"legal_admission":true,"completion_eligible":true}'
+        self.target.chmod(0o600)
+        self.target.write_bytes(self.body)
+        self.target.chmod(0o400)
+        self.index["artifacts"]["unit"].update(
+            bytes=len(self.body), sha256=hashlib.sha256(self.body).hexdigest())
+        self._retain_manifest()
+        result = mod.read_codex_handoff_manifest_artifact(**self.options)
+        self.assertEqual(result["artifact_state"], "verified")
+        self._assert_no_authority(result)
+
+    def test_manifest_shape_utf8_nonfinite_and_row_contract_refuse(self):
+        import hashlib
+        raws = [b"[]", b"{}", b"{\"artifacts\": []}", b"\xff",
+                b'{"artifacts":{"unit":NaN}}']
+        for mutation in ("authority", "bool_size", "extra_row", "too_many"):
+            index = json.loads(json.dumps(self.index))
+            if mutation == "authority": index["execution_granted"] = True
+            elif mutation == "bool_size": index["artifacts"]["unit"]["bytes"] = True
+            elif mutation == "extra_row": index["artifacts"]["unit"]["claim_granted"] = True
+            else: index["artifacts"] = {str(i): index["artifacts"]["unit"] for i in range(65)}
+            raws.append(json.dumps(index).encode())
+        for raw in raws:
+            with self.subTest(raw=raw[:100]):
+                self.manifest.chmod(0o600)
+                self.manifest.write_bytes(raw)
+                self.manifest.chmod(0o400)
+                options = {**self.options, "manifest_bytes": len(raw),
+                           "manifest_sha256": hashlib.sha256(raw).hexdigest(),
+                           "max_manifest_bytes": 16384, "max_total_bytes": 32768}
+                result = mod.read_codex_handoff_manifest_artifact(**options)
+                self.assertNotEqual(result["artifact_state"], "verified")
+                self.assertIsNone(result["payload_base64"])
+                self._assert_no_authority(result)
+
+    def test_request_types_and_budgets_refuse_before_any_file_read(self):
+        from unittest.mock import patch
+        changes = [dict(artifact_name=""), dict(artifact_name="../unit"),
+                   dict(manifest_bytes=True), dict(max_manifest_bytes=True),
+                   dict(max_artifact_bytes=0), dict(max_total_bytes=True),
+                   dict(max_total_bytes=self.options["manifest_bytes"] - 1),
+                   dict(manifest_sha256="F" * 64)]
+        for change in changes:
+            with self.subTest(change=change):
+                with patch.object(mod, "read_codex_handoff_artifact", side_effect=AssertionError("no read")) as reader:
+                    result = mod.read_codex_handoff_manifest_artifact(**{**self.options, **change})
+                reader.assert_not_called()
+                self.assertEqual(result["artifact_state"], "refused")
+                self.assertIsNone(result["payload_base64"])
+
+    def test_symlink_hardlink_and_nonprivate_root_refuse(self):
+        for kind in ("symlink", "hardlink", "nonprivate_root"):
+            with self.subTest(kind=kind), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                root.chmod(0o700)
+                target = root / "unit.json"
+                target.write_bytes(self.body)
+                if kind == "symlink":
+                    source = root / "source.json"
+                    target.rename(source)
+                    target.symlink_to(source)
+                elif kind == "hardlink": os.link(target, root / "other.json")
+                else: root.chmod(0o755)
+                manifest = root / "handoff.json"
+                raw = json.dumps(self.index).encode()
+                manifest.write_bytes(raw)
+                import hashlib
+                result = mod.read_codex_handoff_manifest_artifact(**{
+                    **self.options, "private_root": root, "manifest_path": manifest,
+                    "manifest_bytes": len(raw), "manifest_sha256": hashlib.sha256(raw).hexdigest(),
+                })
+                self.assertNotEqual(result["artifact_state"], "verified")
+                self.assertIsNone(result["payload_base64"])
+                self._assert_no_authority(result)
+
+    def test_cli_routes_to_manifest_reader_without_transport_or_wrapper(self):
+        import io
+        from contextlib import redirect_stdout
+        from unittest.mock import patch
+        args = ["read-manifest-artifact", "--private-root", str(self.root),
+                "--manifest-path", str(self.manifest),
+                "--manifest-bytes", str(self.options["manifest_bytes"]),
+                "--manifest-sha256", self.options["manifest_sha256"],
+                "--artifact-name", "unit", "--max-manifest-bytes", "4096",
+                "--max-artifact-bytes", "4096", "--max-total-bytes", "8192"]
+        stdout = io.StringIO()
+        with patch.object(mod, "_open_codex_app_connection", side_effect=AssertionError("no RPC")), redirect_stdout(stdout):
+            code = mod.codex_thread_handoff_main(args)
+        self.assertEqual(code, 0)
+        outcome = json.loads(stdout.getvalue())
+        self.assertEqual(outcome["artifact_state"], "verified")
+        self._assert_no_authority(outcome)
+
+    def test_failed_alias_leaves_namespace_and_receipts_unchanged(self):
+        receipt = self.root / "receipt.json"
+        receipt.write_bytes(b'{"delivery_state":"delivery_unknown"}')
+        before = {p.name: (p.read_bytes(), p.stat().st_mode, p.stat().st_ino) for p in self.root.iterdir()}
+        result = mod.read_codex_handoff_manifest_artifact(**{**self.options, "artifact_name": "missing"})
+        self.assertNotEqual(result["artifact_state"], "verified")
+        after = {p.name: (p.read_bytes(), p.stat().st_mode, p.stat().st_ino) for p in self.root.iterdir()}
+        self.assertEqual(after, before)
+        self._assert_no_authority(result)
+
+    def test_cli_failure_and_stdout_loss_never_send(self):
+        import io
+        from contextlib import redirect_stdout
+        from unittest.mock import patch
+        args = ["read-manifest-artifact", "--private-root", str(self.root),
+                "--manifest-path", str(self.manifest),
+                "--manifest-bytes", str(self.options["manifest_bytes"]),
+                "--manifest-sha256", self.options["manifest_sha256"],
+                "--artifact-name", "missing"]
+        stdout = io.StringIO()
+        with patch.object(mod, "_open_codex_app_connection", side_effect=AssertionError("no RPC")) as rpc, redirect_stdout(stdout):
+            self.assertEqual(mod.codex_thread_handoff_main(args), 2)
+        rpc.assert_not_called()
+        self.assertEqual(json.loads(stdout.getvalue())["artifact_state"], "refused")
+        class LostOutput:
+            def write(self, value): raise OSError("fictional output loss")
+            def flush(self): raise AssertionError("must not retry output")
+        with patch.object(mod, "_open_codex_app_connection", side_effect=AssertionError("no RPC")) as rpc, patch("sys.stdout", LostOutput()):
+            self.assertEqual(mod.codex_thread_handoff_main(args), 1)
+        rpc.assert_not_called()
+
+
+class ManifestAdversarialRecoveryTests(unittest.TestCase):
+    """Read real pinned files; malformed selection never probes another artifact."""
+
+    def _manifest_private_root(self):
+        temporary = tempfile.TemporaryDirectory(prefix="manifest-adversarial-")
+        self.addCleanup(temporary.cleanup)
+        root = Path(temporary.name)
+        os.chmod(root, 0o700)
+        return root
+
+    def _manifest_file(self, root, name, body):
+        path = root / name
+        path.write_bytes(body)
+        os.chmod(path, 0o600)
+        return path
+
+    def _manifest_row(self, filename, body):
+        import hashlib
+        return {"file": filename, "bytes": len(body),
+                "sha256": hashlib.sha256(body).hexdigest()}
+
+    def _manifest_request(self, root, body, *, artifact_name="unit", **bounds):
+        import hashlib
+        manifest = self._manifest_file(root, "manifest.json", body)
+        request = {
+            "private_root": str(root), "manifest_path": str(manifest),
+            "manifest_bytes": len(body),
+            "manifest_sha256": hashlib.sha256(body).hexdigest(),
+            "artifact_name": artifact_name,
+            "max_manifest_bytes": 131072, "max_artifact_bytes": 131072,
+            "max_total_bytes": 262144,
+        }
+        request.update(bounds)
+        return manifest, request
+
+    def _manifest_assert_refused(self, result):
+        self.assertNotEqual(result.get("artifact_state"), "verified")
+        self.assertIsNone(result.get("payload_base64"))
+
+    def _manifest_assert_only_manifest_read(self, reader, manifest):
+        self.assertLessEqual(reader.call_count, 1)
+        for call in reader.call_args_list:
+            self.assertEqual(Path(call.kwargs["artifact_path"]), manifest)
+
+    def test_duplicate_json_keys_at_each_manifest_level_are_refused(self):
+        payload = b'{"authored":"unit"}\n'
+        row = json.dumps(self._manifest_row("unit.json", payload), separators=(",", ":"))
+        entry_duplicate = row[:-1] + ',"bytes":' + str(len(payload)) + "}"
+        documents = {
+            "top": '{"artifacts":{"unit":' + row + '},"artifacts":{"unit":' + row + '}}',
+            "alias": '{"artifacts":{"unit":' + row + ',"unit":' + row + '}}',
+            "entry": '{"artifacts":{"unit":' + entry_duplicate + '}}',
+        }
+        real_reader = mod.read_codex_handoff_artifact
+        for level, document in documents.items():
+            with self.subTest(level=level):
+                root = self._manifest_private_root()
+                self._manifest_file(root, "unit.json", payload)
+                manifest, request = self._manifest_request(root, document.encode("utf-8"))
+                with patch.object(mod, "read_codex_handoff_artifact", wraps=real_reader) as reader:
+                    result = mod.read_codex_handoff_manifest_artifact(**request)
+                self._manifest_assert_refused(result)
+                self._manifest_assert_only_manifest_read(reader, manifest)
+
+    def test_traversal_absolute_and_self_target_never_open_an_outside_artifact(self):
+        payload = b'{"authored":"outside-sentinel"}\n'
+        outside_root = self._manifest_private_root()
+        outside = self._manifest_file(outside_root, "must-not-open-outside.json", payload)
+        real_open = os.open
+        real_reader = mod.read_codex_handoff_artifact
+
+        def observed_open(path, *args, **kwargs):
+            try:
+                text = os.fsdecode(os.fspath(path))
+            except TypeError:
+                return real_open(path, *args, **kwargs)
+            if ".." in Path(text).parts or Path(text).name == outside.name:
+                raise AssertionError("manifest selection tried to open outside its private root")
+            return real_open(path, *args, **kwargs)
+
+        for label, filename in (
+            ("traversal", "../" + outside.name),
+            ("absolute", str(outside)),
+            ("self_target", "manifest.json"),
+        ):
+            with self.subTest(selection=label):
+                root = self._manifest_private_root()
+                document = json.dumps({"artifacts": {"unit": self._manifest_row(filename, payload)}}).encode()
+                manifest, request = self._manifest_request(root, document)
+                with patch.object(mod, "read_codex_handoff_artifact", wraps=real_reader) as reader:
+                    with patch.object(mod.os, "open", side_effect=observed_open):
+                        result = mod.read_codex_handoff_manifest_artifact(**request)
+                self._manifest_assert_refused(result)
+                self._manifest_assert_only_manifest_read(reader, manifest)
+
+    def test_combined_byte_budget_refuses_before_touching_target(self):
+        root = self._manifest_private_root()
+        payload = b'{"authored":"budget-target"}\n'
+        target = self._manifest_file(root, "unit.json", payload)
+        document = json.dumps({"artifacts": {"unit": self._manifest_row(target.name, payload)}}).encode()
+        manifest, request = self._manifest_request(
+            root, document, max_manifest_bytes=len(document),
+            max_artifact_bytes=len(payload), max_total_bytes=len(document) + len(payload) - 1,
+        )
+        real_reader = mod.read_codex_handoff_artifact
+        real_open = os.open
+
+        def observed_open(path, *args, **kwargs):
+            try:
+                name = Path(os.fsdecode(os.fspath(path))).name
+            except TypeError:
+                return real_open(path, *args, **kwargs)
+            if name == target.name:
+                raise AssertionError("total-budget refusal touched the target")
+            return real_open(path, *args, **kwargs)
+
+        with patch.object(mod, "read_codex_handoff_artifact", wraps=real_reader) as reader:
+            with patch.object(mod.os, "open", side_effect=observed_open):
+                result = mod.read_codex_handoff_manifest_artifact(**request)
+        self._manifest_assert_refused(result)
+        self._manifest_assert_only_manifest_read(reader, manifest)
+
+    def test_missing_or_invalid_selected_alias_never_falls_back_to_other_artifacts(self):
+        payloads = {"unit.json": b'{"authored":"unit"}\n',
+                    "backup.json": b'{"authored":"backup"}\n',
+                    "second.json": b'{"authored":"second"}\n'}
+        valid_rows = {name.removesuffix(".json"): self._manifest_row(name, body)
+                      for name, body in payloads.items()}
+        invalid_row = dict(valid_rows["unit"], unexpected=True)
+        cases = (
+            ("missing", "absent", valid_rows),
+            ("invalid_row", "unit", dict(valid_rows, unit=invalid_row)),
+            ("nonobject_row", "unit", dict(valid_rows, unit=None)),
+        )
+        real_reader = mod.read_codex_handoff_artifact
+        real_open = os.open
+
+        def observed_open(path, *args, **kwargs):
+            try:
+                name = Path(os.fsdecode(os.fspath(path))).name
+            except TypeError:
+                return real_open(path, *args, **kwargs)
+            if name in payloads:
+                raise AssertionError("invalid selection probed a manifest artifact")
+            return real_open(path, *args, **kwargs)
+
+        for label, selected, rows in cases:
+            with self.subTest(selection=label):
+                root = self._manifest_private_root()
+                for name, body in payloads.items():
+                    self._manifest_file(root, name, body)
+                document = json.dumps({"artifacts": rows}).encode()
+                manifest, request = self._manifest_request(root, document, artifact_name=selected)
+                with patch.object(mod, "read_codex_handoff_artifact", wraps=real_reader) as reader:
+                    with patch.object(mod.os, "open", side_effect=observed_open):
+                        result = mod.read_codex_handoff_manifest_artifact(**request)
+                self._manifest_assert_refused(result)
+                self._manifest_assert_only_manifest_read(reader, manifest)

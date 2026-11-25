@@ -933,6 +933,134 @@ def write_codex_handoff_artifact(
                 "reason": "artifact_not_retained", "error_type": type(error).__name__}
 
 
+def read_codex_handoff_manifest_artifact(
+    *, private_root, manifest_path, manifest_bytes, manifest_sha256, artifact_name,
+    max_manifest_bytes=131072, max_artifact_bytes=131072, max_total_bytes=262144,
+) -> Dict[str, Any]:
+    """Resolve one explicit retained input without messaging or discovery.
+
+    The caller pins an immutable manifest shaped as ``{"artifacts": {name:
+    {"file": basename, "bytes": integer, "sha256": digest}}}`` and chooses
+    both individual read limits and the combined limit. Only the selected
+    sibling is read, using the existing private-file verifier for both reads.
+    Manifest contents never authorize another namespace, a larger budget, a
+    task claim, legal review, admission, or execution. Missing/invalid entries
+    do not fall back to another artifact. There is no write, retry or delivery.
+
+    The caller retains the owned0700 namespace and accounts for all attempts;
+    these limits do not reset external budgets. The two verified reads are not
+    an atomic filesystem snapshot, nor proof of current task/revision scope.
+    """
+    result = {
+        "schema": "codex-private-handoff-manifest-artifact/v1",
+        "artifact_state": "refused", "reason": "invalid_request",
+        "artifact_name": None, "manifest_verified": False, "manifest": None,
+        "bytes": None, "sha256": None, "full9": None, "payload_base64": None,
+        "read_only": True, "snapshot_atomic": False,
+        "delivery_assessed": False, "processing_confirmed": False,
+        "completion_eligible": False, "execution_granted": False, "claim_granted": False,
+    }
+    if (type(manifest_bytes) is not int or type(max_manifest_bytes) is not int
+            or type(max_artifact_bytes) is not int or type(max_total_bytes) is not int
+            or not 1 <= manifest_bytes <= max_manifest_bytes <= 1048576
+            or not 1 <= max_artifact_bytes <= 1048576
+            or not manifest_bytes <= max_total_bytes <= 2097152
+            or type(manifest_sha256) is not str
+            or re.fullmatch(r"[0-9a-f]{64}", manifest_sha256) is None
+            or type(artifact_name) is not str
+            or re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:@-]{0,127}", artifact_name) is None):
+        return result
+    manifest = read_codex_handoff_artifact(
+        private_root=private_root, artifact_path=manifest_path,
+        expected_bytes=manifest_bytes, expected_sha256=manifest_sha256,
+        max_bytes=max_manifest_bytes,
+    )
+    if manifest["artifact_state"] != "verified":
+        return {**result, "artifact_state": manifest["artifact_state"],
+                "reason": "manifest_not_verified"}
+    result = {**result, "artifact_name": artifact_name, "manifest_verified": True,
+              "manifest": {"path": str(manifest_path), "bytes": manifest["bytes"],
+                           "sha256": manifest["sha256"], "full9": manifest["full9"]}}
+
+    def unique_object(pairs):
+        value = {}
+        for key, item in pairs:
+            if key in value:
+                raise ValueError("duplicate manifest key")
+            value[key] = item
+        return value
+
+    def forbidden_number(value):
+        raise ValueError("manifest requires integer byte counts")
+
+    try:
+        import base64
+        body = base64.b64decode(manifest["payload_base64"], validate=True)
+        document = json.loads(body.decode("utf-8", errors="strict"),
+                              object_pairs_hook=unique_object,
+                              parse_constant=forbidden_number, parse_float=forbidden_number)
+        if type(document) is not dict or set(document) != {"artifacts"}:
+            return {**result, "reason": "invalid_manifest"}
+        entries = document["artifacts"]
+        if type(entries) is not dict or not 1 <= len(entries) <= 64:
+            return {**result, "reason": "invalid_manifest"}
+        if artifact_name not in entries:
+            return {**result, "reason": "artifact_name_missing"}
+        entry = entries[artifact_name]
+        if type(entry) is not dict or set(entry) != {"file", "bytes", "sha256"}:
+            return {**result, "reason": "invalid_artifact_entry"}
+        filename, size, digest = entry["file"], entry["bytes"], entry["sha256"]
+        if (type(filename) is not str or not filename or filename in {".", ".."}
+                or len(filename.encode("utf-8")) > 255
+                or any(character in filename for character in ("/", "\\", "\0"))
+                or filename == Path(manifest_path).name
+                or type(size) is not int or not 1 <= size <= max_artifact_bytes
+                or type(digest) is not str or re.fullmatch(r"[0-9a-f]{64}", digest) is None):
+            return {**result, "reason": "invalid_artifact_entry"}
+        if manifest_bytes + size > max_total_bytes:
+            return {**result, "reason": "combined_read_budget_exceeded"}
+        target = Path(private_root) / filename
+    except (ValueError, TypeError, UnicodeError, RecursionError):
+        return {**result, "reason": "invalid_manifest"}
+    artifact = read_codex_handoff_artifact(
+        private_root=private_root, artifact_path=target,
+        expected_bytes=size, expected_sha256=digest, max_bytes=max_artifact_bytes,
+    )
+    if artifact["artifact_state"] != "verified":
+        return {**result, "artifact_state": artifact["artifact_state"],
+                "reason": "selected_artifact_not_verified"}
+    return {**result, "artifact_state": "verified", "reason": "manifest_artifact_verified",
+            "bytes": artifact["bytes"], "sha256": artifact["sha256"],
+            "full9": artifact["full9"], "payload_base64": artifact["payload_base64"]}
+
+
+def codex_handoff_manifest_artifact_main(argv: Optional[Sequence[str]] = None) -> int:
+    """Read one explicitly selected retained dependency, without a transport."""
+    import argparse
+    import sys
+    parser = argparse.ArgumentParser(
+        description="Read one named private handoff from an exact pinned manifest; no delivery or grants.")
+    parser.add_argument("--private-root", required=True)
+    parser.add_argument("--manifest-path", required=True)
+    parser.add_argument("--manifest-bytes", type=int, required=True)
+    parser.add_argument("--manifest-sha256", required=True)
+    parser.add_argument("--artifact-name", required=True)
+    parser.add_argument("--max-manifest-bytes", type=int, default=131072)
+    parser.add_argument("--max-artifact-bytes", type=int, default=131072)
+    parser.add_argument("--max-total-bytes", type=int, default=262144)
+    args = parser.parse_args(argv)
+    outcome = read_codex_handoff_manifest_artifact(**vars(args))
+    line = json.dumps(outcome, sort_keys=True, allow_nan=False) + "\n"
+    try:
+        written = sys.stdout.write(line)
+        if type(written) is not int or written != len(line):
+            return 1
+        sys.stdout.flush()
+    except Exception:
+        return 1
+    return {"verified": 0, "unavailable": 1, "refused": 2}[outcome["artifact_state"]]
+
+
 def codex_thread_handoff_main(argv: Optional[Sequence[str]] = None) -> int:
     """Explicit existing-thread handoff command; acknowledgement is enqueue only.
 
@@ -949,6 +1077,8 @@ def codex_thread_handoff_main(argv: Optional[Sequence[str]] = None) -> int:
         return codex_thread_state_main(read_arguments[1:])
     if read_arguments and read_arguments[0] == "read-artifact":
         return codex_handoff_artifact_main(read_arguments[1:])
+    if read_arguments and read_arguments[0] == "read-manifest-artifact":
+        return codex_handoff_manifest_artifact_main(read_arguments[1:])
 
     parser = argparse.ArgumentParser(
         description="Bounded handoff to an existing Codex thread; no model or daemon starts.",
