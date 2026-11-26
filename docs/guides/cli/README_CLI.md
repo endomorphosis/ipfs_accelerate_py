@@ -158,6 +158,53 @@ Do not place tokens in shell history or checked-in configuration. The GitHub
 guides describe repository-specific workflows; they are not prerequisites for
 local model inference.
 
+## Codex owner observation during an MCP outage
+
+The separate Codex module adapter supports `read-owner` and
+`read-owner-fallback`; these are module commands, not unified CLI groups.
+Automation can call `read_codex_owner_after_mcp_failure` from
+`ipfs_accelerate_py.cli_integrations.openai_codex_cli_integration` after its
+current MCP status call has ended with a transport-send failure. The adapter
+accepts only failures of `codex_tui/read_thread` or `codex_tui/wait_threads`
+against a loopback HTTP `/mcp` bridge. Supply the original error unchanged, the
+explicit existing owned Unix socket, and the exact expected thread and turn:
+
+```bash
+python -m ipfs_accelerate_py.cli_integrations.openai_codex_cli_integration \
+  read-owner-fallback --socket-path "$CODEX_EXISTING_SOCKET" \
+  --thread-id "$OWNER_THREAD_ID" --expected-turn-id "$OWNER_TURN_ID" \
+  --mcp-method read_thread --transport-error "$MCP_STATUS_ERROR" \
+  --timeout-seconds 5 --max-response-bytes 262144
+```
+
+These values come from the caller's configured endpoint and existing owner
+binding. The adapter does not discover or start a daemon. It performs one
+read-only observation through the existing Unix reader, retaining the original
+error and SHA256. Caller-supplied error text is not authenticated provenance.
+Policy refusals and application errors do not authorize this fallback.
+
+The JSON schema is `codex-owner-transport-fallback/v1`. Exit 4 means the exact
+owner turn was observed in progress, 0 means it is terminal and its saved
+result needs reconciliation, 3 means a different turn was observed, 1 means
+the observation is unavailable, and 2 means the request was refused. A changed
+turn retains the expected handle for explicit reconciliation. An unavailable
+observation leaves owner state unknown. Neither outcome authorizes restarting
+work. No task message, execution, completion, custody, claim, goal change or
+budget reset follows from a status observation.
+
+The error is limited to 8192 UTF8 bytes. One Unix read shares a timeout of at
+most 60 seconds and a configured response limit of 4096–4194304 bytes; client
+connection close can add at most one second. CLI output is limited to 65536
+UTF8 bytes including the newline. Output failure does not retry the read.
+
+Use an interpreter with the existing `websockets.sync.client` dependency.
+Python isolated mode (`-I`) excludes user-site packages, so it can make an
+otherwise installed client unavailable. This is reported as
+`read_client_dependency_unavailable` / `owner_client_dependency_unavailable`;
+the adapter never installs packages or changes interpreter isolation. Select
+an already configured compatible environment. The module uses the existing
+package import path; this adapter is not a package-wide side-effect audit.
+
 ## Output and diagnostics
 
 Use `--output-json` before the command group when a command supports structured

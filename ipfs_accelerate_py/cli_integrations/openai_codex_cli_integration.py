@@ -666,6 +666,10 @@ def read_codex_thread_state(
                 latest = {"id": turn["id"], "status": turn["status"]}
             result.update(observation_state="observed", reason="metadata_observed", latest_turn=latest)
             return result
+    except ImportError:
+        if result["thread_snapshot"] is not None:
+            return {**result, "observation_state": "partial", "reason": "latest_turn_unavailable"}
+        return {**result, "observation_state": "unavailable", "reason": "read_client_dependency_unavailable"}
     except Exception:
         if result["thread_snapshot"] is not None:
             return {**result, "observation_state": "partial", "reason": "latest_turn_unavailable"}
@@ -1120,7 +1124,10 @@ def read_codex_owner_dependency(
         return {**result, "dependency_state": "refused", "action": "fix_request",
                 "reason": "owner_probe_refused"}
     if observation["observation_state"] != "observed":
-        return {**result, "reason": "owner_observation_incomplete"}
+        reason = ("owner_client_dependency_unavailable"
+                  if observation["reason"] == "read_client_dependency_unavailable"
+                  else "owner_observation_incomplete")
+        return {**result, "reason": reason}
     snapshot, turn = observation["thread_snapshot"], observation["latest_turn"]
     if (type(observation["thread_id"]) is not str or observation["thread_id"] != thread_id
             or type(snapshot) is not dict or set(snapshot) != {"id", "status", "can_accept_direct_input"}
@@ -1145,6 +1152,137 @@ def read_codex_owner_dependency(
         return {**result, "dependency_state": "owner_turn_terminal",
                 "action": "reconcile_owner_result", "reason": "owner_turn_terminal_result_not_assessed"}
     return {**result, "reason": "owner_turn_status_unknown"}
+
+
+def _codex_owner_transport_fallback_result() -> Dict[str, Any]:
+    return {
+        "schema": "codex-owner-transport-fallback/v1", "fallback_state": "refused",
+        "reason": "invalid_fallback_request", "action": "fix_request",
+        "fallback_attempted": False, "mcp_failure": None, "owner_handle": None,
+        "owner_result": None, "read_only": True, "work_complete": False,
+        "completion_authority": False, "completion_eligible": False,
+        "execution_granted": False, "claim_granted": False,
+        "goal_status_changed": False, "owner_custody_verified": False,
+        "native_or_child_liveness_verified": False, "budget_reset": False,
+    }
+
+
+def read_codex_owner_after_mcp_failure(
+    *, socket_path, thread_id, expected_turn_id, mcp_method, transport_error,
+    timeout_seconds=15.0, max_response_bytes=262144,
+) -> Dict[str, Any]:
+    """One existing-socket status read after a local MCP read transport fails.
+
+    The caller supplies the original current read failure and its selected
+    owner binding. Only connection-send failures of read_thread/wait_threads
+    against a loopback /mcp bridge qualify. Application refusals, successful
+    replies, malformed evidence and mutation methods never open a connection.
+    This does not authenticate caller-supplied failure provenance.
+
+    Reuse the configured client/interpreter and an explicit existing owned
+    socket. No daemon discovery/start, dependency installation, prompt send,
+    worker/goal mutation or retry occurs. Preserve the error and original
+    expected handle even if a different current turn is observed. The single
+    fallback read has the existing timeout/byte bounds; it starts only after
+    the caller's primary read has ended. Unknown observations remain unknown.
+    """
+    result = _codex_owner_transport_fallback_result()
+    try:
+        if (type(mcp_method) is not str or mcp_method not in ("read_thread", "wait_threads")
+                or type(transport_error) is not str or "\0" in transport_error
+                or not 0 < len(transport_error.encode("utf-8")) <= 8192
+                or not all(type(value) is str and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}", value)
+                           for value in (thread_id, expected_turn_id))
+                or type(timeout_seconds) not in (int, float) or not math.isfinite(timeout_seconds)
+                or not 0 < timeout_seconds <= 60 or type(max_response_bytes) is not int
+                or not 4096 <= max_response_bytes <= 4194304):
+            return result
+        endpoint = Path(socket_path)
+        if (not endpoint.is_absolute() or ".." in endpoint.parts
+                or "\0" in str(endpoint) or len(os.fsencode(endpoint)) > 107):
+            return result
+        result.update(
+            owner_handle={"kind": "codex_turn", "thread_id": thread_id, "turn_id": expected_turn_id},
+            mcp_failure={"method": mcp_method, "error": transport_error,
+                         "sha256": hashlib.sha256(transport_error.encode("utf-8")).hexdigest()},
+        )
+        bridge = re.search(
+            r"error sending request for url \(http://(?:127\.0\.0\.1|localhost|\[::1\]):([0-9]{1,5})/mcp\)",
+            transport_error,
+        )
+        policy = (any(marker in transport_error.lower() for marker in (
+                      "flagged for possible cybersecurity risk", "policy refusal:",
+                      "safety refusal:", "request refused by the policy checker"))
+                  or re.search(r'"(?:code|type|finish_reason)"\s*:\s*"(?:policy_refusal|safety_refusal|content_filter)"',
+                               transport_error, re.IGNORECASE) is not None)
+        if (not transport_error.startswith(
+                "tool call error: tool call failed for `codex_tui/" + mcp_method + "`")
+                or "Transport send error:" not in transport_error
+                or bridge is None or not 1 <= int(bridge[1]) <= 65535 or policy):
+            return {**result, "reason": "not_read_transport_unavailability", "action": "reconcile_original_failure"}
+    except (TypeError, ValueError, UnicodeError, OSError):
+        return result
+
+    result.update(fallback_state="unavailable", reason="fallback_owner_observation_unavailable",
+                  action="reobserve_same_owner_handle", fallback_attempted=True)
+    try:
+        owner = read_codex_owner_dependency(
+            socket_path=str(endpoint), thread_id=thread_id, expected_turn_id=expected_turn_id,
+            timeout_seconds=timeout_seconds, max_response_bytes=max_response_bytes,
+        )
+        actions = {"owner_turn_in_progress": "await_owner_result",
+                   "owner_turn_terminal": "reconcile_owner_result",
+                   "owner_turn_changed": "reconcile_owner_binding",
+                   "unknown": "reobserve_same_owner_handle", "refused": "fix_request"}
+        flags = ("work_complete", "completion_authority", "completion_eligible", "execution_granted",
+                 "claim_granted", "goal_status_changed", "owner_custody_verified",
+                 "native_or_child_liveness_verified", "budget_reset")
+        fields = {"schema", "dependency_state", "action", "reason", "owner_handle", "observation", "read_only", *flags}
+        if (type(owner) is not dict or set(owner) != fields
+                or owner["schema"] != "codex-owner-dependency-observation/v1"
+                or owner["read_only"] is not True or any(owner[key] is not False for key in flags)
+                or owner["owner_handle"] != result["owner_handle"]
+                or type(owner["dependency_state"]) is not str or owner["dependency_state"] not in actions
+                or owner["action"] != actions[owner["dependency_state"]] or type(owner["reason"]) is not str
+                or (owner["dependency_state"].startswith("owner_turn_") and type(owner["observation"]) is not dict)):
+            return {**result, "reason": "invalid_fallback_owner_observation"}
+        state = owner["dependency_state"]
+        return {**result, "fallback_state": "unavailable" if state == "unknown" else "refused" if state == "refused" else "observed",
+                "reason": "existing_socket_owner_observation", "action": owner["action"], "owner_result": owner}
+    except Exception:
+        return result
+
+
+def codex_owner_transport_fallback_main(argv: Optional[Sequence[str]] = None) -> int:
+    """Read-only fallback for a failed MCP owner observation; never replay work."""
+    import argparse
+    import sys
+    parser = argparse.ArgumentParser(description=codex_owner_transport_fallback_main.__doc__)
+    parser.add_argument("--socket-path", required=True)
+    parser.add_argument("--thread-id", required=True)
+    parser.add_argument("--expected-turn-id", required=True)
+    parser.add_argument("--mcp-method", choices=("read_thread", "wait_threads"), required=True)
+    parser.add_argument("--transport-error", required=True, help="Original bounded MCP status-transport error; never a prompt.")
+    parser.add_argument("--timeout-seconds", type=float, default=15.0)
+    parser.add_argument("--max-response-bytes", type=int, default=262144)
+    args = parser.parse_args(argv)
+    try:
+        result = read_codex_owner_after_mcp_failure(**vars(args))
+        wire = json.dumps(result, sort_keys=True, allow_nan=False) + "\n"
+        if len(wire.encode("utf-8")) > 65536:
+            return 1
+        written = sys.stdout.write(wire)
+        if type(written) is not int or written != len(wire):
+            return 1
+        sys.stdout.flush()
+    except Exception:
+        return 1
+    if result["fallback_state"] == "refused":
+        return 2
+    if result["fallback_state"] != "observed":
+        return 1
+    return {"owner_turn_in_progress": 4, "owner_turn_terminal": 0,
+            "owner_turn_changed": 3}[result["owner_result"]["dependency_state"]]
 
 
 def codex_owner_dependency_main(argv: Optional[Sequence[str]] = None) -> int:
@@ -1184,6 +1322,8 @@ def codex_thread_handoff_main(argv: Optional[Sequence[str]] = None) -> int:
     import sys
 
     read_arguments = list(sys.argv[1:] if argv is None else argv)
+    if read_arguments and read_arguments[0] == "read-owner-fallback":
+        return codex_owner_transport_fallback_main(read_arguments[1:])
     if read_arguments and read_arguments[0] == "read-owner":
         return codex_owner_dependency_main(read_arguments[1:])
     if read_arguments and read_arguments[0] == "read-thread":

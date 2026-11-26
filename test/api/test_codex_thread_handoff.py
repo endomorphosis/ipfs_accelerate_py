@@ -1988,3 +1988,371 @@ class OwnerDependencyAdversarialTests(unittest.TestCase):
                 observation = self._dependency_observation()
                 observation["thread_snapshot"]["status"] = status
                 self._dependency_assert_unknown(self._dependency_call(observation))
+
+
+class OwnerTransportFallbackTests(unittest.TestCase):
+    """An explicit failed read may observe the same owner once through Unix RPC."""
+
+    _false_flags = (
+        "work_complete", "completion_authority", "completion_eligible",
+        "execution_granted", "claim_granted", "goal_status_changed",
+        "owner_custody_verified", "native_or_child_liveness_verified", "budget_reset",
+    )
+
+    def _error(self, method="read_thread", host="127.0.0.1", port=31277):
+        return (
+            "tool call error: tool call failed for `codex_tui/" + method + "`\n"
+            "Caused by:\nTransport send error: error sending request for url "
+            "(http://" + host + ":" + str(port) + "/mcp)"
+        )
+
+    def _request(self, **changes):
+        return {
+            "socket_path": "/fixture/owner.sock", "thread_id": "owner-thread",
+            "expected_turn_id": "owner-turn", "mcp_method": "read_thread",
+            "transport_error": self._error(), **changes,
+        }
+
+    def _owner(self, state="owner_turn_in_progress"):
+        disposition = {
+            "owner_turn_in_progress": ("await_owner_result", "exact_owner_turn_observed_in_progress"),
+            "owner_turn_terminal": ("reconcile_owner_result", "owner_turn_terminal_result_not_assessed"),
+            "owner_turn_changed": ("reconcile_owner_binding", "expected_owner_turn_differs"),
+            "unknown": ("reobserve_same_owner_handle", "owner_observation_incomplete"),
+            "refused": ("fix_request", "owner_probe_refused"),
+        }
+        action, reason = disposition[state]
+        observation = OwnerDependencyAdversarialTests()._dependency_observation()
+        if state == "owner_turn_terminal":
+            observation["latest_turn"]["status"] = "completed"
+        elif state == "owner_turn_changed":
+            observation["latest_turn"]["id"] = "replacement-turn"
+        elif state == "unknown":
+            observation.update(observation_state="partial", latest_turn=None)
+        return {
+            "schema": "codex-owner-dependency-observation/v1",
+            "dependency_state": state, "action": action, "reason": reason,
+            "owner_handle": {"kind": "codex_turn", "thread_id": "owner-thread", "turn_id": "owner-turn"},
+            "observation": observation, "read_only": True,
+            **{key: False for key in self._false_flags},
+        }
+
+    def _assert_inert(self, result):
+        self.assertEqual(result["schema"], "codex-owner-transport-fallback/v1")
+        self.assertEqual(set(result), {
+            "schema", "fallback_state", "reason", "action", "fallback_attempted",
+            "mcp_failure", "owner_handle", "owner_result", "read_only", *self._false_flags,
+        })
+        self.assertIs(result["read_only"], True)
+        for field in self._false_flags:
+            self.assertIs(result[field], False, field)
+
+    def _call(self, owner=None, **changes):
+        with patch.object(mod, "read_codex_owner_dependency", return_value=self._owner() if owner is None else owner) as reader:
+            with patch.object(mod, "_open_codex_app_connection", side_effect=AssertionError("delegation must not open another connection")) as connect:
+                with patch.object(mod, "send_codex_thread_message", side_effect=AssertionError("status fallback must never send")) as send:
+                    with patch.object(mod, "OpenAICodexCLIIntegration", side_effect=AssertionError("status fallback must never construct generation")) as generator:
+                        result = mod.read_codex_owner_after_mcp_failure(**self._request(**changes))
+        connect.assert_not_called()
+        send.assert_not_called()
+        generator.assert_not_called()
+        self._assert_inert(result)
+        return result, reader
+
+    def _assert_refused_before_read(self, **changes):
+        result, reader = self._call(**changes)
+        self.assertEqual(result["fallback_state"], "refused")
+        self.assertIs(result["fallback_attempted"], False)
+        reader.assert_not_called()
+        return result
+
+    def test_allowed_read_failures_delegate_once_and_preserve_original_evidence(self):
+        import hashlib
+        for method in ("read_thread", "wait_threads"):
+            for host in ("127.0.0.1", "localhost", "[::1]"):
+                with self.subTest(method=method, host=host):
+                    error = self._error(method, host) + "\nfictional detail: é"
+                    result, reader = self._call(mcp_method=method, transport_error=error,
+                                                timeout_seconds=2.75, max_response_bytes=8192)
+                    reader.assert_called_once_with(
+                        socket_path="/fixture/owner.sock", thread_id="owner-thread",
+                        expected_turn_id="owner-turn", timeout_seconds=2.75, max_response_bytes=8192,
+                    )
+                    self.assertEqual(result["fallback_state"], "observed")
+                    self.assertIs(result["fallback_attempted"], True)
+                    self.assertEqual(result["mcp_failure"], {
+                        "method": method, "error": error,
+                        "sha256": hashlib.sha256(error.encode("utf-8")).hexdigest(),
+                    })
+                    self.assertEqual(result["owner_handle"], self._owner()["owner_handle"])
+
+    def test_terminal_and_changed_owners_preserve_disposition_without_rebinding(self):
+        for state in ("owner_turn_in_progress", "owner_turn_terminal", "owner_turn_changed"):
+            with self.subTest(state=state):
+                owner = self._owner(state)
+                result, reader = self._call(owner)
+                reader.assert_called_once()
+                self.assertEqual(result["fallback_state"], "observed")
+                self.assertEqual(result["owner_result"], owner)
+                self.assertEqual(result["action"], owner["action"])
+                self.assertEqual(result["owner_handle"]["turn_id"], "owner-turn")
+
+    def test_nonread_and_mismatched_methods_refuse_before_read(self):
+        for method in ("send_message", "start_thread", "resume_thread", "read-owner", "read_thread ", None, True):
+            with self.subTest(method=method):
+                self._assert_refused_before_read(mcp_method=method)
+        self._assert_refused_before_read(mcp_method="wait_threads", transport_error=self._error("read_thread"))
+        self._assert_refused_before_read(transport_error=self._error("wait_threads"))
+
+    def test_nontransport_successful_or_nonloopback_evidence_refuses_before_read(self):
+        error = self._error()
+        cases = [
+            "connection refused", "Transport send error: disconnected",
+            error.replace("tool call error: ", ""),
+            " " + error,
+            error.replace("Transport send error:", "MCP application error:"),
+            error.replace("http://127.0.0.1:", "https://127.0.0.1:"),
+            error.replace("http://127.0.0.1:", "http://example.com:"),
+            error.replace("/mcp)", "/other)"),
+            json.dumps({"result": {"status": "completed"}, "diagnostic": error}),
+            {"error": error}, None, False,
+        ]
+        for value in cases:
+            with self.subTest(evidence=repr(value)):
+                self._assert_refused_before_read(transport_error=value)
+        for port in (0, 65536, -1, "not-a-port"):
+            with self.subTest(port=port):
+                self._assert_refused_before_read(transport_error=self._error(port=port))
+
+    def test_policy_safety_and_refusal_text_never_authorizes_fallback(self):
+        for suffix in ("\nPolicy refusal: do not retry this request.",
+                       "\nSafety refusal: this operation is disallowed.",
+                       "\nRequest refused by the policy checker."):
+            with self.subTest(suffix=suffix):
+                self._assert_refused_before_read(transport_error=self._error() + suffix)
+
+    def test_invalid_owner_inputs_and_bounds_refuse_before_read(self):
+        cases = [
+            {"socket_path": "relative.sock"}, {"socket_path": "/tmp/../owner.sock"},
+            {"socket_path": "/" + "x" * 108}, {"socket_path": "/tmp/owner\0.sock"},
+            {"socket_path": None}, {"thread_id": "bad/thread"}, {"thread_id": True},
+            {"expected_turn_id": ""}, {"expected_turn_id": "../owner"}, {"expected_turn_id": None},
+            {"timeout_seconds": True}, {"timeout_seconds": 0}, {"timeout_seconds": 61},
+            {"timeout_seconds": float("nan")}, {"timeout_seconds": float("inf")},
+            {"max_response_bytes": True}, {"max_response_bytes": 4095},
+            {"max_response_bytes": 4194305},
+        ]
+        for changes in cases:
+            with self.subTest(changes=changes):
+                self._assert_refused_before_read(**changes)
+
+    def test_error_utf8_budget_is_checked_without_truncation_or_coercion(self):
+        error = self._error()
+        exact = error + "\n" + "x" * (8192 - len(error.encode("utf-8")) - 1)
+        result, reader = self._call(transport_error=exact)
+        reader.assert_called_once()
+        self.assertEqual(result["mcp_failure"]["error"], exact)
+        for value in (exact + "x", error + "é" * 4096, error + "\ud800"):
+            with self.subTest(length=len(value)):
+                self._assert_refused_before_read(transport_error=value)
+
+    def test_unknown_owner_observation_remains_unavailable_without_retry(self):
+        owner = self._owner("unknown")
+        result, reader = self._call(owner)
+        reader.assert_called_once()
+        self.assertEqual(result["fallback_state"], "unavailable")
+        self.assertEqual(result["action"], "reobserve_same_owner_handle")
+        self.assertEqual(result["owner_result"], owner)
+        self.assertEqual(result["owner_handle"]["turn_id"], "owner-turn")
+
+    def test_refused_owner_probe_is_never_retried_or_treated_as_observed(self):
+        result, reader = self._call(self._owner("refused"))
+        reader.assert_called_once()
+        self.assertIn(result["fallback_state"], {"refused", "unavailable"})
+        self.assertIs(result["fallback_attempted"], True)
+        self.assertEqual(result["action"], "fix_request")
+        self.assertEqual(result["owner_handle"]["turn_id"], "owner-turn")
+
+    def test_malformed_or_authoritative_owner_result_stays_unavailable(self):
+        for owner in (None, [], {**self._owner(), "work_complete": True},
+                      {**self._owner(), "read_only": 1}):
+            with self.subTest(owner=owner):
+                with patch.object(mod, "read_codex_owner_dependency", return_value=owner) as reader:
+                    result = mod.read_codex_owner_after_mcp_failure(**self._request())
+                reader.assert_called_once()
+                self._assert_inert(result)
+                self.assertEqual(result["fallback_state"], "unavailable")
+                self.assertEqual(result["action"], "reobserve_same_owner_handle")
+                self.assertEqual(result["owner_handle"]["turn_id"], "owner-turn")
+
+    def test_owner_probe_exception_is_unknown_redacted_and_never_replayed(self):
+        class Hostile(Exception):
+            def __str__(self):
+                raise AssertionError("must not format fallback exception")
+        with patch.object(mod, "read_codex_owner_dependency", side_effect=Hostile()) as reader:
+            with patch.object(mod, "send_codex_thread_message", side_effect=AssertionError("no replay")) as send:
+                result = mod.read_codex_owner_after_mcp_failure(**self._request())
+        reader.assert_called_once()
+        send.assert_not_called()
+        self._assert_inert(result)
+        self.assertEqual(result["fallback_state"], "unavailable")
+        self.assertIs(result["fallback_attempted"], True)
+        self.assertEqual(result["action"], "reobserve_same_owner_handle")
+        self.assertEqual(result["owner_handle"]["turn_id"], "owner-turn")
+
+    def test_connection_timeout_stays_unknown_with_one_connection(self):
+        with patch.object(mod, "_open_codex_app_connection", side_effect=TimeoutError("fictional connect timeout")) as connect:
+            with patch.object(mod, "send_codex_thread_message", side_effect=AssertionError("no send")) as send:
+                result = mod.read_codex_owner_after_mcp_failure(**self._request())
+        connect.assert_called_once()
+        send.assert_not_called()
+        self._assert_inert(result)
+        self.assertEqual(result["fallback_state"], "unavailable")
+        self.assertEqual(result["owner_result"]["dependency_state"], "unknown")
+        self.assertEqual(result["action"], "reobserve_same_owner_handle")
+        self.assertNotIn("fictional connect timeout", json.dumps(result))
+
+    def test_thread_read_timeout_stays_unknown_without_steering_or_retry(self):
+        client = OwnerDependencyReadTests()._connection(fail="thread/read")
+        with patch.object(mod, "_open_codex_app_connection", return_value=client) as connect:
+            with patch.object(mod, "send_codex_thread_message", side_effect=AssertionError("no send")) as send:
+                result = mod.read_codex_owner_after_mcp_failure(**self._request())
+        connect.assert_called_once()
+        send.assert_not_called()
+        self.assertTrue(client.closed)
+        self.assertEqual([item["method"] for item in client.messages], ["initialize", "initialized", "thread/read"])
+        self._assert_inert(result)
+        self.assertEqual(result["fallback_state"], "unavailable")
+        self.assertEqual(result["owner_result"]["dependency_state"], "unknown")
+        self.assertEqual(result["action"], "reobserve_same_owner_handle")
+
+    def test_missing_websocket_dependency_is_reported_without_install_or_owner_inference(self):
+        import builtins
+        from types import SimpleNamespace
+        original_import = builtins.__import__
+        def missing_websocket(name, *args, **kwargs):
+            if name == "websockets.sync.client":
+                raise ModuleNotFoundError("fictional absent websocket package", name="websockets")
+            return original_import(name, *args, **kwargs)
+        socket_info = SimpleNamespace(st_mode=mod.stat.S_IFSOCK | 0o600, st_uid=os.geteuid())
+        with patch.object(mod.os, "stat", return_value=socket_info):
+            with patch("builtins.__import__", side_effect=missing_websocket):
+                with patch.object(mod, "send_codex_thread_message", side_effect=AssertionError("no send")) as send:
+                    with patch.object(mod, "OpenAICodexCLIIntegration", side_effect=AssertionError("no generation or install")) as generator:
+                        with patch("subprocess.run", side_effect=AssertionError("no dependency install")) as run:
+                            with patch("subprocess.Popen", side_effect=AssertionError("no process start")) as popen:
+                                thread = mod.read_codex_thread_state(socket_path="/fixture/owner.sock", thread_id="owner-thread")
+                                owner = mod.read_codex_owner_dependency(
+                                    socket_path="/fixture/owner.sock", thread_id="owner-thread", expected_turn_id="owner-turn")
+                                fallback = mod.read_codex_owner_after_mcp_failure(**self._request())
+        send.assert_not_called()
+        generator.assert_not_called()
+        run.assert_not_called()
+        popen.assert_not_called()
+        self.assertEqual(thread["observation_state"], "unavailable")
+        self.assertEqual(thread["reason"], "read_client_dependency_unavailable")
+        self.assertEqual(owner["dependency_state"], "unknown")
+        self.assertEqual(owner["reason"], "owner_client_dependency_unavailable")
+        self.assertEqual(owner["action"], "reobserve_same_owner_handle")
+        OwnerDependencyReadTests()._no_grants(owner)
+        self._assert_inert(fallback)
+        self.assertEqual(fallback["fallback_state"], "unavailable")
+        self.assertEqual(fallback["owner_result"]["reason"], "owner_client_dependency_unavailable")
+
+    def _cli_args(self, **changes):
+        request = self._request(**changes)
+        return [
+            "read-owner-fallback", "--socket-path", request["socket_path"],
+            "--thread-id", request["thread_id"], "--expected-turn-id", request["expected_turn_id"],
+            "--mcp-method", request["mcp_method"], "--transport-error", request["transport_error"],
+        ]
+
+    def _cli_result(self):
+        import hashlib
+        error = self._error()
+        owner = self._owner()
+        return {
+            "schema": "codex-owner-transport-fallback/v1", "fallback_state": "observed",
+            "reason": "owner_observed_after_mcp_transport_failure", "action": owner["action"],
+            "fallback_attempted": True,
+            "mcp_failure": {"method": "read_thread", "error": error,
+                            "sha256": hashlib.sha256(error.encode("utf-8")).hexdigest()},
+            "owner_handle": owner["owner_handle"], "owner_result": owner, "read_only": True,
+            **{key: False for key in self._false_flags},
+        }
+
+    def test_cli_forwards_default_bounds_and_original_evidence_once(self):
+        from contextlib import redirect_stdout
+        output = io.StringIO()
+        with patch.object(mod, "read_codex_owner_after_mcp_failure", return_value=self._cli_result()) as fallback:
+            with patch.object(mod, "OpenAICodexCLIIntegration", side_effect=AssertionError("no generation")):
+                with redirect_stdout(output):
+                    code = mod.codex_thread_handoff_main(self._cli_args())
+        self.assertEqual(code, 4)
+        fallback.assert_called_once_with(**self._request(), timeout_seconds=15.0, max_response_bytes=262144)
+        self._assert_inert(json.loads(output.getvalue()))
+
+    def test_cli_forwards_explicit_bounded_flags_once(self):
+        from contextlib import redirect_stdout
+        with patch.object(mod, "read_codex_owner_after_mcp_failure", return_value=self._cli_result()) as fallback:
+            with redirect_stdout(io.StringIO()):
+                code = mod.codex_thread_handoff_main(
+                    self._cli_args() + ["--timeout-seconds", "2.75", "--max-response-bytes", "8192"])
+        self.assertEqual(code, 4)
+        fallback.assert_called_once_with(**self._request(), timeout_seconds=2.75, max_response_bytes=8192)
+
+    def test_cli_refusal_never_observes_or_retries_the_owner(self):
+        from contextlib import redirect_stdout
+        output = io.StringIO()
+        with patch.object(mod, "read_codex_owner_dependency", side_effect=AssertionError("no refused-work retry")) as reader:
+            with patch.object(mod, "send_codex_thread_message", side_effect=AssertionError("no send")) as send:
+                with redirect_stdout(output):
+                    code = mod.codex_thread_handoff_main(self._cli_args(transport_error="policy refusal: request disallowed"))
+        self.assertEqual(code, 2)
+        reader.assert_not_called()
+        send.assert_not_called()
+        result = json.loads(output.getvalue())
+        self._assert_inert(result)
+        self.assertEqual(result["fallback_state"], "refused")
+        self.assertIs(result["fallback_attempted"], False)
+
+    def test_cli_invalid_bounds_refuse_before_any_owner_read(self):
+        from contextlib import redirect_stdout
+        for flags in (["--timeout-seconds", "nan"], ["--timeout-seconds", "61"],
+                      ["--max-response-bytes", "4095"], ["--max-response-bytes", "4194305"]):
+            with self.subTest(flags=flags):
+                output = io.StringIO()
+                with patch.object(mod, "read_codex_owner_dependency", side_effect=AssertionError("no invalid probe")) as reader:
+                    with redirect_stdout(output):
+                        code = mod.codex_thread_handoff_main(self._cli_args() + flags)
+                self.assertEqual(code, 2)
+                reader.assert_not_called()
+                self.assertEqual(json.loads(output.getvalue())["fallback_state"], "refused")
+
+    def test_cli_output_loss_never_repeats_probe_or_output(self):
+        class LostOutput:
+            def __init__(self): self.writes = 0
+            def write(self, value):
+                self.writes += 1
+                raise OSError("fictional output loss")
+            def flush(self): raise AssertionError("no output retry")
+        output = LostOutput()
+        with patch.object(mod, "read_codex_owner_after_mcp_failure", return_value=self._cli_result()) as fallback:
+            with patch("sys.stdout", output):
+                code = mod.codex_thread_handoff_main(self._cli_args())
+        self.assertEqual(code, 1)
+        self.assertEqual(output.writes, 1)
+        fallback.assert_called_once()
+
+    def test_cli_requires_transport_and_owner_flags_before_helper(self):
+        for flag in ("--socket-path", "--thread-id", "--expected-turn-id", "--mcp-method", "--transport-error"):
+            args = self._cli_args()
+            index = args.index(flag)
+            del args[index:index + 2]
+            with self.subTest(flag=flag):
+                with patch.object(mod, "read_codex_owner_after_mcp_failure") as fallback:
+                    with patch("sys.stderr", io.StringIO()):
+                        with self.assertRaises(SystemExit) as raised:
+                            mod.codex_thread_handoff_main(args)
+                self.assertEqual(raised.exception.code, 2)
+                fallback.assert_not_called()
