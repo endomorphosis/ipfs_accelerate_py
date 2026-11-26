@@ -1741,3 +1741,250 @@ class ManifestAdversarialRecoveryTests(unittest.TestCase):
                         result = mod.read_codex_handoff_manifest_artifact(**request)
                 self._manifest_assert_refused(result)
                 self._manifest_assert_only_manifest_read(reader, manifest)
+
+
+class OwnerDependencyReadTests(unittest.TestCase):
+    """One observed coordinator turn; no transport mutation or custody inference."""
+
+    def _connection(self, status="inProgress", *, turn="owner-turn", thread="owner-thread", fail=None):
+        class Client:
+            def __init__(client):
+                client.messages, client.closed = [], False
+                client.socket = client
+            def settimeout(client, seconds):
+                if not 0 < seconds <= 60: raise AssertionError("unbounded read")
+            def __enter__(client): return client
+            def __exit__(client, *args): client.closed = True
+            def send(client, raw): client.messages.append(json.loads(raw))
+            def recv(client, timeout):
+                request = client.messages[-1]
+                method = request["method"]
+                if method == fail: raise TimeoutError("fictional metadata observation timeout")
+                results = {
+                    "initialize": {},
+                    "thread/read": {"thread": {"id": thread, "status": "active", "canAcceptDirectInput": True}},
+                    "thread/turns/list": {"data": [{"id": turn, "status": status}]},
+                }
+                return json.dumps({"jsonrpc": "2.0", "id": request["id"], "result": results[method]})
+        return Client()
+
+    def _read(self, client, **changes):
+        options = dict(socket_path="/fixture/owner.sock", thread_id="owner-thread", expected_turn_id="owner-turn")
+        options.update(changes)
+        with patch.object(mod, "_open_codex_app_connection", return_value=client):
+            result = mod.read_codex_owner_dependency(**options)
+        self.assertTrue(client.closed)
+        self.assertEqual([r["method"] for r in client.messages],
+                         ["initialize", "initialized", "thread/read", "thread/turns/list"])
+        self._no_grants(result)
+        return result
+
+    def _no_grants(self, result):
+        self.assertIs(result["read_only"], True)
+        for key in ("work_complete", "completion_authority", "completion_eligible",
+                    "execution_granted", "claim_granted", "goal_status_changed",
+                    "owner_custody_verified", "native_or_child_liveness_verified", "budget_reset"):
+            self.assertIs(result[key], False, key)
+
+    def test_exact_observed_inprogress_owner_turn_is_a_local_wait(self):
+        client = self._connection()
+        result = self._read(client)
+        self.assertEqual(result["dependency_state"], "owner_turn_in_progress")
+        self.assertEqual(result["action"], "await_owner_result")
+        self.assertEqual(result["owner_handle"], {"kind": "codex_turn", "thread_id": "owner-thread", "turn_id": "owner-turn"})
+        self.assertIs(result["observation"]["snapshot_atomic"], False)
+
+    def test_terminal_turns_require_result_reconciliation_not_completion(self):
+        for status in ("completed", "failed", "interrupted"):
+            with self.subTest(status=status):
+                result = self._read(self._connection(status))
+                self.assertEqual(result["dependency_state"], "owner_turn_terminal")
+                self.assertEqual(result["action"], "reconcile_owner_result")
+                self.assertFalse(result["work_complete"])
+
+    def test_changed_turn_never_adopts_the_new_owner_handle(self):
+        result = self._read(self._connection(turn="replacement-turn"))
+        self.assertEqual(result["dependency_state"], "owner_turn_changed")
+        self.assertEqual(result["action"], "reconcile_owner_binding")
+        self.assertEqual(result["owner_handle"]["turn_id"], "owner-turn")
+        self.assertEqual(result["observation"]["latest_turn"]["id"], "replacement-turn")
+
+    def test_invalid_owner_bindings_refuse_before_any_probe(self):
+        for changes in ({"expected_turn_id": None}, {"expected_turn_id": True},
+                        {"expected_turn_id": "../owner"}, {"expected_turn_id": ""},
+                        {"thread_id": "other/thread"}, {"thread_id": False}):
+            with self.subTest(changes=changes):
+                with patch.object(mod, "read_codex_thread_state", side_effect=AssertionError("no probe")) as reader:
+                    result = mod.read_codex_owner_dependency(**{
+                        "socket_path": "/fixture/owner.sock", "thread_id": "owner-thread",
+                        "expected_turn_id": "owner-turn", **changes})
+                reader.assert_not_called()
+                self.assertEqual(result["dependency_state"], "refused")
+                self._no_grants(result)
+
+    def test_observation_timeouts_never_prove_owner_stopped_or_retry_safe(self):
+        for stage in ("initialize", "thread/turns/list"):
+            with self.subTest(stage=stage):
+                client = self._connection(fail=stage)
+                with patch.object(mod, "_open_codex_app_connection", return_value=client):
+                    result = mod.read_codex_owner_dependency(
+                        socket_path="/fixture/owner.sock", thread_id="owner-thread", expected_turn_id="owner-turn")
+                self.assertTrue(client.closed)
+                self.assertEqual(result["dependency_state"], "unknown")
+                self.assertEqual(result["action"], "reobserve_same_owner_handle")
+                self._no_grants(result)
+                self.assertTrue(all(r["method"] in {"initialize", "initialized", "thread/read", "thread/turns/list"} for r in client.messages))
+
+    def test_cli_exit_dispositions_and_lost_output_never_mutate_or_replay(self):
+        import io
+        from contextlib import redirect_stdout
+        args = ["read-owner", "--socket-path", "/fixture/owner.sock", "--thread-id", "owner-thread", "--expected-turn-id", "owner-turn"]
+        for status, turn, expected in (("inProgress", "owner-turn", 4), ("completed", "owner-turn", 0),
+                                       ("inProgress", "replacement-turn", 3), ("unrecognized", "owner-turn", 1)):
+            with self.subTest(status=status, turn=turn):
+                client = self._connection(status, turn=turn)
+                output = io.StringIO()
+                with patch.object(mod, "_open_codex_app_connection", return_value=client) as opening, redirect_stdout(output):
+                    code = mod.codex_thread_handoff_main(args)
+                self.assertEqual(code, expected)
+                self.assertEqual(opening.call_count, 1)
+                self._no_grants(json.loads(output.getvalue()))
+                self.assertTrue(all(r["method"] in {"initialize", "initialized", "thread/read", "thread/turns/list"} for r in client.messages))
+        class LostOutput:
+            def write(self, value): raise OSError("fictional stdout loss")
+            def flush(self): raise AssertionError("no output retry")
+        client = self._connection()
+        with patch.object(mod, "_open_codex_app_connection", return_value=client) as opening, patch("sys.stdout", LostOutput()):
+            self.assertEqual(mod.codex_thread_handoff_main(args), 1)
+        self.assertEqual(opening.call_count, 1)
+        with tempfile.TemporaryDirectory() as directory:
+            receipt = Path(directory) / "receipt.json"
+            receipt.write_bytes(b'{"delivery_state":"delivery_unknown"}')
+            before = (receipt.read_bytes(), receipt.stat().st_ino, receipt.stat().st_mode)
+            self._read(self._connection())
+            self.assertEqual((receipt.read_bytes(), receipt.stat().st_ino, receipt.stat().st_mode), before)
+
+    def test_unhashable_or_nonstr_observation_state_stays_unknown(self):
+        helper = OwnerDependencyAdversarialTests()
+        for state in ([], {}, None, False):
+            with self.subTest(state=state):
+                observation = helper._dependency_observation()
+                observation["observation_state"] = state
+                result = helper._dependency_call(observation)
+                helper._dependency_assert_unknown(result)
+
+
+class OwnerDependencyAdversarialTests(unittest.TestCase):
+    """Fictional reader metadata cannot establish owner custody or task authority."""
+
+    def _dependency_observation(self):
+        return {
+            "schema": "codex-existing-thread-state/v1",
+            "observation_state": "observed", "reason": "metadata_observed",
+            "thread_id": "owner-thread",
+            "thread_snapshot": {"id": "owner-thread", "status": "active",
+                                "can_accept_direct_input": True},
+            "latest_turn": {"id": "owner-turn", "status": "inProgress"},
+            "read_only": True, "snapshot_atomic": False, "history_complete": False,
+            "delivery_assessed": False, "processing_confirmed": False,
+            "completion_eligible": False, "execution_granted": False, "claim_granted": False,
+        }
+
+    def _dependency_call(self, observation):
+        with patch.object(mod, "read_codex_thread_state", return_value=observation) as reader:
+            with patch.object(mod, "_open_codex_app_connection",
+                              side_effect=AssertionError("schema controls must not open a socket")) as connect:
+                with patch.object(mod, "send_codex_thread_message",
+                                  side_effect=AssertionError("dependency reads must never send")) as send:
+                    result = mod.read_codex_owner_dependency(
+                        socket_path="/tmp/owner-dependency-do-not-connect.sock",
+                        thread_id="owner-thread", expected_turn_id="owner-turn",
+                    )
+        reader.assert_called_once_with(
+            socket_path="/tmp/owner-dependency-do-not-connect.sock",
+            thread_id="owner-thread", timeout_seconds=15.0, max_response_bytes=262144,
+        )
+        connect.assert_not_called()
+        send.assert_not_called()
+        self.assertIs(result["read_only"], True)
+        for field in ("work_complete", "completion_authority", "completion_eligible",
+                      "execution_granted", "claim_granted", "goal_status_changed",
+                      "owner_custody_verified", "native_or_child_liveness_verified", "budget_reset"):
+            self.assertIs(result[field], False, field)
+        self.assertEqual(result["owner_handle"], {
+            "kind": "codex_turn", "thread_id": "owner-thread", "turn_id": "owner-turn",
+        })
+        return result
+
+    def _dependency_assert_not_decisive(self, result):
+        self.assertIn(result["dependency_state"], {"refused", "unknown"})
+        self.assertIn(result["action"], {"fix_request", "reobserve_same_owner_handle"})
+
+    def _dependency_assert_unknown(self, result):
+        self.assertEqual(result["dependency_state"], "unknown")
+        self.assertEqual(result["action"], "reobserve_same_owner_handle")
+
+    def test_malformed_or_elevated_reader_observation_cannot_become_owner_state(self):
+        cases = [("not_an_object", None), ("list", []),
+                 ("wrong_schema", {**self._dependency_observation(), "schema": "other/v1"}),
+                 ("missing_schema", {key: value for key, value in self._dependency_observation().items()
+                                     if key != "schema"}),
+                 ("extra_authority", {**self._dependency_observation(), "work_complete": True}),
+                 ("invalid_observation_state", {**self._dependency_observation(),
+                                                 "observation_state": "completed"})]
+        for value in (False, 1, None):
+            cases.append(("read_only_" + repr(value),
+                          {**self._dependency_observation(), "read_only": value}))
+        for field in ("snapshot_atomic", "history_complete", "delivery_assessed",
+                      "processing_confirmed", "completion_eligible", "execution_granted", "claim_granted"):
+            for value in (True, 0, None):
+                cases.append((field + "_" + repr(value),
+                              {**self._dependency_observation(), field: value}))
+        for label, observation in cases:
+            with self.subTest(observation=label):
+                self._dependency_assert_not_decisive(self._dependency_call(observation))
+
+    def test_thread_and_snapshot_identity_mismatches_never_rebind_the_owner(self):
+        cases = []
+        for value in ("other-thread", None, 3):
+            cases.append(("outer_" + repr(value), {**self._dependency_observation(), "thread_id": value}))
+        for value in ("other-thread", "", None, 3):
+            observation = self._dependency_observation()
+            observation["thread_snapshot"]["id"] = value
+            cases.append(("snapshot_" + repr(value), observation))
+        observation = self._dependency_observation()
+        del observation["thread_snapshot"]["id"]
+        cases.append(("snapshot_id_missing", observation))
+        for label, observation in cases:
+            with self.subTest(identity=label):
+                self._dependency_assert_not_decisive(self._dependency_call(observation))
+
+    def test_partial_or_ambiguous_metadata_cannot_prove_an_owner_turn_live_or_stopped(self):
+        cases = []
+        for state in ("partial", "unavailable"):
+            observation = self._dependency_observation()
+            observation.update(observation_state=state, reason="latest_turn_unavailable", latest_turn=None)
+            cases.append((state, observation))
+        observation = self._dependency_observation()
+        observation["latest_turn"] = None
+        cases.append(("active_thread_without_a_turn", observation))
+        observation = self._dependency_observation()
+        observation["observation_state"] = "partial"
+        cases.append(("partial_with_retained_turn_metadata", observation))
+        for status in ("queued", "futureStatus", "unknown"):
+            observation = self._dependency_observation()
+            observation["latest_turn"]["status"] = status
+            cases.append(("unknown_turn_status_" + status, observation))
+        observation = self._dependency_observation()
+        observation["thread_snapshot"] = None
+        cases.append(("turn_without_thread_snapshot", observation))
+        for label, observation in cases:
+            with self.subTest(metadata=label):
+                self._dependency_assert_unknown(self._dependency_call(observation))
+
+    def test_inprogress_turn_with_nonactive_thread_snapshot_remains_unknown(self):
+        for status in ("idle", "notLoaded", "systemError"):
+            with self.subTest(thread_status=status):
+                observation = self._dependency_observation()
+                observation["thread_snapshot"]["status"] = status
+                self._dependency_assert_unknown(self._dependency_call(observation))

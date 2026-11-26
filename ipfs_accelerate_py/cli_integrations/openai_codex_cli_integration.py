@@ -1061,6 +1061,117 @@ def codex_handoff_manifest_artifact_main(argv: Optional[Sequence[str]] = None) -
     return {"verified": 0, "unavailable": 1, "refused": 2}[outcome["artifact_state"]]
 
 
+def read_codex_owner_dependency(
+    *, socket_path, thread_id, expected_turn_id,
+    timeout_seconds=15.0, max_response_bytes=262144,
+) -> Dict[str, Any]:
+    """Observe one explicitly selected coordinator dependency, once.
+
+    An exact app-server turn observed inProgress is a task-local reason to await
+    that owner's result, not an unavailable unit or a completed objective. This
+    is metadata about the Codex turn only: it does not establish child/native
+    liveness, a lease, work custody, message processing or result acceptance.
+    Terminal turns still need their actual result reconciled. A changed turn
+    never silently replaces the caller's expected handle. Partial/failed reads
+    leave state unknown and cannot authorize replay, takeover or budget resets.
+
+    There is no polling loop, receipt access, thread resume/start/steer, or goal
+    state mutation. The caller retains its existing schedule, budgets and holds
+    and must make a new observation when one is needed. The underlying reader's
+    non-atomic metadata and finite timeout/response bounds remain unchanged.
+    """
+    result = {
+        "schema": "codex-owner-dependency-observation/v1",
+        "dependency_state": "refused", "action": "fix_request",
+        "reason": "invalid_owner_binding", "owner_handle": None,
+        "observation": None, "read_only": True,
+        "work_complete": False, "completion_authority": False,
+        "completion_eligible": False, "execution_granted": False, "claim_granted": False,
+        "goal_status_changed": False, "owner_custody_verified": False,
+        "native_or_child_liveness_verified": False, "budget_reset": False,
+    }
+    for value in (thread_id, expected_turn_id):
+        if (type(value) is not str
+                or re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}", value) is None):
+            return result
+    result = {**result, "dependency_state": "unknown",
+              "action": "reobserve_same_owner_handle", "reason": "owner_observation_unavailable",
+              "owner_handle": {"kind": "codex_turn", "thread_id": thread_id, "turn_id": expected_turn_id}}
+    try:
+        observation = read_codex_thread_state(
+            socket_path=socket_path, thread_id=thread_id,
+            timeout_seconds=timeout_seconds, max_response_bytes=max_response_bytes,
+        )
+    except Exception:
+        return result
+    false_flags = ("snapshot_atomic", "history_complete", "delivery_assessed",
+                   "processing_confirmed", "completion_eligible", "execution_granted", "claim_granted")
+    keys = {"schema", "observation_state", "reason", "thread_id", "thread_snapshot", "latest_turn",
+            "read_only", *false_flags}
+    if (type(observation) is not dict or set(observation) != keys
+            or observation["schema"] != "codex-existing-thread-state/v1"
+            or observation["read_only"] is not True
+            or any(observation[key] is not False for key in false_flags)
+            or type(observation["reason"]) is not str
+            or type(observation["observation_state"]) is not str
+            or observation["observation_state"] not in {"observed", "partial", "unavailable", "refused"}):
+        return {**result, "reason": "invalid_owner_observation"}
+    if observation["observation_state"] == "refused":
+        return {**result, "dependency_state": "refused", "action": "fix_request",
+                "reason": "owner_probe_refused"}
+    if observation["observation_state"] != "observed":
+        return {**result, "reason": "owner_observation_incomplete"}
+    snapshot, turn = observation["thread_snapshot"], observation["latest_turn"]
+    if (type(observation["thread_id"]) is not str or observation["thread_id"] != thread_id
+            or type(snapshot) is not dict or set(snapshot) != {"id", "status", "can_accept_direct_input"}
+            or type(snapshot["id"]) is not str or snapshot["id"] != thread_id
+            or snapshot["can_accept_direct_input"] is not None and type(snapshot["can_accept_direct_input"]) is not bool
+            or snapshot["status"] is not None and type(snapshot["status"]) is not str
+            or type(turn) is not dict or set(turn) != {"id", "status"}
+            or type(turn["id"]) is not str
+            or re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}", turn["id"]) is None
+            or type(turn["status"]) is not str):
+        return {**result, "reason": "owner_identity_or_turn_unobserved"}
+    result = {**result, "observation": observation}
+    if turn["id"] != expected_turn_id:
+        return {**result, "dependency_state": "owner_turn_changed",
+                "action": "reconcile_owner_binding", "reason": "expected_owner_turn_differs"}
+    if turn["status"] == "inProgress":
+        if snapshot["status"] not in (None, "active"):
+            return {**result, "reason": "inconsistent_owner_observation"}
+        return {**result, "dependency_state": "owner_turn_in_progress",
+                "action": "await_owner_result", "reason": "exact_owner_turn_observed_in_progress"}
+    if turn["status"] in {"completed", "failed", "interrupted"}:
+        return {**result, "dependency_state": "owner_turn_terminal",
+                "action": "reconcile_owner_result", "reason": "owner_turn_terminal_result_not_assessed"}
+    return {**result, "reason": "owner_turn_status_unknown"}
+
+
+def codex_owner_dependency_main(argv: Optional[Sequence[str]] = None) -> int:
+    """One read-only owner probe; exit4 means observed owner wait, not a launch."""
+    import argparse
+    import sys
+    parser = argparse.ArgumentParser(
+        description="Observe one expected Codex owner turn; no takeover, delivery or goal-state changes.")
+    parser.add_argument("--socket-path", required=True)
+    parser.add_argument("--thread-id", required=True)
+    parser.add_argument("--expected-turn-id", required=True)
+    parser.add_argument("--timeout-seconds", type=float, default=15.0)
+    parser.add_argument("--max-response-bytes", type=int, default=262144)
+    args = parser.parse_args(argv)
+    result = read_codex_owner_dependency(**vars(args))
+    line = json.dumps(result, sort_keys=True, allow_nan=False) + "\n"
+    try:
+        written = sys.stdout.write(line)
+        if type(written) is not int or written != len(line):
+            return 1
+        sys.stdout.flush()
+    except Exception:
+        return 1
+    return {"owner_turn_in_progress": 4, "owner_turn_terminal": 0,
+            "owner_turn_changed": 3, "unknown": 1, "refused": 2}[result["dependency_state"]]
+
+
 def codex_thread_handoff_main(argv: Optional[Sequence[str]] = None) -> int:
     """Explicit existing-thread handoff command; acknowledgement is enqueue only.
 
@@ -1073,6 +1184,8 @@ def codex_thread_handoff_main(argv: Optional[Sequence[str]] = None) -> int:
     import sys
 
     read_arguments = list(sys.argv[1:] if argv is None else argv)
+    if read_arguments and read_arguments[0] == "read-owner":
+        return codex_owner_dependency_main(read_arguments[1:])
     if read_arguments and read_arguments[0] == "read-thread":
         return codex_thread_state_main(read_arguments[1:])
     if read_arguments and read_arguments[0] == "read-artifact":
