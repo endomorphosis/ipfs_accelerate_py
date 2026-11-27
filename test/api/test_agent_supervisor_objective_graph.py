@@ -3849,6 +3849,100 @@ def test_generate_objective_todos_projects_goal_dependencies_to_task_ids(tmp_pat
     assert indexed_task["dependency_task_ids"] == ["ACCEL-001"]
 
 
+def test_generate_objective_todos_orders_overlapping_output_owners(tmp_path):
+    repo, objective_path, todo_path = _seed_repo(tmp_path)
+    discovery_dir = repo / "data" / "agent_supervisor" / "discovery"
+    bundle_dir = repo / "data" / "agent_supervisor" / "objective_bundles"
+    todo_path.write_text(
+        todo_path.read_text(encoding="utf-8").replace(
+            "- Outputs: discovery",
+            "- Outputs: src/runtime_router.py",
+            1,
+        ),
+        encoding="utf-8",
+    )
+    common = {
+        "goal_id": "VAIOS-G001",
+        "title": "Shared runtime output",
+        "priority": "P0",
+        "track": "runtime",
+        "present_evidence": {},
+        "evidence_methods": [],
+        "objective_path": str(objective_path),
+        "validation": "true",
+        "bundle_key": "objective/runtime/shared",
+        "parallel_lane": "0",
+        "bundle_strategy": "explicit",
+    }
+    directory_owner = ObjectiveFinding(
+        **common,
+        fingerprint="shared-directory-owner",
+        dedupe_key="shared-output-obligation/directory",
+        summary="Update the shared runtime directory",
+        missing_evidence=["directory-level proof"],
+        outputs=["src"],
+        predicted_files=["src"],
+    )
+    file_owner = ObjectiveFinding(
+        **common,
+        fingerprint="shared-file-owner",
+        dedupe_key="shared-output-obligation/file",
+        summary="Update the shared runtime file",
+        missing_evidence=["file-level proof"],
+        outputs=["src/runtime_router.py"],
+        predicted_files=["src/runtime_router.py"],
+        allow_concurrent_with=["ACCEL-001", "ACCEL-002"],
+    )
+    disjoint_owner = ObjectiveFinding(
+        **common,
+        fingerprint="disjoint-output-owner",
+        dedupe_key="shared-output-obligation/disjoint",
+        summary="Update an independent report",
+        missing_evidence=["independent report proof"],
+        outputs=["reports/independent.json"],
+        predicted_files=["reports/independent.json"],
+    )
+
+    records = generate_objective_todos(
+        repo_root=repo,
+        objective_path=objective_path,
+        todo_path=todo_path,
+        discovery_dir=discovery_dir,
+        bundle_dir=bundle_dir,
+        task_prefix="ACCEL-",
+        precomputed_findings=[directory_owner, file_owner, disjoint_owner],
+        persist_ast_dataset=False,
+        write_todo_vector_index=False,
+    )
+
+    assert [record.task_id for record in records] == [
+        "ACCEL-002",
+        "ACCEL-003",
+        "ACCEL-004",
+    ]
+    assert records[0].depends_on == ("ACCEL-001",)
+    assert records[1].depends_on == ("ACCEL-001", "ACCEL-002")
+    assert records[2].depends_on == ()
+    todo_text = todo_path.read_text(encoding="utf-8")
+    assert "- Depends on: ACCEL-001" in todo_text.split("## ACCEL-002", 1)[1]
+    assert (
+        "- Depends on: ACCEL-001, ACCEL-002"
+        in todo_text.split("## ACCEL-003", 1)[1]
+    )
+    index = json.loads((bundle_dir / "index.json").read_text(encoding="utf-8"))
+    indexed = {
+        task["task_id"]: task
+        for bundle in index["bundles"].values()
+        for task in bundle["tasks"]
+    }
+    assert indexed["ACCEL-002"]["depends_on"] == ["ACCEL-001"]
+    assert indexed["ACCEL-003"]["depends_on"] == [
+        "ACCEL-001",
+        "ACCEL-002",
+    ]
+    assert indexed["ACCEL-004"]["depends_on"] == []
+
+
 def test_manual_review_finding_without_edit_targets_is_visible_but_not_executable(
     tmp_path,
 ):

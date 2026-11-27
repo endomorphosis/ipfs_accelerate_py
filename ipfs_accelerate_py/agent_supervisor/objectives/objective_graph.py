@@ -24,7 +24,7 @@ from datetime import datetime, timedelta, timezone
 from enum import Enum
 from hashlib import sha1, sha256
 from itertools import islice
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any, Iterable, Mapping, Sequence
 
 from ..validation.evidence_output_scope import (
@@ -9650,6 +9650,75 @@ def _objective_task_blocks(
     return blocks
 
 
+def _normalized_declared_output_paths(values: Iterable[Any]) -> tuple[str, ...]:
+    """Return safe, canonical repository-relative output declarations.
+
+    Objective findings are untrusted planner output.  Only bounded relative
+    paths participate in ownership ordering; an unsafe path remains subject to
+    the existing task-admission guards and never grants broader authority here.
+    """
+
+    normalized: list[str] = []
+    for value in values:
+        path = normalize_identity_path(value)
+        parts = PurePosixPath(path).parts if path else ()
+        if (
+            not path
+            or path == "."
+            or path.startswith("/")
+            or re.match(r"^[A-Za-z]:/", path)
+            or ".." in parts
+        ):
+            continue
+        if path not in normalized:
+            normalized.append(path)
+    return tuple(normalized)
+
+
+def _declared_output_paths_overlap(left: str, right: str) -> bool:
+    """Return whether two normalized output paths overlap by ancestry."""
+
+    left_parts = PurePosixPath(left).parts
+    right_parts = PurePosixPath(right).parts
+    width = min(len(left_parts), len(right_parts))
+    return bool(width) and left_parts[:width] == right_parts[:width]
+
+
+def _objective_output_owner_dependencies(
+    todo_text: str,
+    *,
+    task_prefix: str,
+    declared_outputs: Sequence[Any],
+) -> list[str]:
+    """Order a new objective task after every overlapping board owner.
+
+    The taskboard is append-only, so an existing task cannot already depend on
+    the not-yet-materialized task.  Adding the existing owners as prerequisites
+    is therefore the deterministic, acyclic way to serialize shared mutation
+    surfaces.  This includes directory/file ancestry, not merely exact-string
+    matches, and applies even when a finding optimistically declares the tasks
+    safe to run concurrently.
+    """
+
+    outputs = _normalized_declared_output_paths(declared_outputs)
+    if not outputs:
+        return []
+    owners: list[str] = []
+    for block in _objective_task_blocks(todo_text, task_prefix=task_prefix):
+        existing_outputs = _normalized_declared_output_paths(
+            value
+            for field in block.metadata.get("outputs", ())
+            for value in split_terms(field)
+        )
+        if any(
+            _declared_output_paths_overlap(output, existing)
+            for output in outputs
+            for existing in existing_outputs
+        ):
+            owners.append(block.task_id)
+    return _unique_strings(owners)
+
+
 def _normalized_requirement_set(value: str | Sequence[str]) -> frozenset[str] | None:
     raw_values = split_terms(value) if isinstance(value, str) else list(value)
     normalized = [normalize_objective_evidence_requirement(item) for item in raw_values]
@@ -11095,6 +11164,15 @@ def generate_objective_todos(
                     projected_dependencies.append(dependency)
                 else:
                     projected_dependencies.extend(task_ids_by_goal.get(dependency) or [dependency])
+            projected_dependencies.extend(
+                _objective_output_owner_dependencies(
+                    todo_text,
+                    task_prefix=task_prefix,
+                    declared_outputs=(
+                        finding.outputs or finding.predicted_files
+                    ),
+                )
+            )
             projected_dependencies = _unique_strings(projected_dependencies)
             projected_finding = replace(
                 finding,
