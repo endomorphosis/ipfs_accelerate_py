@@ -735,6 +735,11 @@ def _monitor_locked(config: dict[str, Any], *, apply: bool) -> dict[str, Any]:
     liveness_deadline = time.monotonic() + 80 if "watchdog_liveness" in config else None
     dependency_deadline = (liveness_deadline if liveness_deadline is not None else
         time.monotonic() + 80 if "dependency_services" in config else None)
+    declared_deadline = None
+    if "declared_validation_invocation" in config:
+        # The same original oneshot observation cutoff; no renewal after lanes.
+        declared_deadline = (liveness_deadline if liveness_deadline is not None else
+            dependency_deadline if dependency_deadline is not None else time.monotonic() + 80)
     now = time.time()
     issues = []
     # Separate lane locks, health files, and restart budgets make these calls
@@ -775,6 +780,14 @@ def _monitor_locked(config: dict[str, Any], *, apply: bool) -> dict[str, Any]:
             summary.update(healthy=False, status="attention_required")
     if "watchdog_liveness" in config:
         _attach_watchdog_liveness(config, summary, now, deadline_monotonic=liveness_deadline)
+    if "declared_validation_invocation" in config:
+        declared = lane_monitor.observe_declared_validation_invocation(
+            config["declared_validation_invocation"], deadline_monotonic=declared_deadline)
+        summary["declared_validation_invocation"] = declared
+        if declared["attention_required"]:
+            issues.append({"code": "declared_validation_invocation_attention",
+                           "status": declared["status"]})
+            summary.update(healthy=False, status="attention_required")
     try:
         lane_monitor._append_action(config["actions_path"], {"at_epoch": now, "action": "fleet_observed",
             "apply": apply, "healthy": summary["healthy"], "issue_codes": sorted({issue["code"] for issue in issues}),

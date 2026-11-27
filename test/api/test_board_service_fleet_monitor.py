@@ -1712,3 +1712,60 @@ def _cleanup_early_owned_physical_fixtures(request):
         yield
     finally:
         _unlink_exact_owned_physical_fixture(root, case["identity"], relative, kind)
+
+
+def test_declared_invocation_absent_preserves_existing_fleet_output_and_no_reader(config, monkeypatch):
+    stub_health(config, monkeypatch)
+    def forbidden(*args, **kwargs):
+        raise AssertionError("absent optional reader must not run")
+    monkeypatch.setattr(fleet.lane_monitor, "observe_declared_validation_invocation", forbidden)
+    value = fleet.monitor_fleet(config)
+    assert "declared_validation_invocation" not in value and value["healthy"]
+    assert value["task_counts_aggregated"] is False and "completed_count" not in value
+
+
+@pytest.mark.parametrize("apply", [False, True])
+@pytest.mark.parametrize("status", ["custody_unknown_reported", "registered_caller_overdue"])
+def test_declared_invocation_is_one_fleet_observation_with_no_lane_action_authority(config, monkeypatch, apply, status):
+    calls = stub_health(config, monkeypatch)
+    binding = {"schema": "agent-supervisor/declared-validation-observer@1", "registry_path": "/declared/registry.json"}
+    config["declared_validation_invocation"] = binding
+    observed = []
+    def observe(value, *, deadline_monotonic):
+        observed.append((value, deadline_monotonic))
+        return {"available": True, "status": status, "attention_required": True,
+            "completion_authority": False, "restart_authority": False, "cleanup_authority": False}
+    monkeypatch.setattr(fleet.lane_monitor, "observe_declared_validation_invocation", observe)
+    forbidden = []
+    monkeypatch.setattr(fleet.lane_monitor.subprocess, "run", lambda *a, **k: forbidden.append(a))
+    value = fleet.monitor_fleet(config, apply=apply)
+    assert len(observed) == 1 and observed[0][0] is binding
+    assert value["declared_validation_invocation"]["status"] == status
+    assert value["healthy_lane_count"] == 2 and not value["healthy"]
+    assert [item["code"] for item in value["issues"]] == ["declared_validation_invocation_attention"]
+    assert sorted(calls) == [("board-lane-0.service", apply), ("board-lane-1.service", apply)]
+    assert forbidden == [] and value["task_counts_aggregated"] is False
+
+
+def test_declared_invocation_optional_malformed_binding_does_not_hide_lanes(config, monkeypatch):
+    calls = stub_health(config, monkeypatch)
+    config["declared_validation_invocation"] = {"registry_path": "relative/untrusted"}
+    value = fleet.monitor_fleet(config)
+    assert len(calls) == 2 and value["healthy_lane_count"] == 2
+    assert not value["declared_validation_invocation"]["available"] and not value["healthy"]
+    assert value["declared_validation_invocation"]["completion_authority"] is False
+
+
+def test_declared_invocation_observer_shares_original_optional_observation_deadline(config, monkeypatch):
+    stub_health(config, monkeypatch)
+    config["watchdog_liveness"] = {}
+    config["declared_validation_invocation"] = {}
+    monkeypatch.setattr(fleet.time, "monotonic", lambda: 50.0)
+    deadlines = []
+    monkeypatch.setattr(fleet, "_attach_watchdog_liveness", lambda config, summary, now, *, deadline_monotonic:
+        deadlines.append(deadline_monotonic))
+    monkeypatch.setattr(fleet.lane_monitor, "observe_declared_validation_invocation",
+        lambda binding, *, deadline_monotonic: deadlines.append(deadline_monotonic) or
+            {"available": True, "attention_required": False})
+    value = fleet.monitor_fleet(config)
+    assert deadlines == [130.0, 130.0] and value["healthy"]

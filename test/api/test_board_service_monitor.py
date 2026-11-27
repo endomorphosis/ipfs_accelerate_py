@@ -1090,3 +1090,312 @@ def test_accounting_evidence_fallback_preserves_fence_without_fresh_native_statu
     assert calls == ([["systemctl", "--user", "restart", config["service"]]] if restart else [])
     assert result["action"] == ("restart_requested" if restart else "none")
     assert Path(config["native_state_path"]).read_bytes() == original_native_state
+
+
+@pytest.fixture
+def declared_invocation(tmp_path, monkeypatch):
+    """Ordinary reported DATA with an explicitly modeled live process boundary."""
+    root = tmp_path / "declared"
+    root.mkdir()
+    def save(name, value):
+        path = root / name
+        if path.exists():
+            path.chmod(0o600)
+        raw = value if type(value) is bytes else json.dumps(value, sort_keys=True).encode()
+        path.write_bytes(raw)
+        path.chmod(0o400)
+        return {"path": str(path), "bytes": len(raw), "sha256": hashlib.sha256(raw).hexdigest()}
+    producer = save("producer.py", b"# configured declaration producer\n")
+    controller = save("controller.py", b"# existing controller, never executed here\n")
+    invocation = root / "invocation"
+    operation = {"operation_id": "declared-test-original", "nodeid": "owning.py::test_original"}
+    policy = {"schema": "reviewed-preservation-parent/v3", "python": "/usr/bin/python3",
+        "source_root": str(root), "datasets_root": str(root), "operation": operation,
+        "validation": {"attempt_root": str(root / "attempts")}}
+    policy_ref = save("policy.json", policy)
+    selection = {"schema": "same-physical-V3-original-parent-D-consumer-selection/v1",
+        "Root_selected": True, "selectable": True, "policy": policy_ref,
+        "invocation_directory": str(invocation)}
+    selection_ref = save("selection.json", selection)
+    caller = {"pid": 24680, "birth_ticks": 1234567,
+        "boot_id": "11111111-2222-3333-4444-555555555555"}
+    registration = {"schema": "agent-supervisor/declared-validation-invocation@1",
+        "producer": producer, "controller": controller, "selection": selection_ref,
+        "policy": policy_ref, "invocation_directory": str(invocation), "caller": caller,
+        "operation_id": operation["operation_id"], "started_at_monotonic": 90.0}
+    registry_ref = save("registry.json", registration)
+    binding = {"schema": "agent-supervisor/declared-validation-observer@1",
+        "registry_path": registry_ref["path"], "producer_ref": producer, "controller_ref": controller,
+        "max_caller_runtime_seconds": 30}
+    process = monitor._PROCESS_OWNER.ProcessBinding(pid=caller["pid"], birth=caller["birth_ticks"],
+        parent=1, process_group=caller["pid"], session=caller["pid"], boot_id=caller["boot_id"],
+        uid=os.getuid(), argv_sha256="a" * 64, cwd=str(root))
+    argv = [policy["python"], "-I", "-B", controller["path"],
+        "--Root-select-existing-original-Native-parent-and-same-thread-consumer", "--selection-ref",
+        json.dumps(selection_ref)]
+    monkeypatch.setattr(monitor._PROCESS_OWNER, "observe_process", lambda pid: process)
+    exact = []
+    monkeypatch.setattr(monitor._PROCESS_OWNER, "require_exact_process", lambda value: exact.append(value))
+    monkeypatch.setattr(monitor._PROCESS_OWNER, "_read_proc", lambda path, limit:
+        caller["boot_id"].encode() if path == Path("/proc/sys/kernel/random/boot_id")
+        else b"\0".join(part.encode() for part in argv) + b"\0")
+    monkeypatch.setattr(monitor.time, "monotonic", lambda: 100.0)
+    def files(phase=None):
+        invocation.mkdir(exist_ok=True)
+        def put(name, value):
+            return save("invocation/" + name, value)
+        plan = {"schema": "reviewed-preservation-native-worker/v3", "policy": policy_ref,
+            "operation": operation, "execution_request_path": str(invocation / "execution-request.json")}
+        plan_ref = put("validation-plan.json", plan)
+        request = {"schema": "owned-validation-request/v5", "cwd": policy["source_root"],
+            "selected_checks": [operation["nodeid"]],
+            "attempt_directory": str(Path(policy["validation"]["attempt_root"]) / operation["operation_id"]),
+            "source_sha256": {policy_ref["path"]: policy_ref["sha256"], plan_ref["path"]: plan_ref["sha256"]}}
+        request_ref = put("execution-request.json", request)
+        source = {"schema": "reviewed-preservation-parent-source-observation/v1", "request": request_ref,
+            "parent_identity": {"pid": caller["pid"], "birth": str(caller["birth_ticks"])}}
+        put("parent-source-observation.json", source)
+        sdk = {"pid": 24681, "birth": "1234568"}
+        execution = {"schema": "agent-supervisor/v5-runner-execution-observation@1",
+            "request": request_ref, "runner_identity": sdk}
+        execution_ref = put("runner-execution-observation.json", execution)
+        wait = {"schema": "agent-supervisor/repair-trusted-validation@1", "request": request_ref,
+            "runner_identity": sdk, "execution_observation": execution_ref}
+        wait_ref = put("runner-wait.json", wait)
+        markers = {
+            "unknown": ("source-custody-unknown.json", {"schema": "agent-supervisor/v5-validation-source-custody-unknown@1",
+                "request": request_ref, "original_wait": wait_ref, "original_owner_identity": sdk,
+                "source_closed": False, "native_closed": False}),
+            "failed": ("failed-operational-source-closeout.json", {
+                "schema": "agent-supervisor/v5-validation-failed-operational-source-closeout@1",
+                "request": request_ref, "original_wait": wait_ref, "source_closed": True, "native_closed": True,
+                "validation_accepted": False, "parent_handle_issued": False,
+                "retry_authorized": False, "storage_release_authorized": False}),
+            "closed": ("parent-source-closeout.json", {
+                "schema": "agent-supervisor/v5-validation-parent-source-closeout@2",
+                "request": request_ref, "original_wait": wait_ref,
+                "parent_source_custody": {"schema": "agent-supervisor/v5-validation-parent-source-custody@2",
+                    "source_closed": True, "native_closed": True}}),
+            "late": ("source-custody-late-close.json", {
+                "schema": "agent-supervisor/v5-validation-late-source-close@1", "request": request_ref,
+                "source_closed": True, "native_closed": True, "validation_accepted": False})}
+        if phase:
+            put(*markers[phase])
+        return {"put": put, "plan": plan, "request": request, "request_ref": request_ref,
+                "source": source, "execution": execution, "wait": wait, "markers": markers}
+    return {"binding": binding, "registration": registration, "save": save, "files": files,
+        "process": process, "argv": argv, "exact": exact, "selection": selection, "policy": policy}
+
+
+def test_declared_invocation_live_registration_is_readonly_and_prelaunch_is_not_closure(declared_invocation):
+    value = monitor.observe_declared_validation_invocation(declared_invocation["binding"], deadline_monotonic=150)
+    assert value["available"] and value["status"] == "registered_running"
+    assert value["caller_state"] == "same_generation" and not value["attention_required"]
+    assert value["observed_files"] == {} and len(declared_invocation["exact"]) == 2
+    assert value["reported_phase"] == "no_terminal_report"
+    assert all(value[key] is False for key in ("producer_execution_authenticated", "source_kernel_closure_established",
+        "native_handle_authenticated", "completion_authority", "cleanup_authority", "retry_authority",
+        "restart_authority", "task_mutation_authority"))
+
+
+@pytest.mark.parametrize("phase,expected,attention", [
+    ("unknown", "custody_unknown_reported", True), ("failed", "failed_verification_reported", True),
+    ("late", "late_source_close_reported", True), ("closed", "parent_source_closeout_reported", False)])
+def test_declared_invocation_reports_joined_phases_without_authenticating_closure(
+        declared_invocation, phase, expected, attention):
+    declared_invocation["files"](phase)
+    value = monitor.observe_declared_validation_invocation(declared_invocation["binding"], deadline_monotonic=150)
+    assert value["available"] and value["reported_phase"] == expected
+    assert value["attention_required"] is attention
+    assert value["source_kernel_closure_established"] is value["native_handle_authenticated"] is False
+
+
+@pytest.mark.parametrize("terminal", [False, True])
+def test_declared_invocation_gone_caller_never_implies_source_closure(declared_invocation, monkeypatch, terminal):
+    if terminal:
+        declared_invocation["files"]("closed")
+    monkeypatch.setattr(monitor._PROCESS_OWNER, "observe_process", lambda pid: None)
+    value = monitor.observe_declared_validation_invocation(declared_invocation["binding"], deadline_monotonic=150)
+    assert value["available"] and value["caller_state"] == "gone_or_unobservable"
+    assert value["reported_phase"] == ("parent_source_closeout_reported" if terminal else "no_terminal_report")
+    assert value["source_kernel_closure_established"] is False
+    assert value["attention_required"] is True  # Source closeout never proves the caller/D outcome.
+
+
+@pytest.mark.parametrize("field,changed", [("birth", 8), ("boot_id", "00000000-0000-0000-0000-000000000000"),
+                                          ("uid", -1)])
+def test_declared_invocation_pid_reuse_boot_or_uid_mismatch_is_attention(
+        declared_invocation, monkeypatch, field, changed):
+    declared_invocation["files"]("closed")
+    changed_process = dataclasses.replace(declared_invocation["process"], **{field: changed})
+    monkeypatch.setattr(monitor._PROCESS_OWNER, "observe_process", lambda pid: changed_process)
+    value = monitor.observe_declared_validation_invocation(declared_invocation["binding"], deadline_monotonic=150)
+    assert value["available"] and value["caller_state"] == "generation_mismatch" and value["attention_required"]
+    assert declared_invocation["exact"] == []
+
+
+@pytest.mark.parametrize("fault", ["producer_pin", "controller_pin", "policy_pin", "selection_policy",
+    "selection_unselected", "operation", "argv", "request_pin", "parent_pid", "sdk_birth", "marker_wait",
+    "marker_request", "failed_authority"])
+def test_declared_invocation_refuses_specific_registration_and_metadata_mismatches(declared_invocation, fault):
+    fixture = declared_invocation
+    made = fixture["files"]("failed" if fault == "failed_authority" else "unknown")
+    if fault in ("producer_pin", "controller_pin"):
+        fixture["binding"][fault.removesuffix("_pin") + "_ref"]["sha256"] = "0" * 64
+    elif fault == "policy_pin":
+        fixture["save"]("policy.json", {**fixture["policy"], "unselected": True})
+    elif fault.startswith("selection_"):
+        selection = dict(fixture["selection"])
+        if fault == "selection_policy":
+            selection["policy"] = {**selection["policy"], "sha256": "0" * 64}
+        else:
+            selection["Root_selected"] = False
+        fixture["registration"]["selection"] = fixture["save"]("selection.json", selection)
+        fixture["save"]("registry.json", fixture["registration"])
+        fixture["argv"][-1] = json.dumps(fixture["registration"]["selection"])
+    elif fault == "operation":
+        fixture["registration"]["operation_id"] = "foreign-operation"
+        fixture["save"]("registry.json", fixture["registration"])
+    elif fault == "argv":
+        fixture["argv"][3] = "/another-controller.py"
+    elif fault == "request_pin":
+        made["request"]["source_sha256"] = {}
+        made["put"]("execution-request.json", made["request"])
+    elif fault == "parent_pid":
+        made["source"]["parent_identity"]["pid"] += 1
+        made["put"]("parent-source-observation.json", made["source"])
+    elif fault == "sdk_birth":
+        made["execution"]["runner_identity"] = {"pid": 24681, "birth": "8"}
+        made["put"]("runner-execution-observation.json", made["execution"])
+    else:
+        name, marker = made["markers"]["failed" if fault == "failed_authority" else "unknown"]
+        if fault == "marker_wait":
+            marker["original_wait"] = {**marker["original_wait"], "sha256": "0" * 64}
+        elif fault == "marker_request":
+            marker["request"] = {**marker["request"], "sha256": "0" * 64}
+        else:
+            marker["parent_handle_issued"] = True
+        made["put"](name, marker)
+    value = monitor.observe_declared_validation_invocation(fixture["binding"], deadline_monotonic=150)
+    assert value["available"] is False and value["status"] == "unavailable" and value["error"]
+    assert value["completion_authority"] is value["cleanup_authority"] is False
+
+
+def test_declared_invocation_preserves_conflicting_unknown_and_close_reports(declared_invocation):
+    made = declared_invocation["files"]("unknown")
+    made["put"](*made["markers"]["closed"])
+    value = monitor.observe_declared_validation_invocation(declared_invocation["binding"], deadline_monotonic=150)
+    assert value["available"] and value["reported_phase"] == "conflicting_reports" and value["attention_required"]
+    assert "source-custody-unknown.json" in value["observed_files"]
+
+
+@pytest.mark.parametrize("raw", [b'{"schema": 1, "schema": 2}', b'{"x": NaN}', b'{"x": 1e999}',
+    b'{"x":' + b'[' * 70 + b'0' + b']' * 70 + b'}'])
+def test_declared_invocation_rejects_ambiguous_or_deep_json(declared_invocation, raw):
+    declared_invocation["save"]("registry.json", raw)
+    value = monitor.observe_declared_validation_invocation(declared_invocation["binding"], deadline_monotonic=150)
+    assert value["available"] is False and value["error"].startswith("ValueError:")
+
+
+def test_declared_invocation_registry_mode_and_deadline_fail_locally(declared_invocation):
+    path = Path(declared_invocation["binding"]["registry_path"])
+    path.chmod(0o600)
+    value = monitor.observe_declared_validation_invocation(declared_invocation["binding"], deadline_monotonic=150)
+    assert not value["available"] and "read-only" in value["error"]
+    value = monitor.observe_declared_validation_invocation(declared_invocation["binding"], deadline_monotonic=100)
+    assert not value["available"] and "clock" in value["error"]
+
+
+def test_declared_invocation_reader_refuses_alias_oversize_and_rebound_file(tmp_path, monkeypatch):
+    path = tmp_path / "ordinary.json"
+    path.write_bytes(b'{"a": 1}')
+    monkeypatch.setattr(monitor.time, "monotonic", lambda: 100.0)
+    with pytest.raises(ValueError, match="unaliased"):
+        monitor._declared_validation_read(str(tmp_path / ".." / tmp_path.name / path.name), 100,
+            {"deadline": 150, "bytes": 100})
+    with pytest.raises(ValueError, match="bounded"):
+        monitor._declared_validation_read(path, 3, {"deadline": 150, "bytes": 100})
+    original_read = monitor.os.read
+    changed = []
+    def replace_after_read(fd, size):
+        raw = original_read(fd, size)
+        if not changed:
+            changed.append(True)
+            replacement = tmp_path / "replacement.json"
+            replacement.write_bytes(b'{"a": 2}')
+            replacement.replace(path)
+        return raw
+    monkeypatch.setattr(monitor.os, "read", replace_after_read)
+    with pytest.raises(ValueError, match="identity changed"):
+        monitor._declared_validation_read(path, 100, {"deadline": 150, "bytes": 100})
+
+
+@pytest.mark.parametrize("phase", [None, "closed"])
+def test_declared_invocation_actual_process_owner_refusal_retains_reported_data(declared_invocation, monkeypatch, phase):
+    if phase:
+        declared_invocation["files"](phase)
+    def gone(pid):
+        raise FileNotFoundError("original caller exited")
+    monkeypatch.setattr(monitor._PROCESS_OWNER, "observe_process", gone)
+    value = monitor.observe_declared_validation_invocation(declared_invocation["binding"], deadline_monotonic=150)
+    assert value["available"] and value["caller_state"] == "gone_or_unobservable"
+    assert "FileNotFoundError" in value["caller_observation_error"]
+    assert value["attention_required"] is True
+    assert value["reported_phase"] == ("parent_source_closeout_reported" if phase else "no_terminal_report")
+    assert value["source_kernel_closure_established"] is value["native_handle_authenticated"] is False
+
+
+def test_declared_invocation_generation_change_during_read_is_not_live_proof(declared_invocation, monkeypatch):
+    declared_invocation["files"]("closed")
+    def changed(value):
+        raise monitor._PROCESS_OWNER.GracefulRecoveryUnverified("process_binding_changed")
+    monkeypatch.setattr(monitor._PROCESS_OWNER, "require_exact_process", changed)
+    value = monitor.observe_declared_validation_invocation(declared_invocation["binding"], deadline_monotonic=150)
+    assert value["available"] and value["caller_state"] == "changed_or_unobservable" and value["attention_required"]
+    assert value["source_kernel_closure_established"] is False
+
+
+@pytest.mark.parametrize("phase", [None, "closed"])
+@pytest.mark.parametrize("elapsed,overdue", [(29.999, False), (30.0, True), (30.001, True)])
+def test_declared_invocation_observational_runtime_limit_catches_live_stalls(
+        declared_invocation, phase, elapsed, overdue):
+    if phase:
+        declared_invocation["files"](phase)
+    declared_invocation["registration"]["started_at_monotonic"] = 100.0 - elapsed
+    declared_invocation["save"]("registry.json", declared_invocation["registration"])
+    value = monitor.observe_declared_validation_invocation(declared_invocation["binding"], deadline_monotonic=150)
+    assert value["available"] and value["caller_overdue"] is overdue
+    assert value["attention_required"] is overdue
+    assert value["status"] == ("registered_caller_overdue" if overdue else
+        "parent_source_closeout_reported" if phase else "registered_running")
+    assert value["reported_phase"] == ("parent_source_closeout_reported" if phase else "no_terminal_report")
+    assert value["caller_runtime_limit_scope"] == "observation_only_not_resource_deadline"
+    assert value["completion_authority"] is value["cleanup_authority"] is value["restart_authority"] is False
+
+
+@pytest.mark.parametrize("started", [100.001, float("nan"), float("inf"), False, -1])
+def test_declared_invocation_refuses_future_nonfinite_or_invalid_reported_start(declared_invocation, started):
+    declared_invocation["registration"]["started_at_monotonic"] = started
+    declared_invocation["save"]("registry.json", declared_invocation["registration"])
+    value = monitor.observe_declared_validation_invocation(declared_invocation["binding"], deadline_monotonic=150)
+    assert not value["available"] and value["attention_required"]
+    assert "start" in value["error"] or "nonfinite" in value["error"]
+    assert value["restart_authority"] is False
+
+
+@pytest.mark.parametrize("limit", [0, -1, float("inf"), float("nan"), 3601, True])
+def test_declared_invocation_runtime_limit_is_finite_and_bounded(declared_invocation, limit):
+    declared_invocation["binding"]["max_caller_runtime_seconds"] = limit
+    value = monitor.observe_declared_validation_invocation(declared_invocation["binding"], deadline_monotonic=150)
+    assert not value["available"] and "observation runtime limit" in value["error"]
+    assert value["completion_authority"] is value["retry_authority"] is False
+
+
+def test_declared_invocation_monotonic_start_cannot_cross_boots(declared_invocation, monkeypatch):
+    original = monitor._PROCESS_OWNER._read_proc
+    monkeypatch.setattr(monitor._PROCESS_OWNER, "_read_proc", lambda path, limit:
+        b"00000000-0000-0000-0000-000000000000" if path == Path("/proc/sys/kernel/random/boot_id")
+        else original(path, limit))
+    value = monitor.observe_declared_validation_invocation(declared_invocation["binding"], deadline_monotonic=150)
+    assert not value["available"] and "another boot" in value["error"]
+    assert value["source_kernel_closure_established"] is False

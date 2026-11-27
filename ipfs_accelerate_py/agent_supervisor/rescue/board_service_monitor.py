@@ -1007,6 +1007,323 @@ def _monitor_locked(config: dict[str, Any], *, apply: bool) -> dict[str, Any]:
     return summary
 
 
+# Optional explicit original-caller registration. This reader has no repair or
+# acceptance authority and never enumerates invocation directories.
+def _declared_validation_need(value, message):
+    if not value:
+        raise ValueError(message)
+
+
+def _declared_validation_path(value):
+    _declared_validation_need(type(value) is str and 0 < len(value) <= 4096,
+                              "bounded declared absolute path required")
+    path = Path(value)
+    _declared_validation_need(path.is_absolute() and str(path) == value
+        and all(part not in (".", "..") for part in path.parts), "unaliased absolute path required")
+    return path
+
+
+def _declared_validation_read(path, limit, budget, *, pin=None, optional=False, readonly=False):
+    """Read one anchored ordinary file, within the one fleet observation budget."""
+    path = _declared_validation_path(str(path))
+    _declared_validation_need(time.monotonic() < budget["deadline"], "observation deadline exhausted")
+    if pin is not None:
+        _declared_validation_need(type(pin) is dict and set(pin) == {"path", "bytes", "sha256"}
+            and pin["path"] == str(path) and type(pin["bytes"]) is int and 0 < pin["bytes"] <= limit
+            and type(pin["sha256"]) is str and re.fullmatch("[0-9a-f]{64}", pin["sha256"]),
+            "bounded exact declared descriptor required")
+    parent = os.open("/", os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC)
+    fd = None
+    try:
+        for part in path.parts[1:-1]:
+            following = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC,
+                                dir_fd=parent)
+            os.close(parent)
+            parent = following
+        before_parent = os.fstat(parent)
+        try:
+            fd = os.open(path.name, os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW | os.O_CLOEXEC,
+                         dir_fd=parent)
+        except FileNotFoundError:
+            if optional:
+                return None
+            raise
+        before = os.fstat(fd)
+        _declared_validation_need(stat.S_ISREG(before.st_mode) and before.st_uid == os.getuid()
+            and before.st_nlink == 1 and 0 < before.st_size <= limit
+            and before.st_size <= budget["bytes"], "bounded single-link owned ordinary file required")
+        _declared_validation_need(not readonly or stat.S_IMODE(before.st_mode) == 0o400,
+                                  "registration must be published read-only")
+        raw = bytearray()
+        while len(raw) <= before.st_size:
+            _declared_validation_need(time.monotonic() < budget["deadline"], "observation deadline exhausted")
+            part = os.read(fd, min(65536, before.st_size + 1 - len(raw)))
+            if not part:
+                break
+            raw.extend(part)
+        def identity(st):
+            return (st.st_dev, st.st_ino, st.st_mode, st.st_uid, st.st_nlink,
+                    st.st_size, st.st_mtime_ns, st.st_ctime_ns)
+        _declared_validation_need(identity(before) == identity(os.fstat(fd))
+            == identity(os.stat(path.name, dir_fd=parent, follow_symlinks=False))
+            == identity(os.stat(path, follow_symlinks=False)) and path.resolve(strict=True) == path
+            and (before_parent.st_dev, before_parent.st_ino)
+                == (os.stat(path.parent).st_dev, os.stat(path.parent).st_ino)
+            and len(raw) == before.st_size, "declared ordinary file identity changed")
+        body = bytes(raw)
+        ref = {"path": str(path), "bytes": len(body), "sha256": hashlib.sha256(body).hexdigest()}
+        _declared_validation_need(pin is None or ref == pin, "declared file commitment differs")
+        budget["bytes"] -= len(body)
+        _declared_validation_need(time.monotonic() < budget["deadline"], "observation deadline exhausted")
+        return body, ref
+    finally:
+        if fd is not None:
+            os.close(fd)
+        os.close(parent)
+
+
+def _declared_validation_json(raw):
+    def pairs(items):
+        value = {}
+        for key, item in items:
+            _declared_validation_need(key not in value, "duplicate JSON key")
+            value[key] = item
+        return value
+    def constant(_):
+        raise ValueError("nonfinite JSON value")
+    value = json.loads(raw, object_pairs_hook=pairs, parse_constant=constant)
+    pending, count = [(value, 0)], 0
+    while pending:
+        item, depth = pending.pop()
+        count += 1
+        _declared_validation_need(depth <= 64 and count <= 200000, "bounded observation JSON tree required")
+        if type(item) is dict:
+            pending.extend((child, depth + 1) for child in item.values())
+        elif type(item) is list:
+            pending.extend((child, depth + 1) for child in item)
+        elif type(item) is float:
+            _declared_validation_need(math.isfinite(item), "nonfinite JSON value")
+    _declared_validation_need(type(value) is dict, "observation JSON object required")
+    return value
+
+
+def _declared_validation_identity(value):
+    _declared_validation_need(type(value) is dict and type(value.get("pid")) is int
+        and value["pid"] > 1 and type(value.get("birth")) in (str, int)
+        and not isinstance(value["birth"], bool) and str(value["birth"]).isdigit()
+        and int(value["birth"]) > 0, "reported process generation required")
+    return value["pid"], int(value["birth"])
+
+
+def observe_declared_validation_invocation(binding, *, deadline_monotonic):
+    """Observe one configured declaration; every custody phase remains reported DATA.
+
+    The producer pin identifies configured code, not proof that it ran. A live
+    caller is compared using the existing process owner. Neither a dead caller
+    nor a reported terminal file proves Source/kernel/native/handle acceptance.
+    """
+    result = {"schema": "agent-supervisor/declared-validation-invocation-observation@1",
+        "configured": True, "available": False, "status": "unavailable", "attention_required": True,
+        "reported_only": True, "caller_state": "unobserved", "reported_phase": "unresolved",
+        "producer_execution_authenticated": False, "source_kernel_closure_established": False,
+        "native_handle_authenticated": False, "completion_authority": False,
+        "cleanup_authority": False, "retry_authority": False, "restart_authority": False,
+        "task_mutation_authority": False, "observed_files": {}}
+    budget = {"deadline": deadline_monotonic, "bytes": 8 * 1024**2}
+    try:
+        _declared_validation_need(type(deadline_monotonic) in (int, float)
+            and math.isfinite(deadline_monotonic) and time.monotonic() < deadline_monotonic,
+            "finite remaining fleet observation clock required")
+        _declared_validation_need(type(binding) is dict and set(binding)
+            == {"schema", "registry_path", "producer_ref", "controller_ref", "max_caller_runtime_seconds"}
+            and binding["schema"] == "agent-supervisor/declared-validation-observer@1",
+            "exact optional declared-invocation binding required")
+        runtime_limit = binding["max_caller_runtime_seconds"]
+        _declared_validation_need(type(runtime_limit) in (int, float) and math.isfinite(runtime_limit)
+            and 0 < runtime_limit <= 3600, "finite observation runtime limit in (0, 3600] required")
+        for key in ("producer_ref", "controller_ref"):
+            ref = binding[key]
+            _declared_validation_need(type(ref) is dict, "configured producer/controller descriptor required")
+            _declared_validation_read(ref.get("path"), 256 * 1024, budget, pin=ref)
+        raw, registry_ref = _declared_validation_read(binding["registry_path"], 64 * 1024, budget, readonly=True)
+        registered = _declared_validation_json(raw)
+        _declared_validation_need(set(registered) == {"schema", "producer", "controller", "selection", "policy",
+            "invocation_directory", "caller", "operation_id", "started_at_monotonic"}
+            and registered["schema"] == "agent-supervisor/declared-validation-invocation@1"
+            and registered["producer"] == binding["producer_ref"]
+            and registered["controller"] == binding["controller_ref"], "registration differs from configured pins")
+        caller = registered["caller"]
+        _declared_validation_need(type(caller) is dict and set(caller) == {"pid", "birth_ticks", "boot_id"}
+            and type(caller["pid"]) is int and caller["pid"] > 1
+            and type(caller["birth_ticks"]) is int and caller["birth_ticks"] > 0
+            and type(caller["boot_id"]) is str and re.fullmatch(
+                "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", caller["boot_id"]),
+            "registered PID/birth/boot required")
+        current_boot = _PROCESS_OWNER._read_proc(Path("/proc/sys/kernel/random/boot_id"), 128).decode("ascii").strip()
+        _declared_validation_need(current_boot == caller["boot_id"], "registration belongs to another boot")
+        started = registered["started_at_monotonic"]
+        _declared_validation_need(type(started) in (int, float) and math.isfinite(started)
+            and 0 <= started <= time.monotonic(), "finite nonfuture registered monotonic start required")
+        try:
+            caller_binding = _PROCESS_OWNER.observe_process(caller["pid"])
+        except (OSError, ValueError, _PROCESS_OWNER.GracefulRecoveryUnverified) as error:
+            # Exited, unreadable and racing callers are observationally unknown.
+            # Their independently joined terminal DATA may still be reported.
+            caller_binding = None
+            result["caller_observation_error"] = (type(error).__name__ + ": " + str(error))[:256]
+        result.update(registry_ref=registry_ref, registered_caller=dict(caller),
+                      caller_state="gone_or_unobservable" if caller_binding is None else "generation_mismatch")
+        if caller_binding is not None:
+            if (caller_binding.pid, caller_binding.birth, caller_binding.boot_id, caller_binding.uid) == (
+                    caller["pid"], caller["birth_ticks"], caller["boot_id"], os.getuid()):
+                result["caller_state"] = "same_generation"
+        raw, _ = _declared_validation_read(registered["selection"]["path"], 64 * 1024, budget,
+                                           pin=registered["selection"])
+        selection = _declared_validation_json(raw)
+        raw, _ = _declared_validation_read(registered["policy"]["path"], 1024**2, budget,
+                                           pin=registered["policy"])
+        policy = _declared_validation_json(raw)
+        invocation = _declared_validation_path(registered["invocation_directory"])
+        operation = policy.get("operation", {})
+        _declared_validation_need(selection.get("schema")
+                == "same-physical-V3-original-parent-D-consumer-selection/v1"
+            and selection.get("Root_selected") is True and selection.get("selectable") is True
+            and selection.get("policy") == registered["policy"]
+            and selection.get("invocation_directory") == str(invocation)
+            and policy.get("schema") == "reviewed-preservation-parent/v3"
+            and type(operation) is dict and type(operation.get("operation_id")) is str
+            and re.fullmatch("[A-Za-z0-9_-][A-Za-z0-9_.-]{0,127}", operation["operation_id"])
+            and operation["operation_id"] == registered["operation_id"], "selected policy/operation/invocation differs")
+        expected_argv = [policy["python"], "-I", "-B", binding["controller_ref"]["path"],
+            "--Root-select-existing-original-Native-parent-and-same-thread-consumer", "--selection-ref"]
+        if result["caller_state"] == "same_generation":
+            command = _PROCESS_OWNER._read_proc(Path(f"/proc/{caller['pid']}/cmdline"), 16384)
+            argv = [part.decode("utf-8") for part in command.rstrip(b"\0").split(b"\0")]
+            _declared_validation_need(len(argv) == 7 and argv[:6] == expected_argv
+                and _declared_validation_json(argv[6]) == registered["selection"],
+                "registered caller has another controller argv")
+            try:
+                _PROCESS_OWNER.require_exact_process(caller_binding)
+            except (OSError, ValueError, _PROCESS_OWNER.GracefulRecoveryUnverified) as error:
+                result["caller_state"] = "changed_or_unobservable"
+                result["caller_observation_error"] = (type(error).__name__ + ": " + str(error))[:256]
+        files = {}
+        for name, limit in (("validation-plan.json", 1024**2), ("execution-request.json", 1024**2),
+                ("parent-source-observation.json", 128 * 1024), ("runner-wait.json", 4 * 1024**2),
+                ("runner-execution-observation.json", 128 * 1024), ("source-custody-unknown.json", 128 * 1024),
+                ("failed-operational-source-closeout.json", 128 * 1024),
+                ("source-custody-late-close.json", 128 * 1024), ("parent-source-closeout.json", 128 * 1024)):
+            # A not-yet-created invocation is a registered prelaunch phase.
+            try:
+                invocation_stat = os.lstat(invocation)
+            except FileNotFoundError:
+                break
+            _declared_validation_need(stat.S_ISDIR(invocation_stat.st_mode)
+                and invocation_stat.st_uid == os.getuid(), "owned ordinary invocation directory required")
+            item = _declared_validation_read(invocation / name, limit, budget, optional=True)
+            if item is not None:
+                files[name] = (_declared_validation_json(item[0]), item[1])
+        result["observed_files"] = {name: item[1] for name, item in files.items()}
+        request_ref = None
+        if "validation-plan.json" in files:
+            plan, plan_ref = files["validation-plan.json"]
+            _declared_validation_need(plan.get("schema") == "reviewed-preservation-native-worker/v3"
+                and plan.get("policy") == registered["policy"] and plan.get("operation") == operation
+                and plan.get("execution_request_path") == str(invocation / "execution-request.json"),
+                "reported validation plan differs")
+        if "execution-request.json" in files:
+            request, request_ref = files["execution-request.json"]
+            _declared_validation_need("validation-plan.json" in files
+                and request.get("schema") == "owned-validation-request/v5"
+                and request.get("cwd") == policy["source_root"]
+                and request.get("selected_checks") == [operation["nodeid"]]
+                and request.get("attempt_directory") == str(_declared_validation_path(
+                    policy["validation"]["attempt_root"]) / operation["operation_id"])
+                and type(request.get("source_sha256")) is dict
+                and request["source_sha256"].get(registered["policy"]["path"]) == registered["policy"]["sha256"]
+                and request["source_sha256"].get(plan_ref["path"]) == plan_ref["sha256"],
+                "reported execution request differs from selected plan/policy")
+        if len(files) > (1 if "validation-plan.json" in files else 0):
+            _declared_validation_need(request_ref is not None, "custody metadata has no joined execution request")
+        if "parent-source-observation.json" in files:
+            source, _ = files["parent-source-observation.json"]
+            _declared_validation_need(source.get("schema") == "reviewed-preservation-parent-source-observation/v1"
+                and source.get("request") == request_ref
+                and _declared_validation_identity(source.get("parent_identity"))
+                    == (caller["pid"], caller["birth_ticks"]), "reported Source parent/request differs")
+        wait_ref, sdk_identity = None, None
+        if "runner-wait.json" in files:
+            wait, wait_ref = files["runner-wait.json"]
+            _declared_validation_need("parent-source-observation.json" in files
+                and wait.get("schema") == "agent-supervisor/repair-trusted-validation@1"
+                and wait.get("request") == request_ref, "reported original wait differs")
+            sdk_identity = _declared_validation_identity(wait.get("runner_identity"))
+        if "runner-execution-observation.json" in files:
+            execution, execution_ref = files["runner-execution-observation.json"]
+            _declared_validation_need(execution.get("schema") == "agent-supervisor/v5-runner-execution-observation@1"
+                and execution.get("request") == request_ref, "reported execution observation differs")
+            if sdk_identity is not None:
+                _declared_validation_need(_declared_validation_identity(execution.get("runner_identity")) == sdk_identity
+                    and wait.get("execution_observation") == execution_ref, "reported SDK generation/wait differs")
+        phases = []
+        for name, schema, phase in (("source-custody-unknown.json", "agent-supervisor/v5-validation-source-custody-unknown@1", "custody_unknown_reported"),
+                ("failed-operational-source-closeout.json", "agent-supervisor/v5-validation-failed-operational-source-closeout@1", "failed_verification_reported"),
+                ("source-custody-late-close.json", "agent-supervisor/v5-validation-late-source-close@1", "late_source_close_reported"),
+                ("parent-source-closeout.json", "agent-supervisor/v5-validation-parent-source-closeout@2", "parent_source_closeout_reported")):
+            if name not in files:
+                continue
+            marker, _ = files[name]
+            _declared_validation_need(marker.get("schema") == schema and marker.get("request") == request_ref,
+                                      "reported custody phase/request differs")
+            if name != "source-custody-unknown.json":
+                _declared_validation_need(wait_ref is not None, "reported closeout has no original wait")
+            if name != "source-custody-late-close.json":
+                _declared_validation_need(marker.get("original_wait") == wait_ref,
+                                          "reported custody phase/wait differs")
+            if name == "source-custody-unknown.json" and sdk_identity is not None:
+                _declared_validation_need(_declared_validation_identity(marker.get("original_owner_identity"))
+                    == sdk_identity, "reported UNKNOWN SDK generation differs")
+            if name == "parent-source-closeout.json":
+                custody = marker.get("parent_source_custody", {})
+                _declared_validation_need(type(custody) is dict
+                    and custody.get("schema") == "agent-supervisor/v5-validation-parent-source-custody@2"
+                    and custody.get("source_closed") is True and custody.get("native_closed") is True,
+                    "reported parent closeout is incomplete")
+            if name == "failed-operational-source-closeout.json":
+                _declared_validation_need(marker.get("source_closed") is True and marker.get("native_closed") is True
+                    and all(marker.get(key) is False for key in ("validation_accepted", "parent_handle_issued",
+                        "retry_authorized", "storage_release_authorized")), "failed closeout claims another authority")
+            phases.append(phase)
+        phase = phases[0] if len(phases) == 1 else "conflicting_reports" if phases else "no_terminal_report"
+        if caller_binding is not None and result["caller_state"] == "same_generation":
+            try:
+                _PROCESS_OWNER.require_exact_process(caller_binding)
+            except (OSError, ValueError, _PROCESS_OWNER.GracefulRecoveryUnverified) as error:
+                result["caller_state"] = "changed_or_unobservable"
+                result["caller_observation_error"] = (type(error).__name__ + ": " + str(error))[:256]
+        _declared_validation_need(time.monotonic() < budget["deadline"], "observation deadline exhausted")
+        # A caller can stall before producing metadata or after Source closure.
+        # This is a reported-start observation window, never a resource deadline.
+        elapsed = time.monotonic() - started
+        _declared_validation_need(elapsed >= 0, "registered monotonic clock moved backwards")
+        overdue = elapsed >= runtime_limit if result["caller_state"] == "same_generation" else None
+        result.update(reported_started_at_monotonic=started, caller_elapsed_seconds=elapsed,
+            max_caller_runtime_seconds=runtime_limit, caller_overdue=overdue,
+            caller_runtime_limit_scope="observation_only_not_resource_deadline")
+        attention = phase != "parent_source_closeout_reported" or result["caller_state"] in ("generation_mismatch", "changed_or_unobservable", "gone_or_unobservable")
+        result.update(available=True, reported_phase=phase, attention_required=attention,
+            status=phase if phases else "registered_running" if result["caller_state"] == "same_generation"
+                else "caller_gone_or_unmatched_unresolved", reported_operation_id=operation["operation_id"],
+            reported_invocation_directory=str(invocation), input_bytes_read=8 * 1024**2 - budget["bytes"])
+        if not phases and result["caller_state"] == "same_generation":
+            result["attention_required"] = False
+        if overdue:
+            result.update(status="registered_caller_overdue", attention_required=True)
+    except Exception as error:
+        result["error"] = (type(error).__name__ + ": " + str(error))[:512]
+    return result
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", required=True, type=Path)
