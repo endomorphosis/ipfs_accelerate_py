@@ -716,3 +716,336 @@ def test_active_owner_does_not_starve_real_repository_metadata_obligations(tmp_p
                 assert task["body"].get(flag) is not True
     finally:
         repo.close()
+
+
+# Scripted notifications only; the real repository retains resolution authority.
+class _EventRepo(_Repo):
+    def __init__(self, records, release=None):
+        super().__init__(records, release=release)
+        self.watermark = 0
+        self.event_error = None
+        self.event_reads = 0
+        self.read_sessions = []
+        self.in_readonly_session = False
+
+    def read_session(self, *, read_only=False):
+        from contextlib import contextmanager
+        @contextmanager
+        def session():
+            assert read_only is True and self.in_readonly_session is False
+            self.in_readonly_session = True
+            self.read_sessions.append("enter")
+            try:
+                yield self
+            finally:
+                self.read_sessions.append("exit")
+                self.in_readonly_session = False
+        return session()
+
+    def event_watermark(self):
+        assert self.in_readonly_session is True
+        self.event_reads += 1
+        if self.event_error is not None:
+            raise self.event_error
+        return self.watermark
+
+    def release_dependency_satisfied_blocks(self):
+        assert self.in_readonly_session is False
+        return super().release_dependency_satisfied_blocks()
+
+
+def _event_clock():
+    from unittest.mock import patch
+    return patch.object(time, "monotonic", return_value=1000.0)
+
+
+def _event_recheck_fence(report):
+    assert report["executor_start_allowed"] is False
+    assert report["set_ready"] is False
+    assert report["grant_admission"] is False
+
+
+def test_tick_rechecks_same_idle_frontier_after_repository_event():
+    from copy import deepcopy
+    repo = _EventRepo((_blocked("LAW-RETAINED-INPUT"),))
+    before = deepcopy(repo._records)
+    owner = BoardStallWatchdog()
+    with _event_clock():
+        first = owner.tick(repo, operator_hold_present=True)
+        assert first["action"] == "start_repair_subagent" and repo.release_calls == 2
+        repo.watermark += 1
+        repo._release = {"completed": [{"task_alias": "LAW-RETAINED-INPUT"}], "spawned": []}
+        second = owner.tick(repo, operator_hold_present=True)
+    assert second["action"] == "progressed"
+    assert second["release"]["completed"] == ["LAW-RETAINED-INPUT"]
+    assert repo.release_calls == 3 and repo._records == before
+    assert second["preserve_operator_hold"] is True
+    _event_recheck_fence(second)
+
+
+def test_serve_rechecks_same_readonly_frontier_after_repository_event():
+    repo = _EventRepo((_blocked("LAW-CACHE-REFERENCE"),))
+    owner = BoardStallWatchdog()
+    observation = observe_tasks(repo._records, operator_hold_present=False)
+    with _event_clock():
+        owner.tick(repo, operator_hold_present=False)
+        assert repo.release_calls == 2
+        repo.watermark += 1
+        repo._release = {"completed": [], "spawned": [{"task_alias": "LAW-CACHE-REFERENCE--verify"}]}
+        second = serve(repo, watchdog=owner, once=True, readonly_observe=lambda: observation)
+    assert second["action"] == "progressed"
+    assert second["release"]["spawned"] == ["LAW-CACHE-REFERENCE--verify"]
+    assert repo.release_calls == 3
+    _event_recheck_fence(second)
+
+
+def test_event_change_refreshes_metadata_but_never_rearms_repair_budget():
+    from copy import deepcopy
+    repo = _EventRepo((_blocked("LAW-RUNTIME-HOLD"),), release={
+        "completed": [], "spawned": [], "held": [{"decision": "runtime_authority_hold"}]})
+    repo._records[0].update({"operator_hold": True, "budget_exhausted": True,
+        "retry_budget": 0, "source_lease_id": "fictional-retained-source"})
+    before = deepcopy(repo._records)
+    repairs = []
+    def repair(target, spec):
+        repairs.append(dict(spec))
+        return resolution_repair_subagent(target, spec)
+    owner = BoardStallWatchdog()
+    with _event_clock():
+        owner.tick(repo, operator_hold_present=True, spawn_repair=repair)
+        signatures = set(owner._idle_signatures)
+        unchanged = owner.tick(repo, operator_hold_present=True, spawn_repair=repair)
+        served = serve(repo, watchdog=owner, once=True,
+            readonly_observe=lambda: observe_tasks(repo._records, operator_hold_present=True))
+        assert unchanged["action"] == served["action"] == "stall_recorded"
+        assert repo.release_calls == 2 and len(repairs) == 1
+        repo.watermark += 1
+        second = owner.tick(repo, operator_hold_present=True, spawn_repair=repair)
+        third = owner.tick(repo, operator_hold_present=True, spawn_repair=repair)
+    assert second["action"] == third["action"] == "stall_recorded"
+    assert repo.release_calls == 3 and len(repairs) == 1
+    assert owner._idle_signatures == signatures and repo._records == before
+    assert second["preserve_operator_hold"] is True
+    _event_recheck_fence(second)
+
+
+def test_event_arriving_during_repair_is_not_marked_already_checked():
+    repo = _EventRepo((_blocked("LAW-RACED-EVIDENCE"),))
+    owner = BoardStallWatchdog()
+    def repair(_target, _spec):
+        repo.watermark += 1
+        repo._release = {"completed": [{"task_alias": "LAW-RACED-EVIDENCE"}], "spawned": []}
+        return {"set_ready": False, "completed": [], "spawned": []}
+    with _event_clock():
+        owner.tick(repo, operator_hold_present=True, spawn_repair=repair)
+        assert repo.release_calls == 1
+        second = owner.tick(repo, operator_hold_present=True, spawn_repair=repair)
+    assert second["action"] == "progressed" and repo.release_calls == 2
+    _event_recheck_fence(second)
+
+
+def test_unknown_event_observations_keep_the_legacy_cooldown():
+    for unknown in (None, True, -1, "new", RuntimeError("fictional observation failure")):
+        repo = _EventRepo((_blocked("LAW-UNKNOWN-EVENT"),))
+        owner = BoardStallWatchdog()
+        with _event_clock():
+            owner.tick(repo, operator_hold_present=True)
+            if isinstance(unknown, Exception):
+                repo.event_error = unknown
+            else:
+                repo.watermark = unknown
+            second = owner.tick(repo, operator_hold_present=True)
+        assert second["action"] == "stall_recorded" and repo.release_calls == 2
+        assert repo.in_readonly_session is False
+        _event_recheck_fence(second)
+
+
+def test_active_frontier_does_not_read_or_spend_an_idle_event_observation():
+    repo = _EventRepo(_active_and_blocked_repo()._records)
+    repo.event_error = AssertionError("active work must not observe the idle cache")
+    owner = BoardStallWatchdog()
+    with _event_clock():
+        report = owner.tick(repo, operator_hold_present=True, spawn_repair=_forbid_active_repair)
+    assert report["action"] == "continue" and repo.release_calls == 1
+    assert repo.event_reads == 0 and repo.read_sessions == []
+    assert owner._idle_signatures == set() and owner._idle_checked_at == {}
+    _event_recheck_fence(report)
+
+
+def test_repository_event_readonly_scope_exits_before_resolution():
+    repo = _EventRepo((_blocked("LAW-READ-ONLY"),))
+    with _event_clock():
+        report = BoardStallWatchdog().tick(repo, operator_hold_present=True)
+    assert repo.event_reads == 1 and repo.read_sessions == ["enter", "exit"]
+    assert repo.in_readonly_session is False and repo.release_calls == 2
+    _event_recheck_fence(report)
+
+
+def test_idle_event_cache_does_not_cross_repository_instances():
+    first = _EventRepo((_blocked("LAW-SAME-ALIAS"),))
+    second = _EventRepo((_blocked("LAW-SAME-ALIAS"),), release={
+        "completed": [{"task_alias": "LAW-SAME-ALIAS"}], "spawned": []})
+    owner = BoardStallWatchdog()
+    with _event_clock():
+        owner.tick(first, operator_hold_present=True)
+        report = owner.tick(second, operator_hold_present=True)
+    assert first.release_calls == 2 and second.release_calls == 1
+    assert report["action"] == "progressed"
+    _event_recheck_fence(report)
+
+
+class _ScriptedEventRepo(_EventRepo):
+    def __init__(self, records, release=None):
+        super().__init__(records, release=release)
+        self.event_script = []
+        self.fail_close = False
+
+    def read_session(self, *, read_only=False):
+        from contextlib import contextmanager
+        parent = super().read_session(read_only=read_only)
+        @contextmanager
+        def session():
+            with parent:
+                yield self
+            if self.fail_close:
+                self.fail_close = False
+                raise RuntimeError("fictional readonly close failure")
+        return session()
+
+    def event_watermark(self):
+        if not self.event_script:
+            return super().event_watermark()
+        assert self.in_readonly_session is True
+        self.event_reads += 1
+        item = self.event_script.pop(0)
+        if item == "read-error":
+            raise RuntimeError("fictional readonly observation failure")
+        if item == "close-error":
+            self.fail_close = True
+            return self.watermark
+        return item
+
+
+def _serve_with_disagreeing_event_observations(failure):
+    repo = _ScriptedEventRepo((_blocked("LAW-DELIVERED-EVIDENCE"),))
+    owner = BoardStallWatchdog()
+    with _event_clock():
+        owner.tick(repo, operator_hold_present=False)
+        assert repo.release_calls == 2
+        repo.watermark = 1
+        repo._release = {"completed": [{"task_alias": "LAW-DELIVERED-EVIDENCE"}], "spawned": []}
+        repo.event_script = [1, failure]
+        report = serve(repo, watchdog=owner, once=True,
+            readonly_observe=lambda: observe_tasks(repo._records, operator_hold_present=False))
+    assert report["action"] == "progressed"
+    assert repo.release_calls == 3 and repo.event_script == []
+    assert repo.in_readonly_session is False
+    _event_recheck_fence(report)
+
+
+def test_serve_keeps_a_known_event_when_the_second_read_fails():
+    _serve_with_disagreeing_event_observations("read-error")
+
+
+def test_serve_keeps_a_known_event_when_the_second_close_fails():
+    _serve_with_disagreeing_event_observations("close-error")
+
+
+def test_failed_readonly_close_does_not_learn_a_new_event_marker():
+    repo = _ScriptedEventRepo((_blocked("LAW-CLOSE-FAILURE"),))
+    owner = BoardStallWatchdog()
+    with _event_clock():
+        owner.tick(repo, operator_hold_present=True)
+        repo.watermark = 1
+        repo._release = {"completed": [{"task_alias": "LAW-CLOSE-FAILURE"}], "spawned": []}
+        repo.event_script = ["close-error"]
+        failed = owner.tick(repo, operator_hold_present=True)
+        assert failed["action"] == "stall_recorded" and repo.release_calls == 2
+        assert repo.in_readonly_session is False
+        retry = owner.tick(repo, operator_hold_present=True)
+    assert retry["action"] == "progressed" and repo.release_calls == 3
+    _event_recheck_fence(retry)
+
+
+def test_first_known_event_refreshes_once_without_rearming_repair():
+    repo = _EventRepo((_blocked("LAW-FIRST-OBSERVATION"),))
+    repo.watermark = None
+    owner = BoardStallWatchdog()
+    with _event_clock():
+        owner.tick(repo, operator_hold_present=True)
+        signatures = set(owner._idle_signatures)
+        repo.watermark = 0
+        second = owner.tick(repo, operator_hold_present=True)
+        third = owner.tick(repo, operator_hold_present=True)
+    assert second["action"] == third["action"] == "stall_recorded"
+    assert repo.release_calls == 3 and owner._idle_signatures == signatures
+    _event_recheck_fence(second)
+
+
+def test_periodic_fallback_rechecks_even_without_a_new_event():
+    from unittest.mock import patch
+    for repository in (_Repo, _EventRepo):
+        repo = repository((_blocked("LAW-PERIODIC-FALLBACK"),))
+        owner = BoardStallWatchdog()
+        now = [1000.0]
+        with patch.object(time, "monotonic", side_effect=lambda: now[0]):
+            owner.tick(repo, operator_hold_present=True)
+            signatures = set(owner._idle_signatures)
+            assert repo.release_calls == 2
+            now[0] += 121.0
+            second = owner.tick(repo, operator_hold_present=True)
+            third = owner.tick(repo, operator_hold_present=True)
+        assert second["action"] == third["action"] == "stall_recorded"
+        assert repo.release_calls == 3 and owner._idle_signatures == signatures
+        _event_recheck_fence(second)
+
+
+class _EventResolverFailureRepo(_EventRepo):
+    resolution_error = None
+    def release_dependency_satisfied_blocks(self):
+        if self.resolution_error is not None:
+            assert self.in_readonly_session is False
+            self.release_calls += 1
+            raise self.resolution_error
+        return super().release_dependency_satisfied_blocks()
+
+
+def test_event_resolution_failure_keeps_the_attempt_cooldown_spent():
+    repo = _EventResolverFailureRepo((_blocked("LAW-RESOLUTION-FAILURE"),))
+    owner = BoardStallWatchdog()
+    with _event_clock():
+        owner.tick(repo, operator_hold_present=True)
+        signatures = set(owner._idle_signatures)
+        repo.watermark = 1
+        repo.resolution_error = ValueError("fictional metadata failure")
+        failed = owner.tick(repo, operator_hold_present=True)
+        assert failed["action"] == "release_failed" and failed["error"] == "ValueError"
+        assert repo.release_calls == 3
+        repeated = owner.tick(repo, operator_hold_present=True)
+        repo.watermark = None
+        unknown = owner.tick(repo, operator_hold_present=True)
+    assert repeated["action"] == unknown["action"] == "stall_recorded"
+    assert repo.release_calls == 3 and owner._idle_signatures == signatures
+    _event_recheck_fence(failed)
+    _event_recheck_fence(repeated)
+
+
+def test_event_lock_failure_preserves_identity_and_attempt_cooldown():
+    repo = _EventResolverFailureRepo((_blocked("LAW-LOCK-FAILURE"),))
+    owner = BoardStallWatchdog()
+    error = RuntimeError("database is locked")
+    with _event_clock():
+        owner.tick(repo, operator_hold_present=True)
+        signatures = set(owner._idle_signatures)
+        repo.watermark = 1
+        repo.resolution_error = error
+        try:
+            owner.tick(repo, operator_hold_present=True)
+        except RuntimeError as caught:
+            assert caught is error
+        else:
+            raise AssertionError("the existing lock exception must propagate unchanged")
+        repeated = owner.tick(repo, operator_hold_present=True)
+    assert repeated["action"] == "stall_recorded"
+    assert repo.release_calls == 3 and owner._idle_signatures == signatures
+    _event_recheck_fence(repeated)

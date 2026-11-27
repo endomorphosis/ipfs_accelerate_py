@@ -262,12 +262,31 @@ def observe_catalogue_readonly(
     return observe_tasks(records, operator_hold_present=operator_hold_present)
 
 
+def _dependency_event_watermark(repo: Any) -> int | None:
+    """Observe a cache hint through the existing physical read-only owner.
+
+    Unknown or unavailable observations preserve the normal idle cooldown.
+    This value never supplies task revision, admission or custody authority.
+    """
+    reader = getattr(repo, "event_watermark", None)
+    session = getattr(repo, "read_session", None)
+    if not callable(reader) or not callable(session):
+        return None
+    try:
+        with session(read_only=True):
+            value = reader()
+    except Exception:
+        return None
+    return value if type(value) is int and value >= 0 else None
+
+
 class BoardStallWatchdog:
     """One in-process supervisor loop for a blocked, stalled, or idle board."""
 
     def __init__(self) -> None:
         self._idle_signatures: set[str] = set()
         self._idle_checked_at: dict[str, float] = {}
+        self._idle_event_watermarks: dict[str, tuple[Any, int]] = {}
 
     def idle_recorded(self, signature: str) -> bool:
         # Recheck dependency evidence after one normal 120-second interval.
@@ -275,6 +294,16 @@ class BoardStallWatchdog:
         # launch another repair callback merely because its check expired.
         return (signature in self._idle_signatures
                 and time.monotonic() - self._idle_checked_at.get(signature, float("-inf")) < 120.0)
+
+    def _observe_dependency_event(self, signature: str, repo: Any, watermark: int | None) -> None:
+        if type(watermark) is not int or watermark < 0:
+            return
+        previous = self._idle_event_watermarks.get(signature)
+        if previous is None or previous[0] is not repo or previous[1] != watermark:
+            # Retain the notification before a possible second observation.
+            # Invalidate only metadata freshness, never the repair latch.
+            self._idle_event_watermarks[signature] = (repo, watermark)
+            self._idle_checked_at.pop(signature, None)
 
     def tick(
         self,
@@ -295,6 +324,11 @@ class BoardStallWatchdog:
             return decide_board_stall(observation)
         signature = str(observation["signature"])
         repair_already_requested = signature in self._idle_signatures
+        # Sample before resolution: a notification racing with the resolver
+        # remains new on the next tick rather than being swallowed afterward.
+        event_watermark = _dependency_event_watermark(repo) if not active_work else None
+        if not active_work:
+            self._observe_dependency_event(signature, repo, event_watermark)
         if not active_work and self.idle_recorded(signature):
             decision = decide_board_stall(
                 observation,
@@ -303,6 +337,10 @@ class BoardStallWatchdog:
             )
             decision["signature"] = signature
             return decision
+        if not active_work and repair_already_requested:
+            # Reserve this metadata attempt before the resolver can fail.
+            # Neither an exception nor an unknown observation refunds it.
+            self._idle_checked_at[signature] = time.monotonic()
         try:
             release_result = repo.release_dependency_satisfied_blocks()
         except Exception as exc:
@@ -339,12 +377,17 @@ class BoardStallWatchdog:
         if decision["action"] != "start_repair_subagent":
             if decision["action"] == "stall_recorded":
                 self._idle_checked_at[signature] = time.monotonic()
+                if event_watermark is not None:
+                    self._idle_event_watermarks[signature] = (repo, event_watermark)
             elif decision["action"] == "progressed":
                 self._idle_signatures.discard(signature)
                 self._idle_checked_at.pop(signature, None)
+                self._idle_event_watermarks.pop(signature, None)
             return decision
         self._idle_signatures.add(signature)
         self._idle_checked_at[signature] = time.monotonic()
+        if event_watermark is not None:
+            self._idle_event_watermarks[signature] = (repo, event_watermark)
         repair = spawn_repair or resolution_repair_subagent
         report = repair(repo, decision["repair_spec"])
         decision["repair_report"] = dict(report)
@@ -355,6 +398,7 @@ class BoardStallWatchdog:
         if report.get("spawned") or report.get("completed"):
             self._idle_signatures.discard(signature)
             self._idle_checked_at.pop(signature, None)
+            self._idle_event_watermarks.pop(signature, None)
         return decision
 
 
@@ -453,6 +497,11 @@ def serve(
             if readonly_observe is not None:
                 observation = readonly_observe()
                 signature = str(observation.get("signature") or "")
+                if (int(observation.get("active_count") or 0) == 0
+                        and owner.idle_recorded(signature)):
+                    owner._observe_dependency_event(
+                        signature, repo, _dependency_event_watermark(repo),
+                    )
                 if (int(observation.get("active_count") or 0) == 0
                         and owner.idle_recorded(signature)):
                     report = _stall_recorded(
