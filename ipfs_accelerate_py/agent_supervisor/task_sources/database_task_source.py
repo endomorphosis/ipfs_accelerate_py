@@ -37,6 +37,7 @@ from typing import Any, ClassVar, Final
 from .control_plane_contracts import content_identity
 from .control_plane_migrations import duckdb_available
 from .duckdb_state import (
+    QUACK_OWNER_COMMAND_COORDINATE_OWNER_INPUT,
     QUACK_OWNER_COMMAND_COMPARE_AND_SET_GOAL_STATUS,
     QUACK_OWNER_COMMAND_COMPARE_AND_SET_STATUS,
     QUACK_OWNER_COMMAND_REARM_BLOCKED_TASK,
@@ -70,6 +71,8 @@ from .intent_repository import (
     IntentRepositoryIntegrityError,
     IntentRepositoryTransitionError,
     IntentRepositoryUnknownOutcomeError,
+    OWNER_INPUT_OBSERVATION_KIND,
+    OWNER_INPUT_WAIT_KIND,
     PlanRevisionRepository,
     QueueEntry,
     open_intent_repository,
@@ -2597,6 +2600,10 @@ def execute_quack_owner_command(
             )
         elif command == QUACK_OWNER_COMMAND_RECORD_QUEUE_RETRY:
             receipt = source.record_queue_retry(task_cid=args["task_cid"])
+        elif command == QUACK_OWNER_COMMAND_COORDINATE_OWNER_INPUT:
+            receipt = source._coordinate_owner_input(
+                task_cid=args["task_cid"], evidence_kind=args["evidence_kind"], body=args["body"],
+            )
         elif command == QUACK_OWNER_COMMAND_RECORD_EVIDENCE:
             receipt = source.record_evidence(
                 task_cid=args["task_cid"],
@@ -5130,6 +5137,66 @@ class DatabaseTaskSource:
         except BaseException:
             connection.execute("ROLLBACK")
             raise
+
+    def request_owner_input(
+        self, *, task_cid: str, owner_id: str, input_key: str,
+        missing_fields: Sequence[str], observed_input_digest: str,
+        expected_revision: int,
+    ) -> IntentReceipt:
+        """Persist a precise addressed wait via the existing typed state owner.
+
+        Exact repeated waits are no-ops. This is a coordination request, not
+        permission to execute the task or evidence that its inputs are valid.
+        """
+        if not isinstance(missing_fields, (tuple, list)):
+            raise TaskSourceBoundsError("missing_fields must be a bounded list or tuple")
+        body = {"owner_id": owner_id, "input_key": input_key,
+                "missing_fields": list(missing_fields),
+                "observed_input_digest": observed_input_digest,
+                "expected_revision": expected_revision}
+        return self._coordinate_owner_input(
+            task_cid=task_cid, evidence_kind=OWNER_INPUT_WAIT_KIND,
+            body=body,
+        )
+
+    def observe_owner_input(
+        self, *, task_cid: str, request_id: str, owner_id: str,
+        observed_input_digest: str, observation_evidence_id: str,
+    ) -> IntentReceipt:
+        """Notify the responsible owner when a current bound input changes.
+
+        The evidence must already belong to this task, owner, input key and
+        authority specification. The task stays blocked for normal validation.
+        """
+        body = {"request_id": request_id, "owner_id": owner_id,
+                "observed_input_digest": observed_input_digest,
+                "observation_evidence_id": observation_evidence_id}
+        return self._coordinate_owner_input(
+            task_cid=task_cid, evidence_kind=OWNER_INPUT_OBSERVATION_KIND,
+            body=body,
+        )
+
+    def _coordinate_owner_input(
+        self, *, task_cid: str, evidence_kind: str, body: Mapping[str, Any],
+    ) -> IntentReceipt:
+        if self._intent.uses_quack_transport:
+            try:
+                result = submit_quack_owner_command(
+                    QUACK_OWNER_COMMAND_COORDINATE_OWNER_INPUT,
+                    {"task_cid": task_cid, "evidence_kind": evidence_kind, "body": dict(body)},
+                )
+            except QuackOwnerCommandRemoteError as exc:
+                _raise_typed_owner_error(exc)
+            return _intent_receipt_from_dict(result)
+        return self._intent._record_owner_input(task_cid, evidence_kind, body)
+
+    def owner_input_handoffs(
+        self, *, owner_id: str, limit: int = DEFAULT_QUERY_LIMIT, after_event_cursor: int = 0,
+    ) -> tuple[Mapping[str, Any], ...]:
+        """Read the existing owner's persistent input handoffs after restart."""
+        return self._intent.owner_input_handoffs(
+            owner_id=owner_id, limit=limit, after_event_cursor=after_event_cursor,
+        )
 
     def record_evidence(
         self,

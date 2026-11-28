@@ -191,6 +191,7 @@ QUACK_OWNER_COMMAND_RECORD_QUEUE_BACKOFF_AND_CAS_STATUS = (
 )
 QUACK_OWNER_COMMAND_RECORD_QUEUE_RETRY = "record_queue_retry"
 QUACK_OWNER_COMMAND_RECORD_EVIDENCE = "record_evidence"
+QUACK_OWNER_COMMAND_COORDINATE_OWNER_INPUT = "coordinate_owner_input_v1"
 QUACK_OWNER_COMMAND_RECORD_VALIDATION_RESULT = "record_validation_result"
 QUACK_OWNER_COMMAND_STAGE_METADATA_PREREQUISITE = "stage_metadata_prerequisite"
 QUACK_OWNER_COMMANDS = frozenset(
@@ -204,6 +205,7 @@ QUACK_OWNER_COMMANDS = frozenset(
         QUACK_OWNER_COMMAND_RECORD_QUEUE_BACKOFF_AND_CAS_STATUS,
         QUACK_OWNER_COMMAND_RECORD_QUEUE_RETRY,
         QUACK_OWNER_COMMAND_RECORD_EVIDENCE,
+        QUACK_OWNER_COMMAND_COORDINATE_OWNER_INPUT,
         QUACK_OWNER_COMMAND_RECORD_VALIDATION_RESULT,
         QUACK_OWNER_COMMAND_STAGE_METADATA_PREREQUISITE,
     }
@@ -220,6 +222,9 @@ _GRANT_BROKER_SOCKET_ENV = "IPFS_ACCELERATE_AGENT_STATE_GRANT_BROKER_SOCKET"
 _GRANT_BROKER_SECRET_FD_ENV = "IPFS_ACCELERATE_AGENT_STATE_GRANT_BROKER_SECRET_FD"
 
 _QUACK_OWNER_COMMAND_FIELDS: dict[str, tuple[frozenset[str], frozenset[str]]] = {
+    QUACK_OWNER_COMMAND_COORDINATE_OWNER_INPUT: (
+        frozenset({"task_cid", "evidence_kind", "body"}), frozenset(),
+    ),
     QUACK_OWNER_COMMAND_STAGE_METADATA_PREREQUISITE: (
         frozenset({
             "parent_task_cid", "expected_parent_revision", "expected_parent_spec_cid",
@@ -391,6 +396,11 @@ def validate_quack_owner_command(
             f"quack owner command {command!r} fields do not match its closed schema"
         )
     copied = dict(payload)
+    if command == QUACK_OWNER_COMMAND_COORDINATE_OWNER_INPUT:
+        if (not isinstance(copied["evidence_kind"], str)
+                or copied["evidence_kind"] not in {"owner_input_wait_v1", "owner_input_observation_v1"}
+                or not isinstance(copied["body"], Mapping)):
+            raise DuckDBConnectionPolicyError("owner-input command requires a closed kind and body")
     if command == QUACK_OWNER_COMMAND_STAGE_METADATA_PREREQUISITE:
         _validate_staged_metadata_prerequisite(copied)
     text_fields = {

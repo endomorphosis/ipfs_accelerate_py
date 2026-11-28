@@ -15000,6 +15000,7 @@ DATABASE_TASK_COMMAND_GRANT_TTL_SECONDS: Final = 60.0
 
 DATABASE_TASK_COMMANDS: Final[frozenset[str]] = frozenset(
     {
+        "coordinate_owner_input_v1",
         "compare_and_set_status",
         "compare_and_set_goal_status",
         "rearm_blocked_task",

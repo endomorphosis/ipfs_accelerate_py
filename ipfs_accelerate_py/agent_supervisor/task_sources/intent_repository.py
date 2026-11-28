@@ -106,6 +106,8 @@ MAX_VALIDATIONS: Final[int] = 256
 MAX_OUTPUTS: Final[int] = 256
 MAX_DEPENDENCIES: Final[int] = 1_024
 MAX_EVIDENCE: Final[int] = 4_096
+OWNER_INPUT_WAIT_KIND: Final[str] = "owner_input_wait_v1"
+OWNER_INPUT_OBSERVATION_KIND: Final[str] = "owner_input_observation_v1"
 MAX_TASK_PROJECTION_BYTES: Final[int] = 1_048_576
 MAX_PROJECTION_RECORDS: Final[int] = 10_000
 MAX_PLAN_PROJECTION_BYTES: Final[int] = 16_777_216
@@ -4763,6 +4765,8 @@ class IntentRepository:
         kind = _identifier(evidence_kind, noun="evidence_kind")
         digest_text = _identifier(digest, noun="digest")
         body_map = _mapping(body, noun="evidence body")
+        if kind in {OWNER_INPUT_WAIT_KIND, OWNER_INPUT_OBSERVATION_KIND}:
+            raise IntentRepositoryIntegrityError("owner-input evidence requires its dedicated owner command")
         eid = (
             _identifier(evidence_id, noun="evidence_id")
             if evidence_id
@@ -4828,6 +4832,201 @@ class IntentRepository:
             )
 
         return _mirror_intent_evidence(receipt, kind)
+
+    def _owner_input_event_on(
+        self, connection: Any, *, task_cid: str, request_id: str,
+        observation: bool = False,
+    ) -> IntentReceipt | None:
+        """Read the latest committed handoff, including its durable event cursor."""
+        row = connection.execute(
+            "SELECT event_id, global_sequence, recorded_at, body_json FROM domain_events "
+            "WHERE task_cid=? AND event_type=? "
+            "AND json_extract_string(body_json, '$.body.request_id')=? "
+            "AND json_extract_string(body_json, '$.body.evidence_kind')=? "
+            "ORDER BY global_sequence DESC LIMIT 1",
+            [task_cid, IntentEventType.EVIDENCE_RECORDED.value, request_id,
+             OWNER_INPUT_OBSERVATION_KIND if observation else OWNER_INPUT_WAIT_KIND],
+        ).fetchone()
+        if row is None:
+            return None
+        payload = _decode_json(row[3], noun="owner-input event")["body"]
+        return IntentReceipt(
+            event_id=str(row[0]), event_type=IntentEventType.EVIDENCE_RECORDED.value,
+            global_sequence=int(row[1]), recorded_at=str(row[2]),
+            subject_id=str(payload["evidence_id"]), revision=int(payload["revision"]),
+            changed=False, details=MappingProxyType(payload),
+        )
+
+    def _record_owner_input(
+        self, task_cid: str, kind: str, body: Mapping[str, Any],
+    ) -> IntentReceipt:
+        """Coordinate candidate inputs through the existing evidence owner only.
+
+        A changed input requests reconsideration; it never clears a block,
+        schedules a worker, or establishes legal/model/resource authority.
+        """
+        task_cid = _identifier(task_cid, noun="task_cid")
+        if kind not in {OWNER_INPUT_WAIT_KIND, OWNER_INPUT_OBSERVATION_KIND}:
+            raise IntentRepositoryIntegrityError("unknown owner-input evidence kind")
+        body = _mapping(body, noun="owner-input body")
+        _canonical(body, noun="owner-input body")
+        owner = _identifier(body.get("owner_id"), noun="owner_id")
+        digest = body.get("observed_input_digest")
+        if (not isinstance(digest, str) or len(digest) != 71
+                or not digest.startswith("sha256:")
+                or any(char not in "0123456789abcdef" for char in digest[7:])):
+            raise IntentRepositoryIntegrityError("observed_input_digest must be a canonical SHA256 digest")
+        waiting = kind == OWNER_INPUT_WAIT_KIND
+        fields = {"owner_id", "observed_input_digest"} | (
+            {"input_key", "missing_fields", "expected_revision"} if waiting else
+            {"request_id", "observation_evidence_id"}
+        )
+        if set(body) != fields:
+            raise IntentRepositoryIntegrityError("owner-input payload fields differ from its versioned contract")
+        if self.uses_quack_transport:
+            raise IntentRepositoryError("owner-input mutations require the typed evidence owner")
+        if self.uses_bound_connection and self._bound_connection.in_transaction is not True:
+            raise IntentRepositoryError("owner-input mutation requires an active owner transaction")
+        with self._connection(write=True) as connection:
+            bound = IntentRepository(
+                bound_connection=connection, owner_id=self.owner_id,
+                session_id=self.session_id, clock_ms=self._clock_ms,
+                evidence_freshness_seconds=self.evidence_freshness_seconds,
+            )
+            task = bound.get_task(task_cid)
+            if task is None:
+                raise KeyError(task_cid)
+            if task["status"] not in {*_READY_STATUSES, "blocked"}:
+                raise IntentRepositoryConflictError("owner-input coordination requires an idle task")
+            spec = task_authority_spec_cid(task)
+            if waiting:
+                key = _identifier(body["input_key"], noun="input_key")
+                missing = body["missing_fields"]
+                if (not isinstance(missing, (list, tuple)) or not 1 <= len(missing) <= 32
+                        or any(not isinstance(field, str) for field in missing)):
+                    raise IntentRepositoryBoundsError("missing_fields must contain 1 to 32 field identifiers")
+                missing = [_identifier(field, noun="missing field") for field in missing]
+                if len(set(missing)) != len(missing):
+                    raise IntentRepositoryIntegrityError("missing_fields contains duplicates")
+                expected = _positive_int(body["expected_revision"], noun="expected_revision")
+                stored = {**dict(body), "owner_id": owner, "input_key": key, "missing_fields": missing,
+                          "task_authority_spec_cid": spec}
+                identity = {name: value for name, value in stored.items() if name != "expected_revision"}
+                request = content_identity({"task_cid": task_cid, "owner_input_wait": identity})
+                previous = self._owner_input_event_on(connection, task_cid=task_cid, request_id=request)
+                active = connection.execute(
+                    "SELECT 1 FROM task_blocks WHERE task_cid=? AND blocker_kind='owner_input' "
+                    "AND blocker_id=? AND state='active'", [task_cid, request],
+                ).fetchone()
+                if previous is not None:
+                    if active is None or task["status"] != "blocked":
+                        raise IntentRepositoryConflictError("resolved owner-input request cannot be reopened by replay")
+                    return previous
+                if expected != task["revision"]:
+                    raise IntentRepositoryConflictError("task revision CAS is stale while requesting owner input")
+                block = bound.block_task(
+                    task_cid=task_cid, blocker_kind="owner_input", blocker_id=request,
+                    reason=f"{owner}: {key}: missing {', '.join(missing)}",
+                    expected_revision=expected,
+                )
+                eid, parent, revision = request, "", block.revision
+                reconsider = False
+            else:
+                request = _identifier(body["request_id"], noun="request_id")
+                original = self._owner_input_event_on(connection, task_cid=task_cid, request_id=request)
+                if original is None:
+                    raise IntentRepositoryConflictError("owner-input request does not belong to this task")
+                request_body = original.details["body"]
+                if request_body["owner_id"] != owner or request_body["task_authority_spec_cid"] != spec:
+                    raise IntentRepositoryConflictError("owner-input owner or task specification changed")
+                if task["status"] != "blocked" or connection.execute(
+                    "SELECT 1 FROM task_blocks WHERE task_cid=? AND blocker_kind='owner_input' "
+                    "AND blocker_id=? AND state='active'", [task_cid, request],
+                ).fetchone() is None:
+                    raise IntentRepositoryConflictError("owner-input request is no longer active")
+                evidence = _identifier(body["observation_evidence_id"], noun="observation_evidence_id")
+                candidates = {row["evidence_id"]: row for row in bound.current_evidence_for_task(task_cid)}
+                observed = candidates.get(evidence)
+                if (observed is None or observed["digest"] != digest
+                        or observed["evidence_kind"] in {OWNER_INPUT_WAIT_KIND, OWNER_INPUT_OBSERVATION_KIND}
+                        or observed["body"].get("task_authority_spec_cid") != spec
+                        or observed["body"].get("owner_id") != owner
+                        or observed["body"].get("input_key") != request_body["input_key"]):
+                    raise IntentRepositoryConflictError("owner-input observation needs current source-bound owner evidence")
+                created_ms = _parse_iso_ms(str(observed["created_at"]))
+                if created_ms <= 0 or created_ms > self._clock_ms():
+                    raise IntentRepositoryConflictError("owner-input observation timestamp is invalid or in the future")
+                previous = self._owner_input_event_on(
+                    connection, task_cid=task_cid, request_id=request, observation=True,
+                ) or original
+                if previous.details["body"]["observed_input_digest"] == digest:
+                    return previous
+                stored = {**dict(body), "owner_id": owner, "request_id": request,
+                          "observation_evidence_id": evidence}
+                eid = content_identity({"request_id": request, "previous_event_id": previous.event_id,
+                                        "observed_input_digest": digest})
+                parent, revision, reconsider = request, int(task["revision"]), True
+            count = connection.execute(
+                "SELECT COUNT(*) FROM evidence_nodes WHERE task_cid=?", [task_cid],
+            ).fetchone()
+            if int(count[0]) >= MAX_EVIDENCE:
+                raise IntentRepositoryBoundsError("evidence population exceeds bound")
+            now = _utc_iso()
+            stored_digest = content_identity(stored)
+            connection.execute(
+                "INSERT INTO evidence_nodes (evidence_id,parent_evidence_id,task_cid,evidence_kind,"
+                "digest,created_at,body_json) VALUES (?,?,?,?,?,?,?)",
+                [eid, parent, task_cid, kind, stored_digest, now, _canonical(stored, noun="owner-input body")],
+            )
+            return self._append_event(
+                connection, event_type=IntentEventType.EVIDENCE_RECORDED,
+                subject_id=eid, task_cid=task_cid,
+                body={"evidence_id": eid, "parent_evidence_id": parent, "task_cid": task_cid,
+                      "evidence_kind": kind, "digest": stored_digest, "body": stored,
+                      "created_at": now, "revision": revision, "request_id": request,
+                      "owner_id": owner, "reconsideration_requested": reconsider},
+            )
+
+    def owner_input_handoffs(
+        self, *, owner_id: str, limit: int = DEFAULT_PAGE_LIMIT, after_event_cursor: int = 0,
+    ) -> tuple[Mapping[str, Any], ...]:
+        """Bounded owner inbox view of active waits, not a second queue.
+
+        Consumers retain the returned domain-event cursor through their normal
+        owner loop. The legacy task_events watcher is a different event stream.
+        """
+        owner = _identifier(owner_id, noun="owner_id")
+        selected = _bounded_limit(limit)
+        after = _nonneg_int(after_event_cursor, noun="after_event_cursor")
+        with self._connection(write=False) as connection:
+            rows = connection.execute(
+                "WITH latest AS (SELECT json_extract_string(body_json,'$.body.request_id') request_id, "
+                "MAX(global_sequence) event_cursor FROM domain_events WHERE event_type=? "
+                "AND json_extract_string(body_json,'$.body.evidence_kind') IN (?,?) GROUP BY request_id) "
+                "SELECT DISTINCT n.task_cid,n.evidence_id,n.body_json,e.body_json,l.event_cursor "
+                "FROM evidence_nodes n "
+                "JOIN task_blocks b ON b.task_cid=n.task_cid AND b.blocker_id=n.evidence_id "
+                "JOIN latest l ON l.request_id=n.evidence_id "
+                "JOIN domain_events e ON e.global_sequence=l.event_cursor "
+                "WHERE n.evidence_kind=? AND b.blocker_kind='owner_input' AND b.state='active' "
+                "AND json_extract_string(n.body_json,'$.owner_id')=? AND l.event_cursor>? "
+                "ORDER BY l.event_cursor,n.evidence_id LIMIT ?",
+                [IntentEventType.EVIDENCE_RECORDED.value, OWNER_INPUT_WAIT_KIND,
+                 OWNER_INPUT_OBSERVATION_KIND, OWNER_INPUT_WAIT_KIND, owner, after, selected],
+            ).fetchall()
+            result = []
+            for row in rows:
+                request = _decode_json(row[2], noun="owner-input request")
+                latest = _decode_json(row[3], noun="owner-input event")["body"]
+                result.append(MappingProxyType({
+                    "request_id": str(row[1]), "task_cid": str(row[0]), "owner_id": owner,
+                    "input_key": request["input_key"], "missing_fields": tuple(request["missing_fields"]),
+                    "task_authority_spec_cid": request["task_authority_spec_cid"],
+                    "observed_input_digest": latest["body"]["observed_input_digest"],
+                    "reconsideration_requested": latest["reconsideration_requested"],
+                    "event_cursor": int(row[4]),
+                }))
+        return tuple(result)
 
     def record_validation_result(
         self,
@@ -5042,7 +5241,10 @@ class IntentRepository:
                 return True, ()
             return False, ("required:current_validation_evidence",)
 
-        current = self.current_evidence_for_task(task_cid, now_ms=now_ms)
+        current = tuple(
+            item for item in self.current_evidence_for_task(task_cid, now_ms=now_ms)
+            if item["evidence_kind"] not in {OWNER_INPUT_WAIT_KIND, OWNER_INPUT_OBSERVATION_KIND}
+        )
         digests = {
             str(item.get("digest") or "")
             for item in current
@@ -5699,6 +5901,8 @@ class IntentRepository:
         # DuckDBRow iterates column names (Mapping protocol); always index values.
         for row in evidence_rows:
             kind = str(row[0])
+            if kind in {OWNER_INPUT_WAIT_KIND, OWNER_INPUT_OBSERVATION_KIND}:
+                continue
             digest = str(row[1])
             if eligible_evidence_ids is not None and str(row[3]) not in eligible_evidence_ids:
                 continue
@@ -6034,7 +6238,7 @@ class IntentRepository:
         )
         with self._connection(write=True) as connection:
             task_row = connection.execute(
-                "SELECT revision FROM tasks WHERE task_cid = ?", [tcid]
+                "SELECT revision, status FROM tasks WHERE task_cid = ?", [tcid]
             ).fetchone()
             if task_row is None:
                 raise KeyError(tcid)
@@ -6044,6 +6248,24 @@ class IntentRepository:
                 and _positive_int(expected_revision, noun="expected_revision") != current_revision
             ):
                 raise IntentRepositoryConflictError("task revision CAS is stale while blocking")
+            if str(task_row[1]) not in {*_READY_STATUSES, "blocked"}:
+                raise IntentRepositoryConflictError("blocking requires an idle task")
+            existing = connection.execute(
+                "SELECT block_id FROM task_blocks WHERE task_cid=? AND blocker_kind=? "
+                "AND blocker_id=? AND reason=? AND state='active' ORDER BY block_id LIMIT 1",
+                [tcid, kind, bid, reason_text],
+            ).fetchone()
+            if existing is not None:
+                return IntentReceipt(
+                    event_id="", event_type=IntentEventType.TASK_BLOCKED.value,
+                    global_sequence=self._next_global_sequence(connection) - 1,
+                    recorded_at=now, subject_id=str(existing[0]), revision=current_revision,
+                    changed=False, details=MappingProxyType({
+                        "block_id": str(existing[0]), "task_cid": tcid,
+                        "blocker_kind": kind, "blocker_id": bid, "reason": reason_text,
+                        "revision": current_revision,
+                    }),
+                )
             connection.execute(
                 """
                 INSERT INTO task_blocks (
@@ -6101,8 +6323,15 @@ class IntentRepository:
                 and _positive_int(expected_revision, noun="expected_revision") != current_revision
             ):
                 raise IntentRepositoryConflictError("task revision CAS is stale while unblocking")
+            if str(task_row[1]) not in {*_READY_STATUSES, "blocked"}:
+                raise IntentRepositoryConflictError("unblocking requires an idle task")
             if block_id:
                 bid = _identifier(block_id, noun="block_id")
+                if connection.execute(
+                    "SELECT 1 FROM task_blocks WHERE block_id=? AND task_cid=? AND state='active'",
+                    [bid, tcid],
+                ).fetchone() is None:
+                    raise IntentRepositoryConflictError("named block is not active for this task")
                 connection.execute(
                     """
                     UPDATE task_blocks SET state = 'cleared', cleared_at = ?
@@ -6118,14 +6347,17 @@ class IntentRepository:
                     """,
                     [now, tcid],
                 )
+            status = "blocked" if connection.execute(
+                "SELECT 1 FROM task_blocks WHERE task_cid=? AND state='active' LIMIT 1", [tcid],
+            ).fetchone() is not None else "ready"
             revision = current_revision + 1
             updated = connection.execute(
                 """
-                UPDATE tasks SET status = 'ready', revision = ?, updated_at = ?
+                UPDATE tasks SET status = ?, revision = ?, updated_at = ?
                 WHERE task_cid = ? AND revision = ?
                 RETURNING revision
                 """,
-                [revision, now, tcid, current_revision],
+                [status, revision, now, tcid, current_revision],
             ).fetchone()
             if updated is None:
                 raise IntentRepositoryConflictError("task revision CAS changed while unblocking")
@@ -6137,6 +6369,7 @@ class IntentRepository:
                 body={
                     "task_cid": tcid,
                     "block_id": block_id or "",
+                    "status": status,
                     "revision": revision,
                     "cleared_at": now,
                 },
@@ -7290,10 +7523,10 @@ class IntentRepository:
                 )
             connection.execute(
                 """
-                UPDATE tasks SET status = 'ready', revision = ?, updated_at = ?
+                UPDATE tasks SET status = ?, revision = ?, updated_at = ?
                 WHERE task_cid = ?
                 """,
-                [int(payload.get("revision") or 1), cleared_at, tcid],
+                [str(payload.get("status") or "ready"), int(payload.get("revision") or 1), cleared_at, tcid],
             )
             return
 
@@ -10973,6 +11206,8 @@ def missing_current_evidence_on(
     # DuckDBRow iterates column names (Mapping protocol); always index values.
     for row in evidence_rows:
         kind = str(row[0])
+        if kind in {OWNER_INPUT_WAIT_KIND, OWNER_INPUT_OBSERVATION_KIND}:
+            continue
         digest = str(row[1])
         created_at = str(row[2] or "")
         created_ms = _parse_iso_ms(created_at)

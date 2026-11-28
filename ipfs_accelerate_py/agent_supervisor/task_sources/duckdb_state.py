@@ -2129,6 +2129,7 @@ def rebuild_task_status_indexes(connection: Any) -> list[str]:
 
 
 from .quack_owner_command import (  # noqa: E402
+    QUACK_OWNER_COMMAND_COORDINATE_OWNER_INPUT,
     FALSE_TERMINAL_BLOCKED_REASON_MARKERS,
     QUACK_OWNER_COMMAND_COMPARE_AND_SET_GOAL_STATUS,
     QUACK_OWNER_COMMAND_COMPARE_AND_SET_STATUS,
