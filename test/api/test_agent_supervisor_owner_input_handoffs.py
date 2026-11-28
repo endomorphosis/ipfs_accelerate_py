@@ -245,6 +245,45 @@ def test_current_input_deduplicates_but_a_to_b_to_a_notifies_each_change(handoff
     assert _state(handoffs) == before
 
 
+def test_changed_owner_input_evidence_must_be_recorded_after_the_request(handoffs):
+    earlier = _evidence(handoffs)
+    request = _request(handoffs)
+    assert earlier.global_sequence < request.global_sequence
+    assert earlier.recorded_at == request.recorded_at
+    before = _state(handoffs)
+
+    with pytest.raises(IntentRepositoryConflictError):
+        _observe(handoffs, request, earlier)
+
+    assert _state(handoffs) == before
+
+
+def test_owner_input_cannot_reuse_evidence_from_before_the_last_change(handoffs):
+    request = _request(handoffs)
+    first_evidence = _evidence(handoffs)
+    first = _observe(handoffs, request, first_evidence)
+    evidence_a = _evidence(handoffs, DIGEST_A)
+    last = _observe(handoffs, request, evidence_a, digest=DIGEST_A)
+    assert first_evidence.global_sequence < first.global_sequence < last.global_sequence
+    assert first_evidence.recorded_at == last.recorded_at
+    before = _state(handoffs)
+
+    with pytest.raises(IntentRepositoryConflictError):
+        _observe(handoffs, request, first_evidence)
+
+    assert _state(handoffs) == before
+    rerecorded = _evidence(handoffs)
+    assert rerecorded.subject_id == first_evidence.subject_id
+    assert rerecorded.global_sequence > last.global_sequence
+    changed = _observe(handoffs, request, rerecorded)
+    assert changed.changed is True
+    assert changed.details["reconsideration_requested"] is True
+    assert _view(handoffs)[0]["event_cursor"] == changed.global_sequence
+    before = _state(handoffs)
+    assert _observe(handoffs, request, rerecorded).changed is False
+    assert _state(handoffs) == before
+
+
 @pytest.mark.parametrize(
     "invalid",
     ["missing", "wrong_digest", "wrong_task", "wrong_owner", "wrong_key", "wrong_spec", "future", "stale"],

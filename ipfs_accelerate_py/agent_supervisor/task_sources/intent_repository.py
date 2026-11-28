@@ -4961,6 +4961,24 @@ class IntentRepository:
                 ) or original
                 if previous.details["body"]["observed_input_digest"] == digest:
                     return previous
+                # Wall freshness does not establish that the selected evidence
+                # was recorded after the request or the last accepted change.
+                source_event = connection.execute(
+                    "SELECT body_json FROM domain_events "
+                    "WHERE task_cid=? AND event_type=? AND global_sequence>? "
+                    "AND json_extract_string(body_json, '$.subject_id')=? "
+                    "ORDER BY global_sequence DESC LIMIT 1",
+                    [task_cid, IntentEventType.EVIDENCE_RECORDED.value,
+                     previous.global_sequence, evidence],
+                ).fetchone()
+                recorded = (
+                    _decode_json(source_event[0], noun="owner-input evidence event")["body"]
+                    if source_event is not None else {}
+                )
+                if any(recorded.get(key) != value for key, value in observed.items()):
+                    raise IntentRepositoryConflictError(
+                        "changed owner input requires evidence recorded after the previous handoff"
+                    )
                 stored = {**dict(body), "owner_id": owner, "request_id": request,
                           "observation_evidence_id": evidence}
                 eid = content_identity({"request_id": request, "previous_event_id": previous.event_id,
