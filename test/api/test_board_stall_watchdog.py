@@ -1049,3 +1049,104 @@ def test_event_lock_failure_preserves_identity_and_attempt_cooldown():
     assert repeated["action"] == "stall_recorded"
     assert repo.release_calls == 3 and owner._idle_signatures == signatures
     _event_recheck_fence(repeated)
+
+
+@pytest.mark.parametrize("entry", ["tick", "readonly_serve"])
+@pytest.mark.parametrize("event_aware", [False, True])
+def test_shared_watchdog_rechecks_an_independent_repository(entry, event_aware):
+    repo_type = _EventRepo if event_aware else _Repo
+    first = repo_type((_blocked("LAW-OWNER-WAIT"),))
+    second = repo_type((_blocked("LAW-OWNER-WAIT"),), release={
+        "completed": [{"task_alias": "LAW-OWNER-WAIT"}], "spawned": []})
+    owner = BoardStallWatchdog()
+    repairs = []
+
+    def repair(target, spec):
+        repairs.append(target)
+        return resolution_repair_subagent(target, spec)
+
+    with _event_clock():
+        owner.tick(first, operator_hold_present=False, spawn_repair=repair)
+        if entry == "tick":
+            report = owner.tick(second, operator_hold_present=False, spawn_repair=repair)
+        else:
+            report = serve(second, watchdog=owner, once=True, spawn_repair=repair,
+                readonly_observe=lambda: observe_tasks(second._records, operator_hold_present=False))
+    assert second.release_calls == 1
+    assert report["action"] == "progressed"
+    assert len(repairs) == 1 and repairs[0] is first
+    assert first._records == [_blocked("LAW-OWNER-WAIT")]
+    _event_recheck_fence(report)
+
+
+@pytest.mark.parametrize("entry", ["tick", "readonly_serve"])
+@pytest.mark.parametrize("event_aware", [False, True])
+def test_shared_watchdog_retains_each_repository_repair_latch(entry, event_aware):
+    # Repositories need not be hashable; user-defined equality must not merge owners.
+    base = _EventRepo if event_aware else _Repo
+
+    class Repository(base):
+        __hash__ = None
+
+        def __eq__(self, other):
+            raise AssertionError("repository equality must not decide ownership")
+
+    first = Repository((_blocked("LAW-OWNER-WAIT"),))
+    second = Repository((_blocked("LAW-OWNER-WAIT"),))
+    owner = BoardStallWatchdog()
+    repairs = []
+
+    def repair(target, spec):
+        repairs.append(target)
+        return resolution_repair_subagent(target, spec)
+
+    def step(repo):
+        if entry == "tick":
+            return owner.tick(repo, operator_hold_present=False, spawn_repair=repair)
+        return serve(repo, watchdog=owner, once=True, spawn_repair=repair,
+            readonly_observe=lambda: observe_tasks(repo._records, operator_hold_present=False))
+
+    with _event_clock():
+        assert step(first)["action"] == "start_repair_subagent"
+        assert step(second)["action"] == "start_repair_subagent"
+        assert step(first)["action"] == "stall_recorded"
+        assert step(second)["action"] == "stall_recorded"
+    assert len(repairs) == 2 and repairs[0] is first and repairs[1] is second
+    assert first.release_calls == 2 and second.release_calls == 2
+
+    from unittest.mock import patch
+    with patch.object(time, "monotonic", return_value=1121.0):
+        for repo in (first, second, first, second):
+            report = step(repo)
+            assert report["action"] == "stall_recorded"
+            _event_recheck_fence(report)
+    assert len(repairs) == 2
+    assert first.release_calls == 3 and second.release_calls == 3
+
+
+@pytest.mark.parametrize("entry", ["tick", "readonly_serve"])
+def test_independent_progress_does_not_rearm_another_repository_repair(entry):
+    first = _EventRepo((_blocked("LAW-OWNER-WAIT"),))
+    second = _EventRepo((_blocked("LAW-OWNER-WAIT"),), release={
+        "completed": [{"task_alias": "LAW-OWNER-WAIT"}], "spawned": []})
+    owner = BoardStallWatchdog()
+    repairs = []
+
+    def repair(target, spec):
+        repairs.append(target)
+        return resolution_repair_subagent(target, spec)
+
+    def step(repo):
+        if entry == "tick":
+            return owner.tick(repo, operator_hold_present=False, spawn_repair=repair)
+        return serve(repo, watchdog=owner, once=True, spawn_repair=repair,
+            readonly_observe=lambda: observe_tasks(repo._records, operator_hold_present=False))
+
+    with _event_clock():
+        assert step(first)["action"] == "start_repair_subagent"
+        assert step(second)["action"] == "progressed"
+        report = step(first)
+    assert report["action"] == "stall_recorded"
+    assert len(repairs) == 1 and repairs[0] is first
+    assert first.release_calls == 2 and second.release_calls == 1
+    _event_recheck_fence(report)

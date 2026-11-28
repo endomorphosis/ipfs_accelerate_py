@@ -287,6 +287,22 @@ class BoardStallWatchdog:
         self._idle_signatures: set[str] = set()
         self._idle_checked_at: dict[str, float] = {}
         self._idle_event_watermarks: dict[str, tuple[Any, int]] = {}
+        self._repository_states: list[tuple[Any, set[str], dict[str, float],
+            dict[str, tuple[Any, int]]]] = []
+
+    def _select_repository(self, repo: Any) -> None:
+        # A shared watchdog must neither borrow another board's cooldown nor
+        # reset that board's repair latch when returning to it. Retain identity
+        # rather than relying on repository equality, hashability or a bare id.
+        for state in self._repository_states:
+            if state[0] is repo:
+                break
+        else:
+            state = ((repo, self._idle_signatures, self._idle_checked_at,
+                      self._idle_event_watermarks) if not self._repository_states
+                     else (repo, set(), {}, {}))
+            self._repository_states.append(state)
+        self._idle_signatures, self._idle_checked_at, self._idle_event_watermarks = state[1:]
 
     def idle_recorded(self, signature: str) -> bool:
         # Recheck dependency evidence after one normal 120-second interval.
@@ -313,6 +329,7 @@ class BoardStallWatchdog:
         spawn_repair: Callable[[Any, Mapping[str, Any]], Mapping[str, Any]]
         | None = None,
     ) -> dict[str, Any]:
+        self._select_repository(repo)
         observation = observe_tasks(
             list_task_records(repo),
             operator_hold_present=operator_hold_present,
@@ -496,6 +513,7 @@ def serve(
         try:
             if readonly_observe is not None:
                 observation = readonly_observe()
+                owner._select_repository(repo)
                 signature = str(observation.get("signature") or "")
                 if (int(observation.get("active_count") or 0) == 0
                         and owner.idle_recorded(signature)):
